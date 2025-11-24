@@ -18,8 +18,10 @@ const decryptBody = async (req, res, next) => {
       url.endsWith("/scheduled-maintenance") ||
       url.endsWith("/encrypt") ||
       url.endsWith("/institutions") ||
+      url.endsWith("/authenticate/login-staff") || 
       url.endsWith("/admin-master/seed-base") ||
       url.endsWith("/admin-master") ||
+      url.endsWith("/admin-master/login") || 
       url.endsWith("/test-api")
     ) {
       return next();

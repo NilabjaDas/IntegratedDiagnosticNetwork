@@ -4,7 +4,6 @@ import { ConfigProvider, theme } from 'antd';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import CreateInstitution from './pages/CreateInstitution';
-import './App.css';
 
 const { defaultAlgorithm, darkAlgorithm } = theme;
 
