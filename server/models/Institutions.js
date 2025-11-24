@@ -42,6 +42,10 @@ const institutionsSchema = new mongoose.Schema({
   primaryDomain: { type: String, required: true, lowercase: true, trim: true, unique: true },
   domains: [{ type: String, lowercase: true, trim: true }], // accepts additional domains/subdomains
 
+  // Multi-tenancy
+  dbName: { type: String, required: true, unique: true, lowercase: true, trim: true }, // The database name for this institution
+  institutionCode: { type: String, required: true, unique: true, uppercase: true, trim: true }, // Unique code (e.g., CLINIC001)
+
   // Basic identity
   institutionName: { type: String, required: true },
   brand: { type: String },

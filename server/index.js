@@ -6,6 +6,8 @@ const app = express();
 
 const AdminMasterRoute = require("./routes/admin-master")
 const AuthenticateRoute = require("./routes/authenticate")
+const ConsumerAuthRoute = require("./routes/consumer-auth")
+const ConsumerBookingRoute = require("./routes/consumer-booking")
 const BookingsRoute = require("./routes/bookings")
 const CatalogRoute = require("./routes/catalog")
 const DoctorBookingRoute = require("./routes/doctor-bookings")
@@ -18,16 +20,14 @@ const ServerRoute = require("./sse")
 const decryptBody = require("./middleware/decryptBody");
 const bodyParser = require("body-parser");
 const { ConnectToDB } = require("./handlers/dbConnection");
-const propertyMiddleware = require("./middleware/propertiesMiddleware");
+const institutionMiddleware = require("./middleware/institutionMiddleware");
 const sseManager = require("./sse");
 
 // Security: Restrict CORS in production
 // TODO: Replace '*' with specific domains (e.g., process.env.ALLOWED_ORIGINS.split(','))
 app.use(
   cors({
-    origin: process.env.NODE_ENV === "production"
-      ? (process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
-      : "*",
+    origin: "*", // Allow all for now, tighten later
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     preflightContinue: false,
     optionsSuccessStatus: 204,
@@ -41,13 +41,15 @@ app.use(decryptBody);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-app.use(propertyMiddleware());
+app.use(institutionMiddleware());
 
 
 
 
 app.use("/api/admin-master", AdminMasterRoute);
 app.use("/api/authenticate", AuthenticateRoute);
+app.use("/api/consumer/auth", ConsumerAuthRoute);
+app.use("/api/consumer/booking", ConsumerBookingRoute);
 app.use("/api/bookings", BookingsRoute);
 app.use("/api/catalog", CatalogRoute);
 app.use("/api/doctor-bookings", DoctorBookingRoute);

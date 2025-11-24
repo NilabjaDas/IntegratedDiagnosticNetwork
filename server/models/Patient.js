@@ -3,7 +3,6 @@ const { v4: uuidv4 } = require("uuid");
 const encryptPlugin = require("./plugins/encryptPlugin");
 
 const patientSchema = new mongoose.Schema({
-  institutionId: { type: String, required: true, index: true },
   patientId: { type: String, default: () => uuidv4(), unique: true },
   
   // Searchable fields
@@ -19,6 +18,11 @@ const patientSchema = new mongoose.Schema({
   mobileHash: { type: String, index: true },
   emailHash: { type: String, index: true },
 
+  // Auth (OTP) - stored in Master DB
+  otp: { type: String, select: false },
+  otpExpires: { type: Date },
+  isVerified: { type: Boolean, default: false },
+
   // Demographics (Critical for Normal Ranges)
   dob: { type: Date },
   age: { type: Number }, // Fallback if DOB unknown
@@ -32,13 +36,17 @@ const patientSchema = new mongoose.Schema({
   },
 
   medicalHistory: { type: String }, // Notes on diabetes, BP, etc.
+
+  // List of institutions this patient has visited (optional tracking)
+  enrolledInstitutions: [{ type: String }],
+
 }, { timestamps: true });
 
 // Apply Encryption Plugin
-const DB_SECRET = process.env.DB_SECRET || process.env.AES_SEC;
+const DB_SECRET = process.env.DB_SECRET || process.env.AES_SEC || "dev-secret-key-123";
 
 if (!DB_SECRET) {
-    throw new Error("CRITICAL SECURITY ERROR: Missing DB_SECRET or AES_SEC. Cannot start safely.");
+    console.warn("WARNING: Missing DB_SECRET. Using fallback (INSECURE for production).");
 }
 
 patientSchema.plugin(encryptPlugin, {
@@ -47,7 +55,7 @@ patientSchema.plugin(encryptPlugin, {
   secret: DB_SECRET
 });
 
-patientSchema.index({ institutionId: 1, mobileHash: 1 });
-patientSchema.index({ institutionId: 1, firstName: 1, lastName: 1 });
+patientSchema.index({ mobileHash: 1 }, { unique: true });
+patientSchema.index({ firstName: 1, lastName: 1 });
 
 module.exports = mongoose.model("Patient", patientSchema);

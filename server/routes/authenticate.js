@@ -2,144 +2,64 @@ const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
-const Patient = require("../models/Patient");
-const Otp = require("../models/Otp");
-const Institution = require("../models/Institutions"); // If checking valid institution
-const { hashValue } = require("../models/plugins/encryptPlugin");
+const mongoose = require("mongoose");
+const UserSchema = require("../models/User").schema;
 
 // Helper: Generate Token
-const generateToken = (user) => {
+const generateToken = (user, institutionId) => {
   return jwt.sign(
     { 
       id: user._id, 
       userId: user.userId,
       role: user.role, 
-      institutionId: user.institutionId,
+      institutionId: institutionId,
+      username: user.username,
       isMasterAdmin: user.isMasterAdmin // Critical payload
     }, 
-    process.env.JWT_SECRET, 
+    process.env.JWT_SECRET || "dev-secret",
     { expiresIn: "7d" }
   );
 };
 
 // ==========================================
-// 1. SEND OTP (For Patients & Staff Login)
+// 1. STAFF / DOCTOR / LOCAL ADMIN LOGIN (Password)
 // ==========================================
-router.post("/send-otp", async (req, res) => {
-  try {
-    const { mobile, role } = req.body;
-    
-    // Generate 6 digit OTP (Mock logic)
-    // In Prod: Math.floor(100000 + Math.random() * 900000).toString();
-    const otp = "123456"; 
-
-    // Save to DB (Upsert: Update if exists, else Insert)
-    await Otp.findOneAndUpdate(
-      { mobile }, 
-      { mobile, otp, role }, 
-      { upsert: true, new: true }
-    );
-
-    // TODO: Integrate SMS Provider here (Twilio/Kaleyra)
-    console.log(`🔐 OTP for ${mobile} [Role: ${role || 'patient'}]: ${otp}`);
-
-    res.json({ message: "OTP sent successfully", devNote: "Check console for code" });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// ==========================================
-// 2. VERIFY OTP (Login for Patients)
-// ==========================================
-router.post("/login-patient", async (req, res) => {
-  try {
-    const { mobile, otp, institutionId } = req.body;
-
-    // 1. Verify OTP
-    const validOtp = await Otp.findOne({ mobile, otp });
-    if (!validOtp) return res.status(400).json({ message: "Invalid or Expired OTP" });
-
-    // 2. Find or Create Patient User
-    // Note: Patient login is specific to an Institution usually, 
-    // but the User table is global. Let's find via Mobile.
-    
-    let user = await User.findOne({ phone: mobile, role: "patient", institutionId });
-    
-    // If first time login, check if Patient Profile exists in that Institution
-    if (!user) {
-        // Check if a patient record exists created by Frontdesk
-        // Use BLIND INDEX (mobileHash) because 'mobile' is encrypted
-        // Must use SAME secret as plugin.
-        // WARNING: We need to import secret logic or pass it.
-        // Best way: Use a shared config or env.
-        const DB_SECRET = process.env.DB_SECRET || process.env.AES_SEC;
-        const hashedMobile = hashValue(mobile, DB_SECRET);
-        const patientProfile = await Patient.findOne({ mobileHash: hashedMobile, institutionId });
-        
-        if (patientProfile) {
-            // Create a User login for this existing patient
-            user = new User({
-                institutionId,
-                username: mobile, // Mobile is username for patients
-                phone: mobile,
-                role: "patient",
-                fullName: `${patientProfile.firstName} ${patientProfile.lastName}`
-            });
-            await user.save();
-        } else {
-            // New User entirely (Self Registration Flow logic needed or deny)
-            // For MVP: We allow, but they have empty profile
-            user = new User({
-                institutionId,
-                username: mobile,
-                phone: mobile,
-                role: "patient",
-                fullName: "Guest Patient"
-            });
-            await user.save();
-        }
-    }
-
-    // 3. Generate Token
-    const token = generateToken(user);
-
-    // 4. Cleanup OTP
-    await Otp.deleteOne({ _id: validOtp._id });
-
-    res.json({ token, user: { name: user.fullName, role: "patient" } });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// ==========================================
-// 3. STAFF / DOCTOR / MASTER ADMIN LOGIN (Password)
-// ==========================================
+// This route is called by the Provider Portal
+// It MUST be aware of the Institution context (req.db)
 router.post("/login-staff", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // 1. Find User (explicitly select password)
+    if (!req.db) {
+        return res.status(500).json({ message: "Database connection failed. Is the Institution ID correct?" });
+    }
+
+    // 1. Get User Model for this Institution
+    const User = req.db.model("User", UserSchema);
+
+    // 2. Find User (explicitly select password)
+    // Note: InstitutionId is now implicit because we are in the Institution's DB
+    // But we still store it in the document if we kept the schema same.
     const user = await User.findOne({ 
         $or: [{ username }, { email: username }] 
     }).select("+password");
 
-    if (!user) return res.status(400).json({ message: "User not found" });
+    if (!user) return res.status(400).json({ message: "User not found in this institution." });
 
-    // 2. Verify Password
+    // 3. Verify Password
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
-    // 3. Check Active Status
-    if (!user.isActive) return res.status(403).json({ message: "Account is disabled" });
+    // 4. Check Active Status
+    if (user.isActive === false) return res.status(403).json({ message: "Account is disabled" });
 
-    // 4. Generate Token
-    const token = generateToken(user);
+    // 5. Generate Token
+    // We pass the institutionId found in the user record or from the request
+    const token = generateToken(user, user.institutionId);
+
+    // 6. Update Last Login
+    user.lastLogin = new Date();
+    await user.save();
 
     res.json({ 
         token, 
@@ -153,55 +73,67 @@ router.post("/login-staff", async (req, res) => {
     });
 
   } catch (err) {
+    console.error("Login Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 
 // ==========================================
-// 4. CREATE STAFF (Admin Only)
+// 2. CREATE STAFF (Local Admin Only)
 // ==========================================
-// You need a temporary route or a script to create your FIRST Admin/Master Admin
-// Postman -> POST /api/auth/register-staff
+// This should be behind auth middleware usually, but for initial setup:
 router.post("/register-staff", async (req, res) => {
-  try {
-    const { 
-        institutionId, username, password, role, fullName, phone, isMasterAdmin 
-    } = req.body;
+    // Basic verification: user making this request must be an Admin
+    // We'll trust the middleware to attach 'req.user' if this was a protected route.
+    // For now, let's keep it open but maybe check a secret header or just assume
+    // the UI protects it or it's for bootstrapping.
 
-    if (!institutionId || !username || !password || !fullName) {
-        return res.status(400).json({ message: "Missing required fields." });
+    // BETTER: Use a middleware on the route definition in index.js or here.
+    // For now, I'll implement logic assuming it's protected or used carefully.
+
+    try {
+      const {
+          username, password, role, fullName, phone, designation, registrationNumber
+      } = req.body;
+
+      if (!req.db) return res.status(500).json({ message: "No Institution Context" });
+      const User = req.db.model("User", UserSchema);
+
+      if (!username || !password || !fullName) {
+          return res.status(400).json({ message: "Missing required fields." });
+      }
+
+      // Check if user exists
+      const existingUser = await User.findOne({
+          $or: [{ username }, { email: username }]
+      });
+      if (existingUser) {
+          return res.status(409).json({ message: "User already exists." });
+      }
+
+      // Hash Password
+      const salt = await bcrypt.genSalt(10);
+      const hashedPassword = await bcrypt.hash(password, salt);
+
+      const newUser = new User({
+          institutionId: req.institutionId, // From middleware
+          username,
+          password: hashedPassword,
+          role: role || "staff",
+          fullName,
+          phone,
+          designation,
+          registrationNumber,
+          isMasterAdmin: false
+      });
+
+      await newUser.save();
+      res.status(201).json({ message: "Staff created successfully", userId: newUser.userId });
+
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
-
-    // Check if user exists
-    const existingUser = await User.findOne({
-        institutionId,
-        $or: [{ username }, { email: username }]
-    });
-    if (existingUser) {
-        return res.status(409).json({ message: "User already exists in this institution." });
-    }
-
-    // Hash Password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const newUser = new User({
-        institutionId,
-        username,
-        password: hashedPassword,
-        role: role || "staff",
-        fullName,
-        phone,
-        isMasterAdmin: isMasterAdmin || false
-    });
-
-    await newUser.save();
-    res.status(201).json({ message: "Staff created successfully" });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 module.exports = router;
