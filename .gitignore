@@ -1,0 +1,61 @@
+# =========================
+# DEPENDENCIES (Node/JS)
+# =========================
+node_modules/
+*/node_modules/       # Ignore nested node_modules in subfolders
+package-lock.json     # Optional: Some teams commit this, some don't. Keep it if unsure.
+yarn.lock             # Keep this if you use Yarn.
+
+# =========================
+# ENVIRONMENT VARIABLES (Secrets)
+# =========================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+*/.env                # Ignore .env in subfolders (server/.env)
+*serviceaccount.json
+
+# =========================
+# BUILD OUTPUTS
+# =========================
+dist/
+build/
+out/
+coverage/
+.next/
+.nuxt/
+
+# =========================
+# OS & IDE JUNK
+# =========================
+.DS_Store             # Mac junk
+Thumbs.db             # Windows junk
+.idea/                # JetBrains IDEs
+.vscode/              # VS Code settings (optional, keep if sharing settings)
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =========================
+# TESTING
+# =========================
+/coverage
+```
+
+### **Can I still have `.gitignore` inside subfolders?**
+**Yes, but you don't need to.**
+Git is smart. If you put `node_modules/` in the root `.gitignore`, it will ignore `node_modules` in `root`, `server/`, `apps/patient-web/`, and anywhere else deeper in the tree.
+
+**Only use a subfolder `.gitignore` if:**
+* You have a specific file in the `server` folder (like a temporary `.sqlite` DB) that doesn't exist in the `client` folder, and you want to keep the logic close to the code.
+* But generally, **One Root File** is cleaner.
+
+### **Ready to Initialize?**
+Once you create this file at the root, run:
+```bash
+git add .
+git commit -m "Setup Monorepo structure and gitignore"
