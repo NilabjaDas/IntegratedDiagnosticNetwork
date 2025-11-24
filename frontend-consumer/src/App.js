@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import Landing from './pages/Landing';
 import Navbar from './components/Navbar';
-import './App.css';
 
 function App() {
   const [mode, setMode] = useState('light');
