@@ -78,10 +78,10 @@ const institutionsSchema = new mongoose.Schema({
     pincode: String,
   },
 
-  // Geolocation (optional)
+  // Geolocation (optional) - defaults to 0,0 if not provided to avoid 2dsphere index errors
   location: {
     type: { type: String, enum: ["Point"], default: "Point" },
-    coordinates: { type: [Number] }, // [lng, lat]
+    coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
   },
 
   // Business / legal / billing

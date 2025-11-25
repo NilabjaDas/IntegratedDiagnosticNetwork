@@ -2,6 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { Container, Grid, Card, CardContent, Typography, TextField, InputAdornment, Box } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { getInstitutions } from '../services/api';
+import { Helmet } from 'react-helmet';
+import styled from 'styled-components';
+
+const StyledCard = styled(Card)`
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    transition: 0.3s;
+    &:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    }
+`;
 
 const Landing = () => {
     const [institutions, setInstitutions] = useState([]);
@@ -22,6 +35,10 @@ const Landing = () => {
 
     return (
         <Container maxWidth="lg" sx={{ mt: 4 }}>
+            <Helmet>
+                <title>Home - Find Healthcare</title>
+                <meta name="description" content="Search for clinics and hospitals near you." />
+            </Helmet>
             <Box sx={{ textAlign: 'center', mb: 6 }}>
                 <Typography variant="h3" component="h1" gutterBottom fontWeight="bold">
                     Find Healthcare Near You
@@ -45,7 +62,7 @@ const Landing = () => {
             <Grid container spacing={3}>
                 {institutions.map((inst) => (
                     <Grid item xs={12} sm={6} md={4} key={inst.institutionId}>
-                        <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', transition: '0.3s', '&:hover': { transform: 'translateY(-5px)', boxShadow: 6 } }}>
+                        <StyledCard>
                             <CardContent>
                                 <Typography variant="h6" component="div" gutterBottom>
                                     {inst.institutionName}
@@ -57,7 +74,7 @@ const Landing = () => {
                                     {inst.primaryDomain}
                                 </Typography>
                             </CardContent>
-                        </Card>
+                        </StyledCard>
                     </Grid>
                 ))}
             </Grid>

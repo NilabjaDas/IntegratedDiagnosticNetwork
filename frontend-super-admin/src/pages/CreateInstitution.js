@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Layout, Form, Input, Button, Card, message, Row, Col } from 'antd';
+import { Layout, Form, Input, Button, Card, Row, Col } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { createInstitution } from '../services/api';
+import { Helmet } from 'react-helmet';
+import { toast } from 'react-toastify';
 
 const { Header, Content } = Layout;
 
@@ -15,10 +17,10 @@ const CreateInstitution = ({ isDarkMode, toggleTheme }) => {
         setLoading(true);
         try {
             await createInstitution(values);
-            message.success('Institution created successfully!');
+            toast.success('Institution created successfully!');
             navigate('/');
         } catch (err) {
-            message.error(err.response?.data?.message || 'Failed to create');
+            toast.error(err.response?.data?.message || 'Failed to create');
         } finally {
             setLoading(false);
         }
@@ -26,6 +28,9 @@ const CreateInstitution = ({ isDarkMode, toggleTheme }) => {
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
+            <Helmet>
+                <title>Create Institution - Super Admin</title>
+            </Helmet>
             <Header style={{ padding: '0 16px', background: '#fff', display: 'flex', alignItems: 'center' }}>
                 <Link to="/">
                     <Button type="text" icon={<ArrowLeftOutlined />}>Back</Button>

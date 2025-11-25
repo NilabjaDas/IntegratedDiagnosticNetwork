@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import './App.css';
@@ -46,6 +48,7 @@ function App() {
           />
         </Routes>
       </Router>
+      <ToastContainer theme={isDarkMode ? 'dark' : 'light'} />
     </ConfigProvider>
   );
 }

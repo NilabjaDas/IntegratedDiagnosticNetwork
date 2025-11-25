@@ -7,8 +7,19 @@ import {
     BulbFilled
 } from '@ant-design/icons';
 import { getOrders } from '../services/api';
+import { Helmet } from 'react-helmet';
+import { toast } from 'react-toastify';
+import styled from 'styled-components';
 
 const { Header, Content, Sider } = Layout;
+
+const StyledHeader = styled(Header)`
+    padding: 0 16px;
+    background: ${props => props.bg};
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+`;
 
 const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
     const [orders, setOrders] = useState([]);
@@ -27,6 +38,7 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
             const data = await getOrders();
             setOrders(data);
         } catch (err) {
+            toast.error("Failed to fetch orders");
             console.error(err);
         } finally {
             setLoading(false);
@@ -44,6 +56,9 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
 
     return (
         <Layout style={{ minHeight: '100vh' }}>
+            <Helmet>
+                <title>Dashboard - Provider</title>
+            </Helmet>
             <Sider collapsible>
                 <div style={{ height: 32, margin: 16, background: 'rgba(255, 255, 255, 0.2)' }} />
                 <Menu theme="dark" defaultSelectedKeys={['1']} mode="inline" items={[
@@ -51,7 +66,7 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
                 ]} />
             </Sider>
             <Layout>
-                <Header style={{ padding: '0 16px', background: colorBgContainer, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <StyledHeader bg={colorBgContainer}>
                     <div style={{ fontWeight: 'bold', fontSize: '18px' }}>Clinic Dashboard</div>
                     <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                          <Switch
@@ -62,7 +77,7 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
                         />
                         <Button icon={<LogoutOutlined />} onClick={onLogout}>Logout</Button>
                     </div>
-                </Header>
+                </StyledHeader>
                 <Content style={{ margin: '16px' }}>
                     <div
                         style={{

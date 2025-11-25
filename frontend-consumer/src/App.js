@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import Landing from './pages/Landing';
 import Navbar from './components/Navbar';
 import './App.css';
@@ -34,6 +36,7 @@ function App() {
           <Route path="/" element={<Landing />} />
         </Routes>
       </Router>
+      <ToastContainer theme={mode} />
     </ThemeProvider>
   );
 }
