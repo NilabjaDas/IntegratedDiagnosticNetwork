@@ -36,3 +36,23 @@ export const createInstitution = async (data) => {
     const res = await api.post('/institutions', data);
     return res.data;
 };
+
+export const updateInstitution = async (id, data) => {
+    const res = await api.put(`/institutions/${id}`, data);
+    return res.data;
+};
+
+export const deleteInstitution = async (id) => {
+    const res = await api.delete(`/institutions/${id}`);
+    return res.data;
+};
+
+export const deactivateInstitution = async (id, status) => {
+    const res = await api.put(`/institutions/${id}/status`, { status });
+    return res.data;
+};
+
+export const createUser = async (institutionId, data) => {
+    const res = await api.post(`/users/${institutionId}`, data);
+    return res.data;
+};

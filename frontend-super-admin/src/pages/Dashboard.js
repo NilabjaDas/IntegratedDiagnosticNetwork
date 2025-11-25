@@ -8,7 +8,10 @@ import {
     BulbFilled
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
-import { getInstitutions } from '../services/api';
+import { Modal } from 'antd';
+import { getInstitutions, deleteInstitution, deactivateInstitution } from '../services/api';
+import EditInstitutionWizard from './EditInstitutionWizard';
+import CreateUserModal from './CreateUserModal';
 import { Helmet } from 'react-helmet';
 import { toast } from 'react-toastify';
 import styled from 'styled-components';
@@ -26,6 +29,56 @@ const StyledHeader = styled(Header)`
 const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
     const [institutions, setInstitutions] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [isWizardVisible, setIsWizardVisible] = useState(false);
+    const [isUserModalVisible, setIsUserModalVisible] = useState(false);
+    const [selectedInstitution, setSelectedInstitution] = useState(null);
+
+    const showDeactivateConfirm = (institution) => {
+        Modal.confirm({
+            title: `Are you sure you want to ${institution.status ? 'deactivate' : 'activate'} this institution?`,
+            content: `This will ${institution.status ? 'disable' : 'enable'} access for all users of this institution.`,
+            okText: institution.status ? 'Deactivate' : 'Activate',
+            okType: 'danger',
+            cancelText: 'Cancel',
+            async onOk() {
+                try {
+                    await deactivateInstitution(institution.institutionId, !institution.status);
+                    toast.success(`Institution ${institution.status ? 'deactivated' : 'activated'} successfully`);
+                    loadData();
+                } catch (error) {
+                    toast.error("Failed to update status");
+                }
+            },
+        });
+    };
+
+    const handleDelete = (institution) => {
+        Modal.confirm({
+            title: 'Are you sure you want to delete this institution?',
+            content: 'This action is permanent and cannot be undone. This will delete all data associated with this institution.',
+            okText: 'Delete',
+            okType: 'danger',
+            cancelText: 'Cancel',
+            onOk() {
+                Modal.confirm({
+                    title: 'Final Confirmation',
+                    content: 'This is your final confirmation. Are you absolutely sure you want to delete this institution?',
+                    okText: 'Yes, Delete',
+                    okType: 'danger',
+                    cancelText: 'Cancel',
+                    async onOk() {
+                        try {
+                            await deleteInstitution(institution.institutionId);
+                            toast.success("Institution deleted successfully");
+                            loadData();
+                        } catch (error) {
+                            toast.error("Failed to delete institution");
+                        }
+                    },
+                });
+            },
+        });
+    };
     const {
         token: { colorBgContainer, borderRadiusLG },
     } = theme.useToken();
@@ -53,6 +106,22 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
         { title: 'Subdomain', dataIndex: 'primaryDomain', key: 'domain' },
         { title: 'DB Name', dataIndex: 'dbName', key: 'dbName' },
         { title: 'Status', dataIndex: 'status', key: 'status', render: (text) => text ? 'Active' : 'Inactive' },
+        {
+            title: 'Actions',
+            key: 'actions',
+            render: (_, record) => (
+                <Space size="middle">
+                    <Button onClick={() => {
+                        setSelectedInstitution(record);
+                        setIsUserModalVisible(true);
+                    }}>Create User</Button>
+                    <Button danger onClick={() => showDeactivateConfirm(record)}>
+                        {record.status ? 'Deactivate' : 'Activate'}
+                    </Button>
+                    <Button danger onClick={() => handleDelete(record)}>Delete</Button>
+                </Space>
+            ),
+        },
     ];
 
     return (
@@ -100,10 +169,33 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
                             columns={columns}
                             rowKey="institutionId"
                             loading={loading}
+                            onRow={(record) => ({
+                                onClick: () => {
+                                    setSelectedInstitution(record);
+                                    setIsWizardVisible(true);
+                                },
+                            })}
                         />
                     </div>
                 </Content>
             </Layout>
+            <EditInstitutionWizard
+                open={isWizardVisible}
+                onCancel={() => setIsWizardVisible(false)}
+                onOk={() => {
+                    setIsWizardVisible(false);
+                    loadData();
+                }}
+                institution={selectedInstitution}
+            />
+            <CreateUserModal
+                open={isUserModalVisible}
+                onCancel={() => setIsUserModalVisible(false)}
+                onOk={() => {
+                    setIsUserModalVisible(false);
+                }}
+                institutionId={selectedInstitution?.institutionId}
+            />
         </Layout>
     );
 };
