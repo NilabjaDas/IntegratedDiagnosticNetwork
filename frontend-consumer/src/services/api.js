@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { encryptPayload } from './encryption';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api/consumer';
 
@@ -11,6 +12,13 @@ api.interceptors.request.use((config) => {
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // ENCRYPT POST BODY
+    if (config.method === 'post' && config.data) {
+        config.headers['Content-Type'] = 'text/plain';
+        config.data = encryptPayload(config.data, config.url);
+    }
+
     return config;
 });
 

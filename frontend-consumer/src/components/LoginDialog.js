@@ -1,24 +1,24 @@
 import React, { useState } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button,
-    Typography, Stepper, Step, StepLabel, Box, MenuItem, FormControl, InputLabel, Select
+    Typography, Box, MenuItem, FormControl, InputLabel, Select
 } from '@mui/material';
 import { sendOtp, login, register } from '../services/api';
+import { toast } from 'react-toastify';
 
 const LoginDialog = ({ open, onClose, onSuccess }) => {
     const [step, setStep] = useState(0); // 0: Phone, 1: OTP, 2: Register
     const [mobile, setMobile] = useState('');
     const [otp, setOtp] = useState('');
     const [profile, setProfile] = useState({ firstName: '', lastName: '', gender: '', age: '', ageUnit: 'Years' });
-    const [error, setError] = useState('');
 
     const handleSendOtp = async () => {
         try {
             await sendOtp(mobile);
             setStep(1);
-            setError('');
+            toast.info(`OTP sent to ${mobile}`);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to send OTP');
+            toast.error(err.response?.data?.message || 'Failed to send OTP');
         }
     };
 
@@ -28,12 +28,14 @@ const LoginDialog = ({ open, onClose, onSuccess }) => {
             if (res.status === 'success') {
                 localStorage.setItem('token', res.token);
                 onSuccess(res.patient);
+                toast.success('Login Successful');
                 onClose();
             } else if (res.status === 'registration_required') {
+                toast.info('Registration Required');
                 setStep(2); // Go to registration
             }
         } catch (err) {
-            setError(err.response?.data?.message || 'Login failed');
+            toast.error(err.response?.data?.message || 'Login failed');
         }
     };
 
@@ -43,10 +45,11 @@ const LoginDialog = ({ open, onClose, onSuccess }) => {
              if (res.status === 'success') {
                 localStorage.setItem('token', res.token);
                 onSuccess(res.patient);
+                toast.success('Registration Successful');
                 onClose();
             }
         } catch (err) {
-            setError(err.response?.data?.message || 'Registration failed');
+            toast.error(err.response?.data?.message || 'Registration failed');
         }
     };
 
@@ -54,7 +57,6 @@ const LoginDialog = ({ open, onClose, onSuccess }) => {
         <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
             <DialogTitle>Login / Register</DialogTitle>
             <DialogContent>
-                {error && <Typography color="error" gutterBottom>{error}</Typography>}
 
                 {step === 0 && (
                     <TextField

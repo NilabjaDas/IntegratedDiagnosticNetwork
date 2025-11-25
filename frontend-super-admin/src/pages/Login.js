@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, message } from 'antd';
+import { Form, Input, Button, Card, Typography } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { login } from '../services/api';
 import styled from 'styled-components';
+import { Helmet } from 'react-helmet';
+import { toast } from 'react-toastify';
 
 const { Title } = Typography;
 
@@ -14,6 +16,11 @@ const Container = styled.div`
   background: #f0f2f5;
 `;
 
+const StyledCard = styled(Card)`
+  width: 400px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+`;
+
 const Login = ({ onLogin }) => {
     const [loading, setLoading] = useState(false);
 
@@ -21,10 +28,10 @@ const Login = ({ onLogin }) => {
         setLoading(true);
         try {
             const data = await login(values.username, values.password);
-            message.success('Login successful');
+            toast.success('Login successful');
             onLogin(data.token);
         } catch (err) {
-            message.error(err.response?.data?.message || 'Login failed');
+            toast.error(err.response?.data?.message || 'Login failed');
         } finally {
             setLoading(false);
         }
@@ -32,7 +39,10 @@ const Login = ({ onLogin }) => {
 
     return (
         <Container>
-            <Card style={{ width: 400, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+            <Helmet>
+                <title>Login - Super Admin</title>
+            </Helmet>
+            <StyledCard>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
                     <Title level={3}>Super Admin</Title>
                 </div>
@@ -61,7 +71,7 @@ const Login = ({ onLogin }) => {
                        Default: admin / admin
                     </div>
                 </Form>
-            </Card>
+            </StyledCard>
         </Container>
     );
 };
