@@ -1,117 +1,119 @@
-// models/institution.js
+// models/Institutions.js
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
+const bcrypt = require("bcrypt");
 
+// Sub-schemas (kept defined outside to keep main schema clean)
 const maintenanceSchema = new mongoose.Schema({
   activeStatus: { type: Boolean, default: false },
-  startTime: { type: String },
-  endTime: { type: String },
-  updateInfo: { type: String },
-  updateDescription: { type: String },
+  startTime: { type: String, default: "" },
+  endTime: { type: String, default: "" },
+  updateInfo: { type: String, default: "Scheduled Maintenance" },
+  updateDescription: { type: String, default: "We are improving our services." },
 }, { _id: false });
 
 const outletSchema = new mongoose.Schema({
   outletId: { type: String, default: () => uuidv4() },
   name: { type: String, required: true },
-  code: { type: String }, // short code for tokens/labels
-  contact: {
-    phone: { type: String },
-    email: { type: String },
-  },
-  address: {
-    line1: String,
-    line2: String,
-    city: String,
-    state: String,
-    country: String,
-    pincode: String,
-  },
-  timezone: { type: String }, // outlet-specific timezone
+  code: { type: String, uppercase: true }, 
   isActive: { type: Boolean, default: true },
+  timezone: { type: String, default: "Asia/Kolkata" },
+  contact: { phone: String, email: String },
+  address: {
+    line1: String, line2: String, city: String, state: String, country: String, pincode: String,
+  },
   settings: {
-    autoToken: { type: Boolean, default: false }, // add outlet-specific toggles
-    tokenPrefix: { type: String },
-    openingHours: [{ day: String, open: String, close: String }],
+    autoToken: { type: Boolean, default: false },
+    tokenPrefix: { type: String, default: "TKN" },
+    openingHours: { type: [Object], default: [] },
   },
 }, { _id: false });
 
 const institutionsSchema = new mongoose.Schema({
   institutionId: { type: String, default: () => uuidv4(), index: true, unique: true },
 
-  // Domains & routing
+  // --- Identity & Routing (Unique/Required) ---
+  institutionName: { type: String, required: true, trim: true },
+  
+  // We don't set static defaults for these because they must be unique.
+  // We will generate them in the controller if missing.
   primaryDomain: { type: String, required: true, lowercase: true, trim: true, unique: true },
-  domains: [{ type: String, lowercase: true, trim: true }], // accepts additional domains/subdomains
+  dbName: { type: String, required: true, unique: true, lowercase: true, trim: true }, 
+  institutionCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
 
-  // Multi-tenancy
-  dbName: { type: String, required: true, unique: true, lowercase: true, trim: true }, // The database name for this institution
-  institutionCode: { type: String, required: true, unique: true, uppercase: true, trim: true }, // Unique code (e.g., CLINIC001)
+  domains: [{ type: String, lowercase: true, trim: true }],
 
-  // Basic identity
-  institutionName: { type: String, required: true },
-  brand: { type: String },
-  brandName: { type: String },
-  loginPageImgUrl: { type: String },
-  institutionLogoUrl: { type: String },
-  favicon: { type: String },
-  status: { type: Boolean, default: true }, // active/inactive
+  // --- Branding ---
+  brand: { type: String, default: "" },
+  brandName: { type: String, default: "" },
+  loginPageImgUrl: { type: String, default: "" },
+  institutionLogoUrl: { type: String, default: "" },
+  favicon: { type: String, default: "" },
+  status: { type: Boolean, default: true },
 
-  // Visual theming
+  // --- Theme Defaults ---
   theme: {
-    primaryColor: { type: String },
-    secondaryColor: { type: String },
-    logoBackground: { type: String }
+    primaryColor: { type: String, default: "#007bff" },
+    secondaryColor: { type: String, default: "#6c757d" },
+    logoBackground: { type: String, default: "#ffffff" }
   },
 
-  // Contact & address
+  // --- Subscription (Requested Updates) ---
+  subscription: {
+    type: { 
+        type: String, 
+        enum: ["trial", "basic", "pro", "free"], 
+        default: "trial" 
+    },
+    status: { 
+        type: String, 
+        enum: ["active", "deactive"], 
+        default: "active" 
+    },
+    value: { type: String, default: "0" }, // Stored as string to avoid floating point math issues
+    frequency: { 
+        type: String, 
+        enum: ["monthly", "yearly"], 
+        default: "monthly" 
+    },
+    startDate: { type: Date, default: Date.now },
+    endDate: { type: Date } // Can calculate based on frequency in controller
+  },
+
+  // --- Contact & Address ---
   contact: {
-    phone: { type: String },
-    altPhone: { type: String },
-    email: { type: String },
-    supportEmail: { type: String },
+    phone: { type: String, default: "" },
+    altPhone: { type: String, default: "" },
+    email: { type: String, default: "" },
+    supportEmail: { type: String, default: "" },
   },
   address: {
-    line1: String,
-    line2: String,
-    city: String,
-    state: String,
-    country: String,
-    pincode: String,
+    line1: { type: String, default: "" },
+    line2: { type: String, default: "" },
+    city: { type: String, default: "" },
+    state: { type: String, default: "" },
+    country: { type: String, default: "India" },
+    pincode: { type: String, default: "" },
   },
 
-  // Geolocation (optional) - defaults to 0,0 if not provided to avoid 2dsphere index errors
+  // --- Location ---
   location: {
     type: { type: String, enum: ["Point"], default: "Point" },
-    coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
+    coordinates: { type: [Number], default: [0, 0] },
   },
 
-  // Business / legal / billing
+  // --- Billing Defaults ---
   billing: {
-    gstin: { type: String },
-    pan: { type: String },
-    invoicePrefix: { type: String },
-    taxPercentage: { type: Number, default: 0 },
+    gstin: { type: String, default: "" },
+    pan: { type: String, default: "" },
+    invoicePrefix: { type: String, default: "INV" },
+    taxPercentage: { type: Number, default: 18 },
     defaultCurrency: { type: String, default: "INR" },
   },
 
-  // Multi-outlet support
   outlets: [outletSchema],
 
-  // Integrations & internal settings
-  integrations: {
-    firebaseBucketName: { type: String },
-    uploadUrlDomain: { type: String },
-    pacs: {
-      enabled: { type: Boolean, default: false },
-      orthancUrl: { type: String },
-      aeTitle: { type: String }
-    },
-    hl7: {
-      enabled: { type: Boolean, default: false },
-      listenerUrl: { type: String }
-    }
-  },
-
-  // Features toggles
+  // --- Feature Toggles Defaults ---
   features: {
     hasRadiology: { type: Boolean, default: false },
     hasPACS: { type: Boolean, default: false },
@@ -119,52 +121,54 @@ const institutionsSchema = new mongoose.Schema({
     hasTeleReporting: { type: Boolean, default: false },
   },
 
-  // Platform settings
+  // --- Platform Settings Defaults ---
   settings: {
     timezone: { type: String, default: "Asia/Kolkata" },
     locale: { type: String, default: "en-IN" },
     defaultLanguage: { type: String, default: "en" },
-    sampleBarcodePrefix: { type: String },
+    sampleBarcodePrefix: { type: String, default: "LAB" },
     queue: {
       incrementalPerOutlet: { type: Boolean, default: true },
       tokenFormat: { type: String, default: "{OUTLET}-{NUMBER}" }
     }
   },
 
-  // Sensitive / secret info (select: false so not returned by default)
-  masterPassword: { type: String, select: false }, // store hashed
+  // --- Integrations ---
+  integrations: {
+    firebaseBucketName: { type: String, default: "" },
+    uploadUrlDomain: { type: String, default: "" },
+    pacs: {
+      enabled: { type: Boolean, default: false },
+      orthancUrl: { type: String, default: "" },
+      aeTitle: { type: String, default: "" }
+    },
+    hl7: {
+      enabled: { type: Boolean, default: false },
+      listenerUrl: { type: String, default: "" }
+    }
+  },
+
+  // --- Sensitive Data ---
+  masterPassword: { type: String, select: false }, 
   paymentGateway: {
-    provider: { type: String },
-    config: { type: mongoose.Schema.Types.Mixed, select: false } // API keys etc. DO NOT expose these
+    provider: { type: String, default: "" },
+    config: { type: mongoose.Schema.Types.Mixed, select: false, default: {} }
   },
   smtp: {
-    host: { type: String },
-    port: { type: Number },
-    user: { type: String },
+    host: { type: String, default: "" },
+    port: { type: Number, default: 587 },
+    user: { type: String, default: "" },
     password: { type: String, select: false }
   },
 
-  // Plan/subscription meta
-  plan: {
-    name: { type: String, default: "free" },
-    tier: { type: String },
-    isTrial: { type: Boolean, default: true },
-    trialEndsAt: { type: Date },
-    expiresAt: { type: Date }
-  },
-
-  // Operational fields
-  maintenance: { type: maintenanceSchema },
+  maintenance: { type: maintenanceSchema, default: () => ({}) },
   onboardingStatus: { type: String, enum: ["pending", "in_progress", "complete"], default: "pending" },
-  tags: [{ type: String }], // arbitrary labels/market segment
+  tags: [{ type: String }],
   deleted: { type: Boolean, default: false },
 
-  // Who created/updated
-  createdBy: { type: String },
-  updatedBy: { type: String },
-
-  // flexible metadata
-  metadata: { type: mongoose.Schema.Types.Mixed },
+  createdBy: String,
+  updatedBy: String,
+  metadata: mongoose.Schema.Types.Mixed,
 
 }, {
   timestamps: true,
@@ -177,7 +181,16 @@ institutionsSchema.index({ institutionId: 1 }, { unique: true });
 institutionsSchema.index({ "contact.email": 1 });
 institutionsSchema.index({ "location": "2dsphere" });
 
-// NOTE: For any secret (masterPassword, payment keys, smtp.password) you should hash/encrypt them.
-// Example: institutionsSchema.pre('save', async function(next) { ... hash if modified ... })
+// Hash Master Password before saving if it's modified
+institutionsSchema.pre('save', async function(next) {
+    if (!this.isModified('masterPassword') || !this.masterPassword) return next();
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.masterPassword = await bcrypt.hash(this.masterPassword, salt);
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
 
 module.exports = mongoose.model("Institution", institutionsSchema);

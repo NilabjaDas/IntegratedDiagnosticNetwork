@@ -41,7 +41,7 @@ const decryptBody = async (req, res, next) => {
     //    adjust these paths if your router is mounted elsewhere
     const url = req.originalUrl.toLowerCase();
     const usePassKey =
-      url.endsWith("/admin-login") ||
+      url.endsWith("/admin-master/login") ||
       url.endsWith("/brand-admin-login");
 
     const key = usePassKey ? PASS_KEY : AES_KEY;

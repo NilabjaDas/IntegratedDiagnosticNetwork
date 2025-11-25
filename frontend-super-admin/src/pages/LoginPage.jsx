@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, Card, Typography } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
-import { login } from '../services/api';
+import { adminLogin } from '../redux/apiCalls';
 import styled from 'styled-components';
 import { Helmet } from 'react-helmet';
 import { toast } from 'react-toastify';
+import { useDispatch } from 'react-redux';
 
 const { Title } = Typography;
 
@@ -22,12 +23,13 @@ const StyledCard = styled(Card)`
 `;
 
 const Login = ({ onLogin }) => {
+    const dispatch = useDispatch();
     const [loading, setLoading] = useState(false);
 
     const onFinish = async (values) => {
         setLoading(true);
         try {
-            const data = await login(values.username, values.password);
+            const data = await adminLogin (dispatch, values.username, values.password);
             toast.success('Login successful');
             onLogin(data.token);
         } catch (err) {

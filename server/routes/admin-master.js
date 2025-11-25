@@ -9,28 +9,11 @@ const BaseTest = require("../models/BaseTest");
 const Institution = require("../models/Institutions");
 const SuperAdmin = require("../models/SuperAdmin");
 const User = require("../models/User"); // We use User schema to create the initial admin in the new DB
+const { requireSuperAdmin } = require("../middleware/auth");
 
-const JWT_SEC = process.env.JWT_SEC || "dev-secret";
+const JWT_SEC = process.env.JWT_SEC;
 
-// --- MIDDLEWARE: Super Admin Auth Check ---
-const requireSuperAdmin = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ message: "No token provided" });
 
-    const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SEC);
-
-    if (decoded.role !== "super_admin") {
-      return res.status(403).json({ message: "Not authorized as Super Admin" });
-    }
-
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: "Invalid token" });
-  }
-};
 
 // --- AUTH ROUTES ---
 
@@ -42,22 +25,6 @@ router.post("/login", async (req, res) => {
     // Check in Master DB
     // Note: In a real scenario, we might want to bootstrap the first super admin if none exists
     const admin = await SuperAdmin.findOne({ username }).select("+password");
-    if (!admin) {
-        // DEV ONLY: Bootstrap if empty
-        const count = await SuperAdmin.countDocuments();
-        if (count === 0 && username === "admin" && password === "admin") {
-            const hashed = await bcrypt.hash(password, 10);
-            const newAdmin = await SuperAdmin.create({
-                username,
-                password: hashed,
-                fullName: "Master Admin"
-            });
-             const token = jwt.sign({ id: newAdmin._id, role: "super_admin" }, JWT_SEC, { expiresIn: "1d" });
-             return res.json({ token, user: { username: newAdmin.username, fullName: newAdmin.fullName } });
-        }
-        return res.status(401).json({ message: "Invalid credentials" });
-    }
-
     const isMatch = await bcrypt.compare(password, admin.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
@@ -72,205 +39,296 @@ router.post("/login", async (req, res) => {
 
 
 // --- INSTITUTION MANAGEMENT ---
+// Helper: Sanitize string for DB Name (e.g., "My Clinic!" -> "MY-CLINIC")
+const generateDbName = (name) => {
+    return name.toUpperCase()
+        .replace(/[^A-Z0-9]/g, '-') // replace non-alphanumeric with hyphen
+        .replace(/-+/g, '-')        // remove duplicate hyphens
+        .replace(/^-|-$/g, '');     // trim leading/trailing hyphens
+};
 
-// GET /api/admin-master/institutions
+// Helper: Generate Random Code (e.g., "CLINIC-X92Z")
+const generateInstitutionCode = (name) => {
+    const prefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X');
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `${prefix}-${random}`;
+};
+
+/**
+ * @route   GET /api/institutions
+ * @desc    Get All Institutions (with Pagination & Search)
+ * @access  Super Admin Only
+ */
 router.get("/institutions", requireSuperAdmin, async (req, res) => {
-  try {
-    const list = await Institution.find().sort({ createdAt: -1 });
-    res.json(list);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// POST /api/admin-master/institutions
-router.post("/institutions", requireSuperAdmin, async (req, res) => {
-  try {
-    const {
-      institutionName,
-      subdomain,
-      institutionCode,
-      dbName,
-      adminUsername,
-      adminPassword,
-      adminName,
-      adminEmail,
-      adminPhone
-    } = req.body;
-
-    // 1. Validation
-    if (!subdomain || !dbName || !institutionCode) {
-      return res.status(400).json({ message: "Missing required fields (subdomain, dbName, institutionCode)" });
-    }
-
-    // 2. Check Uniqueness in Master
-    const existing = await Institution.findOne({
-      $or: [
-        { primaryDomain: subdomain },
-        { institutionCode },
-        { dbName }
-      ]
-    });
-
-    if (existing) {
-      return res.status(409).json({ message: "Institution with this Subdomain, Code, or DB Name already exists." });
-    }
-
-    // 3. Create Institution Record in Master
-    const newInst = new Institution({
-      institutionName,
-      primaryDomain: subdomain,
-      institutionCode,
-      dbName,
-      status: true
-    });
-
-    await newInst.save();
-
-    // 4. Initialize the Institution Database
-    // We need to switch to that DB and create the initial Admin User
-    const masterConn = mongoose.connection; // This assumes we are connected to Master in this route context
-    const tenantDb = masterConn.useDb(dbName, { useCache: true });
-
-    // We need to register the User model on this new connection
-    const UserSchema = require("../models/User").schema;
-    const TenantUser = tenantDb.model("User", UserSchema);
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
-
-    await TenantUser.create({
-      institutionId: newInst.institutionId,
-      username: adminUsername,
-      password: hashedPassword,
-      fullName: adminName,
-      email: adminEmail,
-      phone: adminPhone,
-      role: "admin", // The Local Admin
-      isMasterAdmin: true
-    });
-
-    res.status(201).json({ message: "Institution created successfully", institution: newInst });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to create institution: " + err.message });
-  }
-});
-
-// PUT /api/admin-master/institutions/:id
-router.put("/institutions/:id", requireSuperAdmin, async (req, res) => {
     try {
-        const { id } = req.params;
-        const updateData = req.body;
+        // 1. Pagination & Query Params
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const search = req.query.search || "";
+        const status = req.query.status; // Optional: filter by 'active' (true) or 'inactive' (false)
 
-        // Prevent updating protected fields
-        delete updateData.institutionId;
-        delete updateData.institutionCode;
-        delete updateData.dbName;
-        delete updateData._id;
+        const skip = (page - 1) * limit;
 
-        const updatedInstitution = await Institution.findOneAndUpdate(
-            { institutionId: id },
-            { $set: updateData },
-            { new: true, runValidators: true }
-        );
+        // 2. Build Query Object
+        let query = { deleted: false }; // Don't show soft-deleted ones
 
-        if (!updatedInstitution) {
-            return res.status(404).json({ message: "Institution not found" });
+        // Add Search (Name, Code, or Domain)
+        if (search) {
+            query.$or = [
+                { institutionName: { $regex: search, $options: "i" } }, // Case-insensitive regex
+                { institutionCode: { $regex: search, $options: "i" } },
+                { primaryDomain: { $regex: search, $options: "i" } }
+            ];
         }
 
-        res.json({ message: "Institution updated successfully", institution: updatedInstitution });
+        // Add Status Filter if provided
+        if (status !== undefined) {
+            query.status = status === 'true';
+        }
+
+        // 3. Execute Query
+        // The sensitive fields (masterPassword, etc.) are {select: false} in schema, 
+        // so they are automatically excluded here.
+        const institutions = await Institution.find(query)
+            .sort({ createdAt: -1 }) // Newest first
+            .skip(skip)
+            .limit(limit);
+
+        // 4. Get Total Count (for frontend pagination UI)
+        const total = await Institution.countDocuments(query);
+
+        res.json({
+            message: "Institutions fetched successfully",
+            data: institutions,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Failed to update institution: " + err.message });
+        console.error("Get All Institutions Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
     }
 });
 
-// DELETE /api/admin-master/institutions/:id
+/**
+ * @route   POST /api/institutions
+ * @desc    Create a new Institution (Master Admin Only)
+ */
+router.post("/institutions", requireSuperAdmin, async (req, res) => {
+    try {
+        // 1. Strict Authorization Check
+        if (!req.user.isMasterAdmin) {
+            return res.status(403).json({ message: "Forbidden: Only Master Admin can create institutions." });
+        }
+
+        const data = req.body;
+
+        // 2. Validate Essential Field
+        if (!data.institutionName) {
+            return res.status(400).json({ message: "institutionName is required." });
+        }
+
+        // 3. Auto-Generate Unique Fields if missing
+        
+        // A. DB Name (Required, Unique)
+        if (!data.dbName) {
+            data.dbName = generateDbName(data.institutionName);
+            // Append random string if name is very common to ensure uniqueness
+            if (data.dbName.length < 3 || data.dbName === 'clinic') {
+                 data.dbName += `_${Math.floor(Math.random() * 1000)}`;
+            }
+        }
+
+        // B. Institution Code (Required, Unique)
+        if (!data.institutionCode) {
+            data.institutionCode = generateInstitutionCode(data.institutionName);
+        }
+
+        // C. Primary Domain (Required, Unique)
+        // If not provided, we create a subdomain based on the dbName
+        if (!data.primaryDomain) {
+            // Check if you have a base domain env var, otherwise use placeholder
+            const baseDomain = process.env.BASE_DOMAIN || "scholastech.com"; 
+            data.primaryDomain = `${data.dbName}.${baseDomain}`;
+        }
+
+        // 4. Subscription Date Logic
+        // If subscription is provided, calculate end date if not present
+        if (data.subscription) {
+            if (!data.subscription.endDate) {
+                const startDate = data.subscription.startDate ? new Date(data.subscription.startDate) : new Date();
+                const endDate = new Date(startDate);
+                
+                if (data.subscription.frequency === 'yearly') {
+                    endDate.setFullYear(endDate.getFullYear() + 1);
+                } else {
+                    // Default monthly
+                    endDate.setMonth(endDate.getMonth() + 1);
+                }
+                data.subscription.endDate = endDate;
+            }
+        }
+
+        // 5. Conflict Check (Pre-flight)
+        // Check if DB name or Domain already exists to give a clear error
+        const existing = await Institution.findOne({
+            $or: [
+                { dbName: data.dbName },
+                { primaryDomain: data.primaryDomain },
+                { institutionCode: data.institutionCode }
+            ]
+        });
+
+        if (existing) {
+            return res.status(409).json({ 
+                message: "Conflict detected: An institution with this Domain, DB Name, or Code already exists.",
+                details: {
+                    inputDb: data.dbName,
+                    inputDomain: data.primaryDomain,
+                    inputCode: data.institutionCode
+                }
+            });
+        }
+
+        // 6. Create Institution Document
+        // Note: The pre('save') hook in the model will handle password hashing if masterPassword is sent
+        const newInstitution = new Institution({
+            ...data,
+            createdBy: req.user.userId || req.user.username, // Audit
+            onboardingStatus: "pending"
+        });
+
+        const savedInstitution = await newInstitution.save();
+
+        // 7. Multi-tenancy: "Create" the Separate Database
+        // In MongoDB, a database is created lazily when data is inserted.
+        // We initialize the tenant DB connection and perhaps seed a default collection to 'realize' the DB.
+        
+        const tenantDb = mongoose.connection.useDb(savedInstitution.dbName, { useCache: true });
+        
+        // OPTIONAL: Seed initial data into the new DB (e.g., Default Settings, Counter)
+        // const SettingsModel = tenantDb.model('Setting', require('../models/SettingSchema'));
+        // await SettingsModel.create({ systemDefault: true });
+
+        // 8. Return Success (Filter sensitive info)
+        const responseObj = savedInstitution.toObject();
+        delete responseObj.masterPassword;
+        delete responseObj.paymentGateway;
+        delete responseObj.smtp;
+
+        res.status(201).json({
+            message: "Institution created successfully.",
+            institution: responseObj,
+            dbInfo: {
+                name: savedInstitution.dbName,
+                status: "Initialized"
+            }
+        });
+
+    } catch (err) {
+        console.error("Create Institution Error:", err);
+        // Handle Duplicate Key Errors (E11000) explicitly if race condition occurs
+        if (err.code === 11000) {
+            return res.status(409).json({ message: "Duplicate key error. Domain, Code, or DB Name already exists." });
+        }
+        res.status(500).json({ message: "Internal Server Error: " + err.message });
+    }
+});
+
+/**
+ * @route   PUT /api/institutions/:id/deactivate
+ * @desc    Deactivate an institution (Sets status to false)
+ * @access  Super Admin Only
+ */
+router.put("/institutions/:id/deactivate", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. Find and update
+        const updatedInstitution = await Institution.findOneAndUpdate(
+            { institutionId: id },
+            { 
+                $set: { 
+                    status: false, 
+                    updatedBy: req.user.username || "SuperAdmin"
+                } 
+            },
+            { new: true } // Return the updated document
+        );
+
+        // 2. Handle Not Found
+        if (!updatedInstitution) {
+            return res.status(404).json({ message: "Institution not found." });
+        }
+
+        res.json({ 
+            message: "Institution successfully deactivated.", 
+            institutionName: updatedInstitution.institutionName,
+            status: "Inactive"
+        });
+
+    } catch (err) {
+        console.error("Deactivate Institution Error:", err);
+        res.status(500).json({ message: "Internal Server Error: " + err.message });
+    }
+});
+
+/**
+ * @route   DELETE /api/institutions/:id
+ * @desc    PERMANENTLY DELETE Institution and DROP its Database
+ * @access  Super Admin Only
+ */
 router.delete("/institutions/:id", requireSuperAdmin, async (req, res) => {
     try {
         const { id } = req.params;
 
-        const deletedInstitution = await Institution.findOneAndUpdate(
-            { institutionId: id },
-            { $set: { deleted: true, status: false } }, // Soft delete and deactivate
-            { new: true }
-        );
+        // 1. Find the institution first to get the DB Name
+        const institution = await Institution.findOne({ institutionId: id });
 
-        if (!deletedInstitution) {
-            return res.status(404).json({ message: "Institution not found" });
-        }
-
-        res.json({ message: "Institution soft-deleted successfully" });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Failed to delete institution: " + err.message });
-    }
-});
-
-// PUT /api/admin-master/institutions/:id/status
-router.put("/institutions/:id/status", requireSuperAdmin, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-
-        if (typeof status !== 'boolean') {
-            return res.status(400).json({ message: "Invalid 'status' field provided." });
-        }
-
-        const updatedInstitution = await Institution.findOneAndUpdate(
-            { institutionId: id },
-            { $set: { status: status } },
-            { new: true }
-        );
-
-        if (!updatedInstitution) {
-            return res.status(404).json({ message: "Institution not found" });
-        }
-
-        res.json({ message: `Institution status updated to ${status ? 'Active' : 'Inactive'}`, institution: updatedInstitution });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Failed to update institution status: " + err.message });
-    }
-});
-
-// POST /api/admin-master/users/:institutionId
-router.post("/users/:institutionId", requireSuperAdmin, async (req, res) => {
-    try {
-        const { institutionId } = req.params;
-        const { name, username, email, phone, password } = req.body;
-
-        const institution = await Institution.findOne({ institutionId });
         if (!institution) {
-            return res.status(404).json({ message: "Institution not found" });
+            return res.status(404).json({ message: "Institution not found." });
         }
 
-        const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
-        const UserSchema = require("../models/User").schema;
-        const TenantUser = tenantDb.model("User", UserSchema);
+        const targetDbName = institution.dbName;
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // SAFETY CHECK: Prevent dropping the Master DB by accident
+        // Assuming your master DB is named 'admin', 'master', or defined in env
+        const masterDbName = mongoose.connection.name; 
+        if (targetDbName === masterDbName || targetDbName === 'admin') {
+            return res.status(400).json({ message: "Security Risk: Cannot delete the Master Database via this API." });
+        }
 
-        await TenantUser.create({
-            institutionId,
-            username,
-            password: hashedPassword,
-            fullName: name,
-            email,
-            phone,
-            role: "admin",
-            isMasterAdmin: false
+        // 2. Drop the Tenant Database
+        try {
+            // Switch to the tenant DB context
+            const tenantDb = mongoose.connection.useDb(targetDbName);
+            
+            // Drop it
+            await tenantDb.dropDatabase();
+            console.log(`[System] Dropped database: ${targetDbName}`);
+        } catch (dbErr) {
+            console.error(`[Warning] Failed to drop database ${targetDbName}:`, dbErr);
+            // We continue execution to delete the metadata, but warn the admin in the response
+        }
+
+        // 3. Delete the Institution Metadata from Master DB
+        await Institution.deleteOne({ institutionId: id });
+
+        res.json({ 
+            message: "Institution and associated database deleted permanently.", 
+            deletedId: id,
+            droppedDatabase: targetDbName
         });
 
-        res.status(201).json({ message: "User created successfully" });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Failed to create user: " + err.message });
+        console.error("Delete Institution Error:", err);
+        res.status(500).json({ message: "Internal Server Error: " + err.message });
     }
 });
-
 
 // --- BASE TEST MANAGEMENT ---
 
