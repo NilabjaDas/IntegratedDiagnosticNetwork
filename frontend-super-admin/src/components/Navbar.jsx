@@ -1,9 +1,5 @@
 import React, { useState } from "react";
 import { Layout, Switch, Button } from "antd";
-import {
-  MenuUnfoldOutlined,
-  MenuFoldOutlined,
-} from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { setTheme } from "../redux/uiRedux";
 import LogoutModal from "./LogoutModal";
@@ -12,7 +8,7 @@ import { useNavigate } from "react-router-dom";
 
 const { Header } = Layout;
 
-const Navbar = ({ collapsed, toggleSidebar }) => {
+const Navbar = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
@@ -51,15 +47,9 @@ const Navbar = ({ collapsed, toggleSidebar }) => {
         alignItems: "center",
         background: theme === "dark" ? "#001529" : "#fff",
         padding: "0 24px",
-        boxShadow: "0 2px 8px #f0f1f2",
       }}
     >
-      <div>
-        {React.createElement(collapsed ? MenuUnfoldOutlined : MenuFoldOutlined, {
-          className: "trigger",
-          onClick: toggleSidebar,
-        })}
-      </div>
+      <div></div>
       <div style={{ display: "flex", alignItems: "center" }}>
         <Switch
           checkedChildren="Dark"

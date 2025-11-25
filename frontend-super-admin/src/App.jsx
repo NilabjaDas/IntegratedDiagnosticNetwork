@@ -36,7 +36,6 @@ import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
 import Breadcrumbs from "./components/Breadcrumbs";
-import { darkTheme } from "./themes";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`

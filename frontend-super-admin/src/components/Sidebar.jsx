@@ -12,7 +12,7 @@ import { setPageLocation } from "../redux/uiRedux";
 
 const { Sider } = Layout;
 
-const Sidebar = ({ collapsed }) => {
+const Sidebar = () => {
   const location = useLocation();
   const dispatch = useDispatch();
 
@@ -21,7 +21,7 @@ const Sidebar = ({ collapsed }) => {
   };
 
   return (
-    <Sider trigger={null} collapsible collapsed={collapsed}>
+    <Sider trigger={null} collapsible collapsed={false}>
       <div className="logo" />
       <Menu
         theme="dark"
