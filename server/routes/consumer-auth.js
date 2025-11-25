@@ -16,7 +16,7 @@ const generateToken = (patient) => {
       role: "patient",
       mobileHash: patient.mobileHash
     },
-    process.env.JWT_SECRET || "dev-secret",
+    process.env.JWT_SEC || "dev-secret",
     { expiresIn: "30d" }
   );
 };
