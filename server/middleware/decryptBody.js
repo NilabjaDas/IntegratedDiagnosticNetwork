@@ -44,7 +44,6 @@ const decryptBody = async (req, res, next) => {
       url.endsWith("/brand-admin-login");
 
     const key = usePassKey ? PASS_KEY : AES_KEY;
-    console.log(key)
     // 2) decrypt
     const plain = CryptoJS.AES.decrypt(cipherText, key).toString(
       CryptoJS.enc.Utf8
