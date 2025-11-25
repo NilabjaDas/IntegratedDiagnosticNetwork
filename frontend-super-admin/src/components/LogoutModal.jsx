@@ -186,10 +186,15 @@ function LogoutModal({ open, close, modalResponse, yesText = "Log out", noText =
       closable={false}
       
       centered
-      bodyStyle={{ padding: 0, borderRadius: 18, overflow: "hidden" }}
+      styles={{
+        body: { padding: 0, borderRadius: 18, overflow: "hidden" },
+        mask: {
+          backdropFilter: "blur(4px)",
+          background: "rgba(11,16,32,0.36)",
+        },
+      }}
       style={{ borderRadius: 18 }}
       width={"min(520px, 92vw)"}
-      maskStyle={{ backdropFilter: "blur(4px)", background: "rgba(11,16,32,0.36)" }}
     >
       <GradientBorder>
         <StyledModalContent>

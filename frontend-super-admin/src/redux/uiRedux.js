@@ -40,7 +40,12 @@ const uiReduxSlice = createSlice({
     lastViewPortData: (state, action) => {
       state.lastViewPort = action.payload;
     },
-    
+    setTheme: (state, action) => {
+      state.theme = action.payload;
+    },
+    setPageLocation: (state, action) => {
+      state.pageLocation = action.payload;
+    },
   },
 });
 
@@ -52,6 +57,8 @@ export const {
   bookingCreatedData,
   bookingStoredData,
   lastViewPortData,
+  setTheme,
+  setPageLocation,
 } = uiReduxSlice.actions;
 
 export default uiReduxSlice.reducer;
