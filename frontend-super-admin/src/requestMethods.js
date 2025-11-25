@@ -292,8 +292,10 @@ if (typeof window !== "undefined") {
 /* -------------------------
    Exports
    ------------------------- */
-export default {
+const requestMethods = {
   publicRequest,
   userRequest,
   adminRequest,
 };
+
+export default requestMethods;

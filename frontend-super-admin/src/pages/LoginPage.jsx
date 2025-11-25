@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Typography } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { adminLogin } from '../redux/apiCalls';
 import styled from 'styled-components';
 import { Helmet } from 'react-helmet';
 import { toast } from 'react-toastify';
-import { useDispatch } from 'react-redux';
-
+import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 const { Title } = Typography;
 
 const Container = styled.div`
@@ -22,16 +22,25 @@ const StyledCard = styled(Card)`
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 `;
 
-const Login = ({ onLogin }) => {
+const Login = () => {
     const dispatch = useDispatch();
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const token = useSelector(
+        (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
+    );
+
+    useEffect(() => {
+        if (token) {
+            navigate('/', { replace: true });
+        }
+    }, [token, navigate]);
 
     const onFinish = async (values) => {
         setLoading(true);
         try {
-            const data = await adminLogin (dispatch, values.username, values.password);
+            await adminLogin(dispatch, values.username, values.password);
             toast.success('Login successful');
-            onLogin(data.token);
         } catch (err) {
             toast.error(err.response?.data?.message || 'Login failed');
         } finally {

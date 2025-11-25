@@ -14,7 +14,10 @@ import { Helmet } from "react-helmet";
 import { useEffect, useRef, useState } from "react";
 
 import {
-  defaultCurrencyData,
+  setAnalyticsData,
+  setMasterReportsData,
+} from "./redux/tokenRedux";
+import {
   setScheduledMaintenanceData,
   viewPortData,
 } from "./redux/uiRedux";
@@ -24,6 +27,9 @@ import { BASE_URL, currentDomain } from "./requestMethods";
 import { Bounce, toast, ToastContainer } from "react-toastify";
 import MaintenanceContainer from "./components/MaintenanceContainer";
 import HomePage from "./pages/HomePage";
+import Page1 from "./pages/Page1";
+import Page2 from "./pages/Page2";
+import Page3 from "./pages/Page3";
 import {
   getBrandDetails,
   getPing,
@@ -65,9 +71,6 @@ function App() {
   // --- selectors (kept those still used) ---
   const brandDetails = useSelector(
     (state) => state[process.env.REACT_APP_BRAND_DETAILS_KEY]?.brandDetails
-  );
-  const passKey = useSelector(
-    (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY].key
   );
   const token = useSelector(
     (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY].token
@@ -182,16 +185,15 @@ function App() {
         dispatch(viewPortData(data?.activeStatus ? 100 : 0));
       });
 
-      // NOTE: analytics_updated and reports_updated listeners are optional.
-      // eventSource.addEventListener("analytics_updated", (event) => {
-      //   const data = JSON.parse(event.data);
-      //   dispatch(setAnalyticsData(data));
-      // });
+      eventSource.addEventListener("analytics_updated", (event) => {
+        const data = JSON.parse(event.data);
+        dispatch(setAnalyticsData(data));
+      });
 
-      // eventSource.addEventListener("reports_updated", (event) => {
-      //   const data = JSON.parse(event.data);
-      //   dispatch(setMasterReportsData(data?.report?.properties));
-      // });
+      eventSource.addEventListener("reports_updated", (event) => {
+        const data = JSON.parse(event.data);
+        dispatch(setMasterReportsData(data?.report?.properties));
+      });
 
       eventSource.onerror = (error) => {
         console.error("SSE error:", error);
@@ -211,6 +213,27 @@ function App() {
       if (retryTimeout) clearTimeout(retryTimeout);
     };
   }, [token, dispatch]);
+
+
+
+ const handleLogout = () => {
+    dispatch({ type: CLEAR_ALL_REDUCERS });
+    <Navigate to="/" replace />
+  };
+
+   const handleModalClose = () =>{
+    setModalOpen(false)
+  }
+
+  const handleModalResponse = (val) =>{
+    setModalResponse(val)
+  }
+
+  useEffect(() => {
+    if(modalResponse){
+    handleLogout()
+    }
+  }, [modalResponse, handleLogout])
 
 
 function BackWatcher() {
@@ -244,25 +267,6 @@ function BackWatcher() {
 
   return null;
 }
-
- const handleLogout = () => {
-    dispatch({ type: CLEAR_ALL_REDUCERS });
-    <Navigate to="/" replace />
-  };
-
-   const handleModalClose = () =>{
-    setModalOpen(false)
-  }
-
-  const handleModalResponse = (val) =>{
-    setModalResponse(val)
-  }
-
-  useEffect(() => {
-    if(modalResponse){
-    handleLogout()
-    }
-  }, [modalResponse])
 
   // -------------------------
   // Render (URL-based routing)
@@ -316,7 +320,30 @@ function BackWatcher() {
               </ProtectedRoute>
             }
           />
-          
+          <Route
+            path="/page1"
+            element={
+              <ProtectedRoute>
+                <Page1 />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/page2"
+            element={
+              <ProtectedRoute>
+                <Page2 />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/page3"
+            element={
+              <ProtectedRoute>
+                <Page3 />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Redirect/back-to-home for anything else */}
           <Route path="*" element={<Navigate to="/" replace />} />

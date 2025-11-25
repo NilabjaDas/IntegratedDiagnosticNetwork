@@ -1,6 +1,4 @@
-import { message } from "antd";
-import { adminRequest, publicRequest, userRequest } from "../requestMethods";
-import CryptoJS from "crypto-js";
+import { publicRequest, userRequest } from "../requestMethods";
 import {
   getDesignation,
   getModules,
@@ -10,22 +8,10 @@ import {
   getTokenStart,
   getTokenSuccess,
   setKey,
-  setPropertyNames,
-  setRatePlans,
-  setRoomTypes,
   setUsername,
-  setAnalyticsData,
   tokenFailureMessage,
-  setMasterReportsData,
 } from "./tokenRedux";
-import { viewPortData } from "./uiRedux";
 import { setBrandDetails } from "./brandRedux";
-import { persistor } from "./store";
-
-const decryptFunction = (payload, passKey) => {
-  const bytes = CryptoJS.AES.decrypt(payload, passKey);
-  return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
-};
 
 //Get Encryption Key
 export const getKey = async (dispatch) => {
