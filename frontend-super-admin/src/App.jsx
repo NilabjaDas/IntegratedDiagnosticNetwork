@@ -12,7 +12,7 @@ import { createGlobalStyle } from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
 import { Helmet } from "react-helmet";
 import { useEffect, useRef, useState } from "react";
-
+import { darkTheme } from "./themes";
 import {
   setAnalyticsData,
   setMasterReportsData,

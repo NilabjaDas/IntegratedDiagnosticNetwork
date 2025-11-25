@@ -1,6 +1,9 @@
+import { Button } from 'antd';
 import React from 'react';
 import { Link } from 'react-router-dom';
 import styled from 'styled-components';
+import { CLEAR_ALL_REDUCERS } from '../redux/actionTypes';
+import { useDispatch } from 'react-redux';
 
 const Container = styled.div`
   display: flex;
@@ -29,6 +32,12 @@ const StyledLink = styled(Link)`
 `;
 
 const HomePage = () => {
+
+  const dispatch = useDispatch()
+
+
+
+
   return (
     <Container>
       <h1>Home Page</h1>
@@ -37,6 +46,7 @@ const HomePage = () => {
         <StyledLink to="/page2">Page 2</StyledLink>
         <StyledLink to="/page3">Page 3</StyledLink>
       </ButtonContainer>
+
     </Container>
   );
 };
