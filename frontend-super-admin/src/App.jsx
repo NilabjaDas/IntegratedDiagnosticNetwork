@@ -30,13 +30,12 @@ import HomePage from "./pages/HomePage";
 import Page1 from "./pages/Page1";
 import Page2 from "./pages/Page2";
 import Page3 from "./pages/Page3";
-import {
-  getBrandDetails,
-  getPing,
-} from "./redux/apiCalls";
+import { getBrandDetails, getPing } from "./redux/apiCalls";
 
 import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
+import MainLayout from "./components/MainLayout";
+import Breadcrumbs from "./components/Breadcrumbs";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -313,40 +312,22 @@ function BackWatcher() {
 
           {/* Protected app routes (URL-based). Refreshing any of these stays on same URL */}
           <Route
-            path="/"
+            path="/*"
             element={
               <ProtectedRoute>
-                <HomePage />
+                <MainLayout>
+                  <Breadcrumbs />
+                  <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/page1" element={<Page1 />} />
+                    <Route path="/page2" element={<Page2 />} />
+                    <Route path="/page3" element={<Page3 />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </MainLayout>
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/page1"
-            element={
-              <ProtectedRoute>
-                <Page1 />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/page2"
-            element={
-              <ProtectedRoute>
-                <Page2 />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/page3"
-            element={
-              <ProtectedRoute>
-                <Page3 />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Redirect/back-to-home for anything else */}
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </div>
