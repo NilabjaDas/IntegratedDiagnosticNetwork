@@ -7,11 +7,10 @@ export const encryptPayload = (data, endpoint) => {
     // Determine key based on endpoint (matching server logic)
     const url = endpoint.toLowerCase();
     const usePassKey =
-      url.endsWith("/guesthubaccess") ||
       url.endsWith("/admin-login") ||
       url.endsWith("/brand-admin-login");
 
-    const key = usePassKey ? PASS_SEC : AES_SEC;
+    const key = usePassKey ? AES_SEC : PASS_SEC;
 
     // Encrypt
     const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(data), key).toString();
