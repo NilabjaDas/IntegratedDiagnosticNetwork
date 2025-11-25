@@ -39,9 +39,6 @@ const CreateUserModal = ({ open, onCancel, onOk, institutionId }) => {
                 <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Please input the user\'s name!' }]}>
                     <Input />
                 </Form.Item>
-                <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Please input the user\'s username!' }]}>
-                    <Input />
-                </Form.Item>
                 <Form.Item name="email" label="Email" rules={[{ required: true, message: 'Please input the user\'s email!' }]}>
                     <Input type="email" />
                 </Form.Item>

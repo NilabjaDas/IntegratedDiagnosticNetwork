@@ -10,7 +10,7 @@ const Institution = require("../models/Institutions");
 const SuperAdmin = require("../models/SuperAdmin");
 const User = require("../models/User"); // We use User schema to create the initial admin in the new DB
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+const JWT_SEC = process.env.JWT_SEC || "dev-secret";
 
 // --- MIDDLEWARE: Super Admin Auth Check ---
 const requireSuperAdmin = async (req, res, next) => {
@@ -19,7 +19,7 @@ const requireSuperAdmin = async (req, res, next) => {
     if (!authHeader) return res.status(401).json({ message: "No token provided" });
 
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SEC);
 
     if (decoded.role !== "super_admin") {
       return res.status(403).json({ message: "Not authorized as Super Admin" });
@@ -52,7 +52,7 @@ router.post("/login", async (req, res) => {
                 password: hashed,
                 fullName: "Master Admin"
             });
-             const token = jwt.sign({ id: newAdmin._id, role: "super_admin" }, JWT_SECRET, { expiresIn: "1d" });
+             const token = jwt.sign({ id: newAdmin._id, role: "super_admin" }, JWT_SEC, { expiresIn: "1d" });
              return res.json({ token, user: { username: newAdmin.username, fullName: newAdmin.fullName } });
         }
         return res.status(401).json({ message: "Invalid credentials" });
@@ -61,7 +61,7 @@ router.post("/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, admin.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
-    const token = jwt.sign({ id: admin._id, role: "super_admin" }, JWT_SECRET, { expiresIn: "1d" });
+    const token = jwt.sign({ id: admin._id, role: "super_admin" }, JWT_SEC, { expiresIn: "1d" });
     res.json({ token, user: { username: admin.username, fullName: admin.fullName } });
 
   } catch (err) {

@@ -18,12 +18,12 @@ const authenticateUser = async (req, res, next) => {
     // Format: "Bearer <token>"
     const token = authHeader.replace("Bearer ", "");
     
-    if (!process.env.JWT_SECRET) {
-      console.error("CRITICAL: JWT_SECRET is not defined.");
+    if (!process.env.JWT_SEC) {
+      console.error("CRITICAL: JWT_SEC is not defined.");
       return res.status(500).json({ message: "Internal Server Error" });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SEC);
 
     // 3. Attach User to Request
     req.user = decoded; 

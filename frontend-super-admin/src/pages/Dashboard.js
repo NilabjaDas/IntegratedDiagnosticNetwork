@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Layout, Menu, Table, Button, Switch, theme } from 'antd';
+import { Layout, Menu, Table, Button, Switch, theme, Input, Space } from 'antd';
 import {
     LogoutOutlined,
     PlusOutlined,
     BankOutlined,
     BulbOutlined,
-    BulbFilled
+    BulbFilled,
+    EditOutlined,
+    DeleteOutlined,
+    UserAddOutlined,
+    PoweroffOutlined,
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { Modal } from 'antd';
-import { getInstitutions, deleteInstitution, deactivateInstitution } from '../services/api';
-import EditInstitutionWizard from './EditInstitutionWizard';
+import { getInstitutions, updateInstitutionStatus, deleteInstitution } from '../services/api';
+import InstitutionDetailsModal from './InstitutionDetailsModal';
 import CreateUserModal from './CreateUserModal';
 import { Helmet } from 'react-helmet';
 import { toast } from 'react-toastify';
@@ -28,31 +32,29 @@ const StyledHeader = styled(Header)`
 
 const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
     const [institutions, setInstitutions] = useState([]);
+    const [filteredInstitutions, setFilteredInstitutions] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [isWizardVisible, setIsWizardVisible] = useState(false);
+    const [isModalVisible, setIsModalVisible] = useState(false);
     const [isUserModalVisible, setIsUserModalVisible] = useState(false);
     const [selectedInstitution, setSelectedInstitution] = useState(null);
+    const {
+        token: { colorBgContainer, borderRadiusLG },
+    } = theme.useToken();
 
     const showDeactivateConfirm = (institution) => {
         Modal.confirm({
-            title: `Are you sure you want to ${institution.status ? 'deactivate' : 'activate'} this institution?`,
-            content: `This will ${institution.status ? 'disable' : 'enable'} access for all users of this institution.`,
-            okText: institution.status ? 'Deactivate' : 'Activate',
+            title: 'Are you sure you want to deactivate this institution?',
+            content: 'This will disable access for all users of this institution.',
+            okText: 'Deactivate',
             okType: 'danger',
             cancelText: 'Cancel',
-            async onOk() {
-                try {
-                    await deactivateInstitution(institution.institutionId, !institution.status);
-                    toast.success(`Institution ${institution.status ? 'deactivated' : 'activated'} successfully`);
-                    loadData();
-                } catch (error) {
-                    toast.error("Failed to update status");
-                }
+            onOk() {
+                handleStatusChange(institution.institutionId, false);
             },
         });
     };
 
-    const handleDelete = (institution) => {
+    const showDeleteConfirm = (institution) => {
         Modal.confirm({
             title: 'Are you sure you want to delete this institution?',
             content: 'This action is permanent and cannot be undone. This will delete all data associated with this institution.',
@@ -79,13 +81,14 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
             },
         });
     };
-    const {
-        token: { colorBgContainer, borderRadiusLG },
-    } = theme.useToken();
 
     useEffect(() => {
         loadData();
     }, []);
+
+    useEffect(() => {
+        setFilteredInstitutions(institutions);
+    }, [institutions]);
 
     const loadData = async () => {
         setLoading(true);
@@ -100,6 +103,24 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
         }
     };
 
+    const handleSearch = (e) => {
+        const value = e.target.value.toLowerCase();
+        const filtered = institutions.filter(inst =>
+            inst.institutionName.toLowerCase().includes(value)
+        );
+        setFilteredInstitutions(filtered);
+    };
+
+    const handleStatusChange = async (institutionId, status) => {
+        try {
+            await updateInstitutionStatus(institutionId, status);
+            toast.success("Institution status updated successfully");
+            loadData();
+        } catch (error) {
+            toast.error("Failed to update status");
+        }
+    };
+
     const columns = [
         { title: 'Name', dataIndex: 'institutionName', key: 'name' },
         { title: 'Code', dataIndex: 'institutionCode', key: 'code' },
@@ -111,14 +132,16 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
             key: 'actions',
             render: (_, record) => (
                 <Space size="middle">
-                    <Button onClick={() => {
+                    <Button icon={<EditOutlined />} onClick={() => {
+                        setSelectedInstitution(record);
+                        setIsModalVisible(true);
+                    }} />
+                    <Button danger icon={<PoweroffOutlined />} onClick={() => showDeactivateConfirm(record)} />
+                    <Button danger icon={<DeleteOutlined />} onClick={() => showDeleteConfirm(record)} />
+                    <Button icon={<UserAddOutlined />} onClick={() => {
                         setSelectedInstitution(record);
                         setIsUserModalVisible(true);
-                    }}>Create User</Button>
-                    <Button danger onClick={() => showDeactivateConfirm(record)}>
-                        {record.status ? 'Deactivate' : 'Activate'}
-                    </Button>
-                    <Button danger onClick={() => handleDelete(record)}>Delete</Button>
+                    }} />
                 </Space>
             ),
         },
@@ -159,13 +182,17 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
                         }}
                     >
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                            <h2>All Institutions</h2>
+                            <Input.Search
+                                placeholder="Search institutions"
+                                onChange={handleSearch}
+                                style={{ width: 300 }}
+                            />
                             <Link to="/create-institution">
                                 <Button type="primary" icon={<PlusOutlined />}>New Institution</Button>
                             </Link>
                         </div>
                         <Table
-                            dataSource={institutions}
+                            dataSource={filteredInstitutions}
                             columns={columns}
                             rowKey="institutionId"
                             loading={loading}
@@ -179,11 +206,11 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
                     </div>
                 </Content>
             </Layout>
-            <EditInstitutionWizard
-                open={isWizardVisible}
-                onCancel={() => setIsWizardVisible(false)}
+            <InstitutionDetailsModal
+                open={isModalVisible}
+                onCancel={() => setIsModalVisible(false)}
                 onOk={() => {
-                    setIsWizardVisible(false);
+                    setIsModalVisible(false);
                     loadData();
                 }}
                 institution={selectedInstitution}

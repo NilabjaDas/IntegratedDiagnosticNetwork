@@ -17,7 +17,7 @@ const generateToken = (user, institutionId) => {
       username: user.username,
       isMasterAdmin: user.isMasterAdmin // Critical payload
     }, 
-    process.env.JWT_SECRET || "dev-secret",
+    process.env.JWT_SEC || "dev-secret",
     { expiresIn: "7d" }
   );
 };
