@@ -93,7 +93,9 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
       dbName,
       adminUsername,
       adminPassword,
-      adminName
+      adminName,
+      adminEmail,
+      adminPhone
     } = req.body;
 
     // 1. Validation
@@ -142,6 +144,8 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
       username: adminUsername,
       password: hashedPassword,
       fullName: adminName,
+      email: adminEmail,
+      phone: adminPhone,
       role: "admin", // The Local Admin
       isMasterAdmin: true
     });
@@ -152,6 +156,119 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
     console.error(err);
     res.status(500).json({ message: "Failed to create institution: " + err.message });
   }
+});
+
+// PUT /api/admin-master/institutions/:id
+router.put("/institutions/:id", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+
+        // Prevent updating protected fields
+        delete updateData.institutionId;
+        delete updateData.institutionCode;
+        delete updateData.dbName;
+        delete updateData._id;
+
+        const updatedInstitution = await Institution.findOneAndUpdate(
+            { institutionId: id },
+            { $set: updateData },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedInstitution) {
+            return res.status(404).json({ message: "Institution not found" });
+        }
+
+        res.json({ message: "Institution updated successfully", institution: updatedInstitution });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to update institution: " + err.message });
+    }
+});
+
+// DELETE /api/admin-master/institutions/:id
+router.delete("/institutions/:id", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const deletedInstitution = await Institution.findOneAndUpdate(
+            { institutionId: id },
+            { $set: { deleted: true, status: false } }, // Soft delete and deactivate
+            { new: true }
+        );
+
+        if (!deletedInstitution) {
+            return res.status(404).json({ message: "Institution not found" });
+        }
+
+        res.json({ message: "Institution soft-deleted successfully" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to delete institution: " + err.message });
+    }
+});
+
+// PUT /api/admin-master/institutions/:id/status
+router.put("/institutions/:id/status", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (typeof status !== 'boolean') {
+            return res.status(400).json({ message: "Invalid 'status' field provided." });
+        }
+
+        const updatedInstitution = await Institution.findOneAndUpdate(
+            { institutionId: id },
+            { $set: { status: status } },
+            { new: true }
+        );
+
+        if (!updatedInstitution) {
+            return res.status(404).json({ message: "Institution not found" });
+        }
+
+        res.json({ message: `Institution status updated to ${status ? 'Active' : 'Inactive'}`, institution: updatedInstitution });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to update institution status: " + err.message });
+    }
+});
+
+// POST /api/admin-master/users/:institutionId
+router.post("/users/:institutionId", requireSuperAdmin, async (req, res) => {
+    try {
+        const { institutionId } = req.params;
+        const { name, username, email, phone, password } = req.body;
+
+        const institution = await Institution.findOne({ institutionId });
+        if (!institution) {
+            return res.status(404).json({ message: "Institution not found" });
+        }
+
+        const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+        const UserSchema = require("../models/User").schema;
+        const TenantUser = tenantDb.model("User", UserSchema);
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await TenantUser.create({
+            institutionId,
+            username,
+            password: hashedPassword,
+            fullName: name,
+            email,
+            phone,
+            role: "admin",
+            isMasterAdmin: false
+        });
+
+        res.status(201).json({ message: "User created successfully" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to create user: " + err.message });
+    }
 });
 
 

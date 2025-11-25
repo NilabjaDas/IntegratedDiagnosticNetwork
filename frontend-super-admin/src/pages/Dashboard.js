@@ -196,6 +196,12 @@ const Dashboard = ({ isDarkMode, toggleTheme, onLogout }) => {
                             columns={columns}
                             rowKey="institutionId"
                             loading={loading}
+                            onRow={(record) => ({
+                                onClick: () => {
+                                    setSelectedInstitution(record);
+                                    setIsWizardVisible(true);
+                                },
+                            })}
                         />
                     </div>
                 </Content>
