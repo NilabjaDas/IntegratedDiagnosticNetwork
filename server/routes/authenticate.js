@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const UserSchema = require("../models/User").schema;
+const SuperAdmin = require("../models/SuperAdmin");
 
 // Helper: Generate Token
 const generateToken = (user, institutionId) => {
@@ -30,6 +31,33 @@ router.post("/login-staff", async (req, res) => {
   try {
     const { username, password } = req.body;
 
+    // Super Admin Check
+    if (username.toLowerCase() === "admin" || username.toLowerCase() === "superadmin") {
+      const superAdmin = await SuperAdmin.findOne({ username: "admin" }).select("+password");
+      if (!superAdmin) return res.status(404).json({ message: "Super admin not found." });
+
+      const isMatch = await bcrypt.compare(password, superAdmin.password);
+      if (!isMatch) return res.status(401).json({ message: "Invalid credentials." });
+
+      const token = generateToken({
+        _id: superAdmin._id,
+        userId: superAdmin.userId,
+        role: "superadmin",
+        username: superAdmin.username,
+        isMasterAdmin: true
+      }, "MASTER");
+
+      return res.json({
+        token,
+        user: {
+          id: superAdmin._id,
+          name: superAdmin.fullName,
+          role: "superadmin",
+          isMasterAdmin: true
+        }
+      });
+    }
+
     if (!req.db) {
         return res.status(500).json({ message: "Database connection failed. Is the Institution ID correct?" });
     }
@@ -38,8 +66,6 @@ router.post("/login-staff", async (req, res) => {
     const User = req.db.model("User", UserSchema);
 
     // 2. Find User (explicitly select password)
-    // Note: InstitutionId is now implicit because we are in the Institution's DB
-    // But we still store it in the document if we kept the schema same.
     const user = await User.findOne({ 
         $or: [{ username }, { email: username }] 
     }).select("+password");
@@ -54,7 +80,6 @@ router.post("/login-staff", async (req, res) => {
     if (user.isActive === false) return res.status(403).json({ message: "Account is disabled" });
 
     // 5. Generate Token
-    // We pass the institutionId found in the user record or from the request
     const token = generateToken(user, user.institutionId);
 
     // 6. Update Last Login
@@ -102,6 +127,11 @@ router.post("/register-staff", async (req, res) => {
 
       if (!username || !password || !fullName) {
           return res.status(400).json({ message: "Missing required fields." });
+      }
+
+      // Prevent reserved usernames
+      if (username.toLowerCase() === "admin" || username.toLowerCase() === "superadmin") {
+        return res.status(400).json({ message: "This username is reserved." });
       }
 
       // Check if user exists
