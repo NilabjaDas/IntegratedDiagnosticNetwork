@@ -6,7 +6,7 @@ import {
   Routes,
   useNavigate,
 } from "react-router-dom";
-import { Modal } from "antd";
+import { ConfigProvider, Modal } from "antd";
 import LoginPage from "./pages/LoginPage";
 import { createGlobalStyle } from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
@@ -64,7 +64,7 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-  
+  const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
   const dispatch = useDispatch();
   const blockedRef = useRef(false);
   // --- selectors (kept those still used) ---
@@ -271,7 +271,7 @@ function BackWatcher() {
   // Render (URL-based routing)
   // -------------------------
   return (
-    <div>
+    <ConfigProvider theme={theme === "dark" ? darkTheme : {}}>
       <Helmet>
         <link rel="icon" href={brandDetails?.favicon} />
         <title>
@@ -330,7 +330,7 @@ function BackWatcher() {
           />
         </Routes>
       </BrowserRouter>
-    </div>
+    </ConfigProvider>
   );
 }
 
