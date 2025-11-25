@@ -6,7 +6,7 @@ import {
   Routes,
   useNavigate,
 } from "react-router-dom";
-import { Modal } from "antd";
+import { ConfigProvider, Modal } from "antd";
 import LoginPage from "./pages/LoginPage";
 import { createGlobalStyle } from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
@@ -30,13 +30,13 @@ import HomePage from "./pages/HomePage";
 import Page1 from "./pages/Page1";
 import Page2 from "./pages/Page2";
 import Page3 from "./pages/Page3";
-import {
-  getBrandDetails,
-  getPing,
-} from "./redux/apiCalls";
+import { getBrandDetails, getPing } from "./redux/apiCalls";
 
 import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
+import MainLayout from "./components/MainLayout";
+import Breadcrumbs from "./components/Breadcrumbs";
+import { darkTheme } from "./themes";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -65,7 +65,7 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-  
+  const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
   const dispatch = useDispatch();
   const blockedRef = useRef(false);
   // --- selectors (kept those still used) ---
@@ -272,7 +272,7 @@ function BackWatcher() {
   // Render (URL-based routing)
   // -------------------------
   return (
-    <div>
+    <ConfigProvider theme={theme === "dark" ? darkTheme : {}}>
       <Helmet>
         <link rel="icon" href={brandDetails?.favicon} />
         <title>
@@ -313,43 +313,25 @@ function BackWatcher() {
 
           {/* Protected app routes (URL-based). Refreshing any of these stays on same URL */}
           <Route
-            path="/"
+            path="/*"
             element={
               <ProtectedRoute>
-                <HomePage />
+                <MainLayout>
+                  <Breadcrumbs />
+                  <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/page1" element={<Page1 />} />
+                    <Route path="/page2" element={<Page2 />} />
+                    <Route path="/page3" element={<Page3 />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </MainLayout>
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/page1"
-            element={
-              <ProtectedRoute>
-                <Page1 />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/page2"
-            element={
-              <ProtectedRoute>
-                <Page2 />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/page3"
-            element={
-              <ProtectedRoute>
-                <Page3 />
-              </ProtectedRoute>
-            }
-          />
-
-          {/* Redirect/back-to-home for anything else */}
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
-    </div>
+    </ConfigProvider>
   );
 }
 
