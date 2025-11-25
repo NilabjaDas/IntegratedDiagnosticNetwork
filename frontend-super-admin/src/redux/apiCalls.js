@@ -41,11 +41,9 @@ export const adminLogin = async (dispatch, username, password) => {
     });
 
     dispatch(setUsername(username));
-    dispatch(getTokenSuccess(res?.data?.accessToken));
-    dispatch(getProperties(res?.data?.properties));
+    dispatch(getTokenSuccess(res?.data?.token));
     dispatch(getModules(res?.data?.modules));
-    dispatch(getName(res?.data?.name));
-    dispatch(getDesignation(res?.data?.designation));
+    dispatch(getName(res?.data?.user?.fullName));
     getKey(dispatch);
     return { status: 200 };
   } catch (error) {

@@ -21,10 +21,15 @@ const JWT_SEC = process.env.JWT_SEC;
 router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+    if(!username || !password){
+      return res.status(500).json({ message: "Username & Password required" });
+    }
     // Check in Master DB
     // Note: In a real scenario, we might want to bootstrap the first super admin if none exists
     const admin = await SuperAdmin.findOne({ username }).select("+password");
+    if(!admin){
+      return res.status(500).json({ message: "Only super admin access allowed!" });
+    }
     const isMatch = await bcrypt.compare(password, admin.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 

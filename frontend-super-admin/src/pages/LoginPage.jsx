@@ -39,8 +39,13 @@ const Login = () => {
     const onFinish = async (values) => {
         setLoading(true);
         try {
-            await adminLogin(dispatch, values.username, values.password);
+            const res = await adminLogin(dispatch, values.username, values.password);
+            if(res.status === 200){
             toast.success('Login successful');
+            }else{
+            toast.error(res.message);
+
+            }
         } catch (err) {
             toast.error(err.response?.data?.message || 'Login failed');
         } finally {
