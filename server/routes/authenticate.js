@@ -5,6 +5,8 @@ const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const UserSchema = require("../models/User").schema;
 const SuperAdmin = require("../models/SuperAdmin");
+const { authenticateUser } = require("../middleware/auth");
+const { encryptResponse } = require("../middleware/encryptResponse");
 
 // Helper: Generate Token
 const generateToken = (user, institutionId) => {
@@ -21,6 +23,25 @@ const generateToken = (user, institutionId) => {
     { expiresIn: "7d" }
   );
 };
+
+//Brand Encryption Key
+router.get("/connect", authenticateUser, async (req, res) => {
+
+  try {
+    return res.status(200).json(process.env.AES_SEC);
+  } catch (error) {
+    return res.status(400).json(error);
+  }
+});
+
+router.get(
+  "/ping",
+  authenticateUser,
+  encryptResponse,
+  async (req, res) => {
+    return res.status(200).json({ success: true });
+  }
+);
 
 // ==========================================
 // 1. STAFF / DOCTOR / LOCAL ADMIN LOGIN (Password)

@@ -3,11 +3,11 @@ const jwt = require("jsonwebtoken");
 // --- MIDDLEWARE: Super Admin Auth Check ---
 const requireSuperAdmin = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers.token;
     if (!authHeader) return res.status(401).json({ message: "No token provided" });
 
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, JWT_SEC);
+    const decoded = jwt.verify(token, process.env.JWT_SEC);
 
     if (decoded.role !== "super_admin") {
       return res.status(403).json({ message: "Not authorized as Super Admin" });
@@ -16,6 +16,7 @@ const requireSuperAdmin = async (req, res, next) => {
     req.user = decoded;
     next();
   } catch (err) {
+    console.log(err)
     return res.status(401).json({ message: "Invalid token" });
   }
 };
@@ -29,7 +30,7 @@ const requireSuperAdmin = async (req, res, next) => {
 const authenticateUser = async (req, res, next) => {
   try {
     // 1. Check for Token
-    const authHeader = req.header("Authorization");
+    const authHeader = req.headers.token;
     if (!authHeader) {
       return res.status(401).json({ message: "Access Denied. No token provided." });
     }

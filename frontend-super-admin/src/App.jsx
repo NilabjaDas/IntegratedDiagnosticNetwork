@@ -31,10 +31,11 @@ import Page1 from "./pages/Page1";
 import Page2 from "./pages/Page2";
 import Page3 from "./pages/Page3";
 import { getBrandDetails, getPing } from "./redux/apiCalls";
-
+import { getAllInstitutions } from "./redux/apiCalls";
 import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
+import InstitutionsPage from "./pages/InstitutionsPage";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -183,14 +184,12 @@ function App() {
         dispatch(viewPortData(data?.activeStatus ? 100 : 0));
       });
 
-      eventSource.addEventListener("analytics_updated", (event) => {
-        const data = JSON.parse(event.data);
-        dispatch(setAnalyticsData(data));
-      });
-
-      eventSource.addEventListener("reports_updated", (event) => {
-        const data = JSON.parse(event.data);
-        dispatch(setMasterReportsData(data?.report?.properties));
+     eventSource.addEventListener("institutions_updated", (event) => {
+        // When server says data changed, we silently refetch Page 1
+        // or we could check the current page from a global state if we stored it.
+        // For safety, fetching Page 1 ensures list is fresh.
+        console.log("SSE Received: institutions_updated");
+        getAllInstitutions(dispatch, 1, 10, ""); 
       });
 
       eventSource.onerror = (error) => {
@@ -317,6 +316,7 @@ function BackWatcher() {
                 <MainLayout>
                   <Routes>
                     <Route path="/" element={<HomePage />} />
+                    <Route path="/institutions" element={<InstitutionsPage />} />
                     <Route path="/page1" element={<Page1 />} />
                     <Route path="/page2" element={<Page2 />} />
                     <Route path="/page3" element={<Page3 />} />

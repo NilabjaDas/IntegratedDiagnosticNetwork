@@ -1,0 +1,276 @@
+import React, { useEffect, useState } from "react";
+import {
+  Table,
+  Button,
+  Input,
+  Space,
+  Tag,
+  Tooltip,
+  Modal,
+  message,
+  Spin, // Import Spin for the loader
+} from "antd";
+import {
+  PlusOutlined,
+  EditOutlined,
+  StopOutlined,
+  SearchOutlined,
+  DeleteOutlined,
+  ReloadOutlined
+} from "@ant-design/icons";
+import { useDispatch, useSelector } from "react-redux"; 
+import InstitutionForm from "../components/InstitutionForm";
+import {
+  getAllInstitutions,
+  createInstitution,
+  deactivateInstitution,
+  deleteInstitution,
+} from "../redux/apiCalls";
+
+const { Search } = Input;
+const { confirm } = Modal;
+
+const InstitutionsPage = () => {
+  const dispatch = useDispatch();
+  
+  // 1. SAFE SELECTOR: Handle the case where state.institution is undefined
+  const institutionData = useSelector((state) => state.institution);
+
+  // 2. DEFAULTS: Provide default values to prevent crash on first load
+  const { 
+    institutions = [], 
+    isFetching = false, 
+    pagination = { current: 1, pageSize: 10, total: 0 } 
+  } = institutionData || {};
+
+  const [searchText, setSearchText] = useState("");
+  // Drawer / Form State
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [formLoading, setFormLoading] = useState(false);
+
+  // Initial Fetch Logic
+  useEffect(() => {
+    // Only fetch if we have no data or if the slice was undefined
+    if (!institutionData || institutions.length === 0) {
+      handleRefresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
+
+  const handleRefresh = (page = 1, limit = 10, search = searchText) => {
+    getAllInstitutions(dispatch, page, limit, search);
+  };
+
+  const handleTableChange = (newPagination) => {
+    handleRefresh(newPagination.current, newPagination.pageSize, searchText);
+  };
+
+  const handleSearch = (value) => {
+    setSearchText(value);
+    handleRefresh(1, pagination.pageSize, value);
+  };
+
+  // --- CRUD Operations ---
+
+  const handleAdd = () => {
+    setEditingItem(null);
+    setIsDrawerOpen(true);
+  };
+
+  const handleEdit = (record) => {
+    setEditingItem(record);
+    setIsDrawerOpen(true);
+  };
+
+  const handleDeactivate = (record) => {
+    confirm({
+      title: "Deactivate Institution?",
+      content: `Are you sure you want to deactivate ${record.institutionName}?`,
+      okText: "Yes, Deactivate",
+      okType: "danger",
+      onOk: async () => {
+        const res = await deactivateInstitution(record.institutionId);
+        if (res.status === 200) {
+          message.success("Institution deactivated successfully");
+          handleRefresh(pagination.current, pagination.pageSize, searchText);
+        } else {
+          message.error(res.message);
+        }
+      },
+    });
+  };
+
+  const handleDelete = (record) => {
+    confirm({
+      title: "Delete Institution?",
+      content: `This will PERMANENTLY delete ${record.institutionName} and its database.`,
+      okText: "Delete Permanently",
+      okType: "danger",
+      onOk: async () => {
+        const res = await deleteInstitution(record.institutionId);
+        if (res.status === 200) {
+          message.success("Institution deleted successfully");
+          handleRefresh(pagination.current, pagination.pageSize, searchText);
+        } else {
+          message.error(res.message);
+        }
+      },
+    });
+  };
+
+  const handleFormSubmit = async (values) => {
+    setFormLoading(true);
+    if (editingItem) {
+      message.warning("Edit functionality requires backend update endpoint.");
+    } else {
+      const res = await createInstitution(values);
+      if (res.status === 201) {
+        message.success("Institution created successfully!");
+        setIsDrawerOpen(false);
+        handleRefresh(1, pagination.pageSize, searchText);
+      } else {
+        message.error(res.message);
+      }
+    }
+    setFormLoading(false);
+  };
+
+  // --- Columns ---
+  const columns = [
+    {
+      title: "Name",
+      dataIndex: "institutionName",
+      key: "institutionName",
+      render: (text) => <b>{text}</b>,
+    },
+    {
+      title: "Code",
+      dataIndex: "institutionCode",
+      key: "institutionCode",
+    },
+    {
+      title: "Domain",
+      dataIndex: "primaryDomain",
+      key: "primaryDomain",
+      render: (text) => (
+        <a href={`http://${text}`} target="_blank" rel="noopener noreferrer">
+          {text}
+        </a>
+      ),
+    },
+    {
+      title: "Plan",
+      dataIndex: ["subscription", "type"],
+      key: "plan",
+      render: (type) => <Tag color="blue">{type?.toUpperCase()}</Tag>,
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      render: (status) => (
+        <Tag color={status ? "green" : "red"}>
+          {status ? "ACTIVE" : "INACTIVE"}
+        </Tag>
+      ),
+    },
+    {
+      title: "Action",
+      key: "action",
+      render: (_, record) => (
+        <Space size="middle">
+          <Tooltip title="Edit Details">
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            />
+          </Tooltip>
+          
+          {record.status && (
+            <Tooltip title="Deactivate">
+              <Button
+                type="text"
+                danger
+                icon={<StopOutlined />}
+                onClick={() => handleDeactivate(record)}
+              />
+            </Tooltip>
+          )}
+
+          <Tooltip title="Delete Permanently">
+            <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleDelete(record)}
+            />
+          </Tooltip>
+        </Space>
+      ),
+    },
+  ];
+
+  // 3. FULL PAGE LOADER: If Redux slice is completely missing (initial load before setup)
+  if (!institutionData) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+        <Spin size="large" tip="Loading..." />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: 16,
+        }}
+      >
+        <Space>
+          <h2 style={{ margin: 0 }}>Institutions</h2>
+          <Search
+            placeholder="Search..."
+            onSearch={handleSearch}
+            style={{ width: 300 }}
+            allowClear
+          />
+          <Button 
+            icon={<ReloadOutlined />} 
+            onClick={() => handleRefresh(pagination.current, pagination.pageSize, searchText)} 
+          />
+        </Space>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+          Add Institution
+        </Button>
+      </div>
+
+      <Table
+        columns={columns}
+        dataSource={institutions}
+        rowKey="institutionId"
+        loading={isFetching} // Table handles the loader for API calls
+        onChange={handleTableChange}
+        scroll={{ x: 800 }}
+        pagination={{
+            current: pagination.current, // Use defaults if pagination is empty
+            pageSize: pagination.pageSize,
+            total: pagination.total
+        }}
+      />
+
+      <InstitutionForm
+        open={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onSubmit={handleFormSubmit}
+        initialValues={editingItem}
+        loading={formLoading}
+      />
+    </div>
+  );
+};
+
+export default InstitutionsPage;

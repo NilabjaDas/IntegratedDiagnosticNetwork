@@ -10,6 +10,7 @@ const Institution = require("../models/Institutions");
 const SuperAdmin = require("../models/SuperAdmin");
 const User = require("../models/User"); // We use User schema to create the initial admin in the new DB
 const { requireSuperAdmin } = require("../middleware/auth");
+const { encryptResponse } = require("../middleware/encryptResponse");
 
 const JWT_SEC = process.env.JWT_SEC;
 
@@ -64,7 +65,7 @@ const generateInstitutionCode = (name) => {
  * @desc    Get All Institutions (with Pagination & Search)
  * @access  Super Admin Only
  */
-router.get("/institutions", requireSuperAdmin, async (req, res) => {
+router.get("/institutions", requireSuperAdmin, encryptResponse, async (req, res) => {
     try {
         // 1. Pagination & Query Params
         const page = parseInt(req.query.page) || 1;

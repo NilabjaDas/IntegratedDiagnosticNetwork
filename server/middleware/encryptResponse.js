@@ -1,29 +1,7 @@
 const CryptoJS = require("crypto-js");
 
+
 const encryptResponse = (req, res, next) => {
-  // Overwrite the `res.json` method
-  // const originalJson = res.json;
-
-  // res.json = function (data) {
-  //   try {
-  //     // Convert data to string and encrypt
-  //     const stringifiedData = JSON.stringify(data);
-  //     const encryptedData = CryptoJS.AES.encrypt(
-  //       stringifiedData,
-  //       process.env.AES_SEC
-  //     ).toString();
-
-  //     // Call the original res.json with the encrypted data
-  //     originalJson.call(this, encryptedData);
-  //   } catch (error) {
-  //     console.error("Error encrypting response:", error);
-  //     res.status(500).json({ message: "Encryption Error", error: error.message });
-  //   }
-  // };
-
-  next();
-};
-const encryptResponse2 = (req, res, next) => {
   // Overwrite the `res.json` method
   const originalJson = res.json;
 
@@ -61,4 +39,4 @@ const decryptResponse = (encryptedData) => {
   }
 };
 
-module.exports = {encryptResponse, encryptResponse2,decryptResponse};
+module.exports = {encryptResponse,decryptResponse};

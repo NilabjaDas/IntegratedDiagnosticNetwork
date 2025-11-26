@@ -62,6 +62,9 @@ const Sidebar = ({ collapsed }) => {
         <Menu.Item key="/" icon={<HomeOutlined />}>
           <Link to="/">Home</Link>
         </Menu.Item>
+           <Menu.Item key="/institutions" icon={<UserOutlined />}>
+          <Link to="/institutions">Institutions</Link>
+        </Menu.Item>
         <Menu.Item key="/page1" icon={<UserOutlined />}>
           <Link to="/page1">Page 1</Link>
         </Menu.Item>
