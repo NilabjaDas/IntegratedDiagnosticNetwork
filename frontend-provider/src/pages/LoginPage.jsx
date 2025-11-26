@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { Form, Input, Button, Card, Typography, Alert } from 'antd';
-import { UserOutlined, LockOutlined, ShopOutlined } from '@ant-design/icons';
-import { login } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { Form, Input, Button, Card, Typography } from 'antd';
+import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { adminLogin } from '../redux/apiCalls';
 import styled from 'styled-components';
 import { Helmet } from 'react-helmet';
 import { toast } from 'react-toastify';
-
+import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 const { Title } = Typography;
 
 const Container = styled.div`
@@ -14,7 +15,6 @@ const Container = styled.div`
   align-items: center;
   height: 100vh;
   background: #f0f2f5;
-  flex-direction: column;
 `;
 
 const StyledCard = styled(Card)`
@@ -22,22 +22,30 @@ const StyledCard = styled(Card)`
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 `;
 
-const Login = ({ onLogin }) => {
+const Login = () => {
+    const dispatch = useDispatch();
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const token = useSelector(
+        (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
+    );
 
-    // For Dev Testing Only
-    const [devCode, setDevCode] = useState(localStorage.getItem('dev_institution_code') || '');
+    useEffect(() => {
+        if (token) {
+            navigate('/', { replace: true });
+        }
+    }, [token, navigate]);
 
     const onFinish = async (values) => {
-        // Save dev code if provided
-        if (devCode) localStorage.setItem('dev_institution_code', devCode);
-        else localStorage.removeItem('dev_institution_code');
-
         setLoading(true);
         try {
-            const data = await login(values.username, values.password);
+            const res = await adminLogin(dispatch, values.username, values.password);
+            if(res.status === 200){
             toast.success('Login successful');
-            onLogin(data.token);
+            }else{
+            toast.error(res.message);
+
+            }
         } catch (err) {
             toast.error(err.response?.data?.message || 'Login failed');
         } finally {
@@ -48,30 +56,12 @@ const Login = ({ onLogin }) => {
     return (
         <Container>
             <Helmet>
-                <title>Login - Provider Portal</title>
+                <title>Provider Login</title>
             </Helmet>
             <StyledCard>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <Title level={3}>Provider Portal</Title>
-                    <p>Access your clinic's dashboard</p>
+                    <Title level={3}>Provider Login</Title>
                 </div>
-
-                <Alert
-                    message="Developer Mode"
-                    description={
-                        <Input
-                            prefix={<ShopOutlined />}
-                            placeholder="Enter Institution Code (e.g. CITY01)"
-                            value={devCode}
-                            onChange={(e) => setDevCode(e.target.value)}
-                            style={{ marginTop: 8 }}
-                        />
-                    }
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 24 }}
-                />
-
                 <Form
                     name="login_form"
                     onFinish={onFinish}
@@ -93,6 +83,9 @@ const Login = ({ onLogin }) => {
                             Log in
                         </Button>
                     </Form.Item>
+                    <div style={{ textAlign: 'center', color: '#888' }}>
+                       Default: admin / admin
+                    </div>
                 </Form>
             </StyledCard>
         </Container>
