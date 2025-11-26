@@ -3,37 +3,46 @@ export const darkTheme = {
   token: {
     // Seed Token
     colorPrimary: '#1677ff',
-    borderRadius: 2,
+    borderRadius: 4,
 
-    // Alias Token
-    colorBgContainer: '#000000',
-    colorText: 'white',
-    colorTextDescription: 'rgba(255, 255, 255, 0.65)',
-    colorBorder: '#424242',
+    // Base Colors
+    colorBgBase: '#000000',
+    colorBgContainer: '#141414',
+    
+    // Text
+    colorText: '#ffffff',
+    colorTextSecondary: 'rgba(255, 255, 255, 0.65)',
+    
+    // Borders
+    colorBorder: '#303030',
   },
   components: {
     Layout: {
-      headerBg: '#000000',
+      headerBg: '#141414',
+      bodyBg: '#000000',
       siderBg: '#000000',
     },
     Menu: {
       darkItemBg: '#000000',
-      darkItemSelectedBg: '#1677ff',
-      darkItemColor: 'white',
-      darkItemSelectedColor: 'white',
+      darkItemSelectedBg: '#111b26',
+      darkItemColor: 'rgba(255, 255, 255, 0.85)',
+      darkItemSelectedColor: '#1677ff',
     },
     Button: {
       primaryColor: 'white',
-      defaultBorderColor: '#424242',
+      defaultBorderColor: '#303030',
       defaultColor: 'white',
+      defaultBg: 'transparent',
     },
     Switch: {
       colorPrimary: '#1677ff',
       colorText: 'white',
     },
     Breadcrumb: {
-      itemColor: 'white',
-      lastItemColor: 'rgba(255, 255, 255, 0.65)',
+      itemColor: '#ffffff',      // Standard items
+      lastItemColor: '#ffffff',  // The active/last item
+      separatorColor: '#ffffff', // The "/" separator
+      linkColor: '#ffffff',      // Links
     },
   },
 };

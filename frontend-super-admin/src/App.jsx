@@ -35,7 +35,6 @@ import { getBrandDetails, getPing } from "./redux/apiCalls";
 import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
-import Breadcrumbs from "./components/Breadcrumbs";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -275,7 +274,7 @@ function BackWatcher() {
       <Helmet>
         <link rel="icon" href={brandDetails?.favicon} />
         <title>
-          {`Revenue Management | ${brandDetails?.brandName || "TechFloater"}`}
+          {`Medico Control Center | ${brandDetails?.brandName || "TechFloater"}`}
         </title>
       </Helmet>
 
@@ -316,7 +315,6 @@ function BackWatcher() {
             element={
               <ProtectedRoute>
                 <MainLayout>
-                  <Breadcrumbs />
                   <Routes>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/page1" element={<Page1 />} />

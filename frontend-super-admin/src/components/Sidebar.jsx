@@ -7,28 +7,57 @@ import {
   VideoCameraOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { setPageLocation } from "../redux/uiRedux";
 
 const { Sider } = Layout;
 
-const Sidebar = () => {
+const Sidebar = ({ collapsed }) => {
   const location = useLocation();
   const dispatch = useDispatch();
+  const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
 
   const handleMenuClick = (e) => {
     dispatch(setPageLocation(e.key));
   };
 
   return (
-    <Sider trigger={null} collapsible collapsed={false}>
-      <div className="logo" />
+    <Sider
+      trigger={null}
+      collapsible
+      collapsed={collapsed}
+      width={220}
+      style={{
+        overflow: "auto",
+        height: "100vh",
+        position: "fixed",
+        left: 0,
+        top: 0,
+        bottom: 0,
+        zIndex: 10,
+        // Force white background in light mode to avoid default navy blue
+        background: theme === "dark" ? "#000000" : "#ffffff",
+        borderRight: theme === "dark" ? "1px solid #303030" : "none",
+        boxShadow: theme === "light" ? "2px 0 8px 0 rgba(29,35,41,.05)" : "none",
+      }}
+    >
+      <div
+        className="logo"
+        style={{
+          height: "32px",
+          margin: "16px",
+          background: theme === "dark" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
+        }}
+      />
       <Menu
-        theme="dark"
+        theme={theme === "dark" ? "dark" : "light"}
         mode="inline"
         defaultSelectedKeys={["/"]}
         selectedKeys={[location.pathname]}
         onClick={handleMenuClick}
+        style={{
+            background: "transparent" // Ensure menu doesn't paint over the Sider background
+        }}
       >
         <Menu.Item key="/" icon={<HomeOutlined />}>
           <Link to="/">Home</Link>
