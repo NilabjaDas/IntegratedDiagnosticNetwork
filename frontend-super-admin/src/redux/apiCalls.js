@@ -60,16 +60,7 @@ export const adminLogin = async (dispatch, username, password) => {
   }
 };
 
-//Get Brand Details
-export const getBrandDetails = async (dispatch) => {
-  try {
-    const response = await publicRequest.get("/admin/brand-details");
 
-    dispatch(setBrandDetails(response.data));
-  } catch (error) {
-    console.error("Error fetching brand details:", error);
-  }
-};
 
 
 export const getAllInstitutions = async (dispatch, page = 1, limit = 10, search = "") => {

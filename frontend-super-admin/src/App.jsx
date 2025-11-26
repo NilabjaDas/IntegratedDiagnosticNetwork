@@ -30,7 +30,7 @@ import HomePage from "./pages/HomePage";
 import Page1 from "./pages/Page1";
 import Page2 from "./pages/Page2";
 import Page3 from "./pages/Page3";
-import { getBrandDetails, getPing } from "./redux/apiCalls";
+import { getPing } from "./redux/apiCalls";
 import { getAllInstitutions } from "./redux/apiCalls";
 import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
@@ -121,15 +121,6 @@ function App() {
     return () => clearInterval(interval);
   }, [token, dispatch]);
 
-  // -------------------------
-  // Fetch brand details (unchanged)
-  // -------------------------
-  useEffect(() => {
-    const fetchBrandDetails = async () => {
-      await getBrandDetails(dispatch);
-    };
-    fetchBrandDetails();
-  }, [dispatch]);
 
 
 

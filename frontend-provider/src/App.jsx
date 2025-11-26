@@ -71,10 +71,10 @@ function App() {
     (state) => state[process.env.REACT_APP_BRAND_DETAILS_KEY]?.brandDetails
   );
   const token = useSelector(
-    (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY].token
+    (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
   );
   const maintenanceDataFromRedux = useSelector(
-    (state) => state[process.env.REACT_APP_UI_DATA_KEY].scheduledMaintenance
+    (state) => state[process.env.REACT_APP_UI_DATA_KEY]?.scheduledMaintenance
   );
 
   // local UI state
@@ -123,12 +123,12 @@ function App() {
   // -------------------------
   // Fetch brand details (unchanged)
   // -------------------------
-  useEffect(() => {
-    const fetchBrandDetails = async () => {
-      await getBrandDetails(dispatch);
-    };
-    fetchBrandDetails();
-  }, [dispatch]);
+  // useEffect(() => {
+  //   const fetchBrandDetails = async () => {
+  //     await getBrandDetails(dispatch);
+  //   };
+  //   fetchBrandDetails();
+  // }, [dispatch]);
 
 
 
