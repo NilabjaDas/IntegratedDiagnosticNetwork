@@ -36,4 +36,4 @@ const testSchema = new mongoose.Schema({
 
 testSchema.index({ institutionId: 1, testCode: 1 }, { unique: true });
 
-module.exports = mongoose.model("Test", testSchema);
+module.exports = testSchema;

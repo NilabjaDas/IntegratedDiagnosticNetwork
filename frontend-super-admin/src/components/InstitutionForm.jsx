@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Drawer,
   Form,
@@ -21,7 +21,7 @@ const { Option } = Select;
 const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) => {
   const [form] = Form.useForm();
   const isEditMode = !!initialValues;
-
+  const [size, setSize] = useState(1000);
   useEffect(() => {
     if (open) {
       if (initialValues) {
@@ -603,10 +603,12 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
   return (
     <Drawer
       title={isEditMode ? "Edit Institution" : "Add New Institution"}
-      width={800}
+      size={size}
+       resizable={{
+          onResize: (newSize) => setSize(newSize),
+        }}
       onClose={onClose}
       open={open}
-      bodyStyle={{ paddingBottom: 80 }}
       extra={
         <Space>
           <Button onClick={onClose}>Cancel</Button>

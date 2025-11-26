@@ -43,6 +43,7 @@ const decryptBody = async (req, res, next) => {
     const url = req.originalUrl.toLowerCase();
     const usePassKey =
       url.endsWith("/authenticate/login-super-admin") ||
+      url.endsWith("/authenticate/login-staff") ||
       url.endsWith("/brand-admin-login");
 
     const key = usePassKey ? PASS_KEY : AES_KEY;

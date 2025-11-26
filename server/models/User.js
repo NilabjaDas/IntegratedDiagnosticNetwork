@@ -45,4 +45,4 @@ const userSchema = new mongoose.Schema(
 // Composite index to ensure unique username per institution
 userSchema.index({ institutionId: 1, username: 1 }, { unique: true });
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = userSchema;

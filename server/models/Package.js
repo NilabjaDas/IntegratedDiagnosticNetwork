@@ -17,4 +17,4 @@ const packageSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
-module.exports = mongoose.model("Package", packageSchema);
+module.exports = packageSchema;

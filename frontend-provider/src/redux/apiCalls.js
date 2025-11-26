@@ -16,7 +16,7 @@ import { setBrandDetails } from "./brandRedux";
 //Get Encryption Key
 export const getKey = async (dispatch) => {
   try {
-    const res = await userRequest.get("/auth/connect");
+    const res = await userRequest.get("/authenticate/connect");
     dispatch(setKey(res.data));
   } catch (error) {
     console.error("Failed to get key:", error);
@@ -26,7 +26,7 @@ export const getKey = async (dispatch) => {
 //Ping for Token Validity Check
 export const getPing = async () => {
   try {
-    const res = await userRequest.get("/auth/brand-ping");
+    const res = await userRequest.get("/authenticate/brand-ping");
     return res.status;
   } catch (error) {
     return error.status;
@@ -37,7 +37,7 @@ export const getPing = async () => {
 export const adminLogin = async (dispatch, username, password) => {
   dispatch(getTokenStart());
   try {
-    const res = await publicRequest.post("/auth/login-staff", {
+    const res = await publicRequest.post("/authenticate/login-staff", {
       username,
       password,
     });

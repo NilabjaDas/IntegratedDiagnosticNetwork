@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
-
+const getModel = require("../middleware/getModelsHandler");
 const BaseTest = require("../models/BaseTest");
 const Institution = require("../models/Institutions");
 const SuperAdmin = require("../models/SuperAdmin");
@@ -233,7 +233,7 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
         const tenantDb = mongoose.connection.useDb(savedInstitution.dbName, { useCache: true });
         
         // Compile the User model on this specific connection
-        const TenantUser = tenantDb.model("User", User.schema);
+        const TenantUser = getModel(tenantDb, "User", User);
 
         // Hash password for the new admin
         const salt = await bcrypt.genSalt(10);
