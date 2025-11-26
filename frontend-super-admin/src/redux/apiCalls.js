@@ -42,7 +42,7 @@ export const getPing = async () => {
 export const adminLogin = async (dispatch, username, password) => {
   dispatch(getTokenStart());
   try {
-    const res = await publicRequest.post("/admin-master/login", {
+    const res = await publicRequest.post("/authenticate/login-super-admin", {
       username,
       password,
     });
@@ -78,7 +78,6 @@ export const getAllInstitutions = async (dispatch, page = 1, limit = 10, search 
     const res = await userRequest.get(
       `/admin-master/institutions?page=${page}&limit=${limit}&search=${search}`
     );
-    console.log(res.data)
     dispatch(getInstitutionsSuccess(res.data));
   } catch (error) {
     dispatch(getInstitutionsFailure());

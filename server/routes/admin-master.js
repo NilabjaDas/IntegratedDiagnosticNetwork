@@ -12,34 +12,54 @@ const User = require("../models/User"); // We use User schema to create the init
 const { requireSuperAdmin } = require("../middleware/auth");
 const { encryptResponse } = require("../middleware/encryptResponse");
 
-const JWT_SEC = process.env.JWT_SEC;
 
-
-
-// --- AUTH ROUTES ---
-
-// POST /api/admin-master/login
-router.post("/login", async (req, res) => {
+/**
+ * @route   POST /api/admin-master/create-admin
+ * @desc    Create a new Super Admin
+ * @access  Super Admin Only
+ */
+router.post("/create-admin", requireSuperAdmin, async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if(!username || !password){
-      return res.status(500).json({ message: "Username & Password required" });
-    }
-    // Check in Master DB
-    // Note: In a real scenario, we might want to bootstrap the first super admin if none exists
-    const admin = await SuperAdmin.findOne({ username }).select("+password");
-    if(!admin){
-      return res.status(500).json({ message: "Only super admin access allowed!" });
-    }
-    const isMatch = await bcrypt.compare(password, admin.password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+    const { username, password, fullName, email } = req.body;
 
-    const token = jwt.sign({ id: admin._id, role: "super_admin" }, JWT_SEC, { expiresIn: "1d" });
-    res.json({ token, user: { username: admin.username, fullName: admin.fullName } });
+    // 1. Basic Validation
+    if (!username || !password || !fullName) {
+      return res.status(400).json({ message: "Username, Password, and Full Name are required." });
+    }
+
+    // 2. Check for existing username
+    const existingAdmin = await SuperAdmin.findOne({ username });
+    if (existingAdmin) {
+      return res.status(409).json({ message: "Username already taken." });
+    }
+
+    // 3. Hash the password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // 4. Create the new Admin
+    const newAdmin = new SuperAdmin({
+      username,
+      password: hashedPassword,
+      fullName,
+      email,
+      isActive: true
+    });
+
+    await newAdmin.save();
+
+    res.status(201).json({ 
+      message: "New Super Admin created successfully", 
+      data: {
+        username: newAdmin.username,
+        fullName: newAdmin.fullName,
+        userId: newAdmin.userId
+      }
+    });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Login failed" });
+    console.error("Create Admin Error:", err);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
@@ -48,12 +68,12 @@ router.post("/login", async (req, res) => {
 // Helper: Sanitize string for DB Name (e.g., "My Clinic!" -> "MY-CLINIC")
 const generateDbName = (name) => {
     return name.toUpperCase()
-        .replace(/[^A-Z0-9]/g, '-') // replace non-alphanumeric with hyphen
-        .replace(/-+/g, '-')        // remove duplicate hyphens
-        .replace(/^-|-$/g, '');     // trim leading/trailing hyphens
+        .replace(/[^A-Z0-9]/g, '-') 
+        .replace(/-+/g, '-')       
+        .replace(/^-|-$/g, '');    
 };
 
-// Helper: Generate Random Code (e.g., "CLINIC-X92Z")
+// Helper: Generate Random Code
 const generateInstitutionCode = (name) => {
     const prefix = name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X');
     const random = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -126,61 +146,63 @@ router.get("/institutions", requireSuperAdmin, encryptResponse, async (req, res)
  */
 router.post("/institutions", requireSuperAdmin, async (req, res) => {
     try {
-        // 1. Strict Authorization Check
+        // 1. Authorization
         if (!req.user.isMasterAdmin) {
             return res.status(403).json({ message: "Forbidden: Only Master Admin can create institutions." });
         }
 
         const data = req.body;
-
-        // 2. Validate Essential Field
+        
+        // 2. Validate Institution Basics
         if (!data.institutionName) {
             return res.status(400).json({ message: "institutionName is required." });
         }
 
-        // 3. Auto-Generate Unique Fields if missing
-        
-        // A. DB Name (Required, Unique)
-        if (!data.dbName) {
+        // 3. Validate Admin User Data (Required to create the DB)
+        const adminData = data.admin || {}; 
+        if (!adminData.username || !adminData.password || !adminData.fullName) {
+             return res.status(400).json({ 
+                 message: "Admin details (username, password, fullName) are required to initialize the database." 
+             });
+        }
+
+        // 4. Auto-Generate & Sanitize Unique Fields
+        if (data.dbName) {
+            data.dbName = generateDbName(data.dbName);
+        } else {
             data.dbName = generateDbName(data.institutionName);
-            // Append random string if name is very common to ensure uniqueness
-            if (data.dbName.length < 3 || data.dbName === 'clinic') {
+            if (data.dbName.length < 3 || data.dbName === 'CLINIC') {
                  data.dbName += `_${Math.floor(Math.random() * 1000)}`;
             }
         }
 
-        // B. Institution Code (Required, Unique)
         if (!data.institutionCode) {
             data.institutionCode = generateInstitutionCode(data.institutionName);
         }
 
-        // C. Primary Domain (Required, Unique)
-        // If not provided, we create a subdomain based on the dbName
         if (!data.primaryDomain) {
-            // Check if you have a base domain env var, otherwise use placeholder
             const baseDomain = process.env.BASE_DOMAIN || "scholastech.com"; 
-            data.primaryDomain = `${data.dbName}.${baseDomain}`;
+            data.primaryDomain = `${data.dbName}.${baseDomain}`.toLowerCase();
         }
 
-        // 4. Subscription Date Logic
-        // If subscription is provided, calculate end date if not present
+        // 5. Subscription Logic
         if (data.subscription) {
             if (!data.subscription.endDate) {
                 const startDate = data.subscription.startDate ? new Date(data.subscription.startDate) : new Date();
                 const endDate = new Date(startDate);
                 
-                if (data.subscription.frequency === 'yearly') {
+                if(data.subscription.type === 'trial' && data.subscription.trialDuration) {
+                    endDate.setDate(endDate.getDate() + parseInt(data.subscription.trialDuration));
+                } else if (data.subscription.frequency === 'yearly') {
                     endDate.setFullYear(endDate.getFullYear() + 1);
                 } else {
-                    // Default monthly
                     endDate.setMonth(endDate.getMonth() + 1);
                 }
                 data.subscription.endDate = endDate;
             }
         }
 
-        // 5. Conflict Check (Pre-flight)
-        // Check if DB name or Domain already exists to give a clear error
+        // 6. Conflict Check
         const existing = await Institution.findOne({
             $or: [
                 { dbName: data.dbName },
@@ -191,55 +213,60 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
 
         if (existing) {
             return res.status(409).json({ 
-                message: "Conflict detected: An institution with this Domain, DB Name, or Code already exists.",
-                details: {
-                    inputDb: data.dbName,
-                    inputDomain: data.primaryDomain,
-                    inputCode: data.institutionCode
-                }
+                message: "Conflict: Domain, DB Name, or Code already exists.",
             });
         }
 
-        // 6. Create Institution Document
-        // Note: The pre('save') hook in the model will handle password hashing if masterPassword is sent
+        // 7. Create Institution Document (Master DB)
         const newInstitution = new Institution({
             ...data,
-            createdBy: req.user.userId || req.user.username, // Audit
+            createdBy: req.user.userId || req.user.username,
             onboardingStatus: "pending"
         });
 
         const savedInstitution = await newInstitution.save();
 
-        // 7. Multi-tenancy: "Create" the Separate Database
-        // In MongoDB, a database is created lazily when data is inserted.
-        // We initialize the tenant DB connection and perhaps seed a default collection to 'realize' the DB.
+        // 8. Initialize Tenant Database & Create Admin User
+        //    (This physically creates the DB in MongoDB)
         
+        // Switch context to the new tenant DB
         const tenantDb = mongoose.connection.useDb(savedInstitution.dbName, { useCache: true });
         
-        // OPTIONAL: Seed initial data into the new DB (e.g., Default Settings, Counter)
-        // const SettingsModel = tenantDb.model('Setting', require('../models/SettingSchema'));
-        // await SettingsModel.create({ systemDefault: true });
+        // Compile the User model on this specific connection
+        const TenantUser = tenantDb.model("User", User.schema);
 
-        // 8. Return Success (Filter sensitive info)
-        const responseObj = savedInstitution.toObject();
-        delete responseObj.masterPassword;
-        delete responseObj.paymentGateway;
-        delete responseObj.smtp;
+        // Hash password for the new admin
+        const salt = await bcrypt.genSalt(10);
+        const hashedAdminPassword = await bcrypt.hash(adminData.password, salt);
 
+        const newAdminUser = new TenantUser({
+            institutionId: savedInstitution.institutionId,
+            username: adminData.username,
+            password: hashedAdminPassword,
+            fullName: adminData.fullName,
+            email: adminData.email || "",
+            phone: adminData.phone || "",
+            role: "admin", // Default to admin for the tenant
+            isActive: true
+        });
+
+        await newAdminUser.save();
+
+        // 9. Return Success
         res.status(201).json({
-            message: "Institution created successfully.",
-            institution: responseObj,
+            message: "Institution and Database created successfully.",
+            institution: savedInstitution,
             dbInfo: {
                 name: savedInstitution.dbName,
-                status: "Initialized"
+                status: "Initialized",
+                adminUser: newAdminUser.username
             }
         });
 
     } catch (err) {
         console.error("Create Institution Error:", err);
-        // Handle Duplicate Key Errors (E11000) explicitly if race condition occurs
         if (err.code === 11000) {
-            return res.status(409).json({ message: "Duplicate key error. Domain, Code, or DB Name already exists." });
+            return res.status(409).json({ message: "Duplicate key error." });
         }
         res.status(500).json({ message: "Internal Server Error: " + err.message });
     }

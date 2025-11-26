@@ -8,18 +8,22 @@ const SuperAdmin = require("../models/SuperAdmin");
 const { authenticateUser } = require("../middleware/auth");
 const { encryptResponse } = require("../middleware/encryptResponse");
 
+
+
+const JWT_SEC = process.env.JWT_SEC;
+
 // Helper: Generate Token
 const generateToken = (user, institutionId) => {
   return jwt.sign(
     { 
-      id: user._id, 
+      id: user.id, 
       userId: user.userId,
       role: user.role, 
       institutionId: institutionId,
       username: user.username,
       isMasterAdmin: user.isMasterAdmin // Critical payload
     }, 
-    process.env.JWT_SEC || "dev-secret",
+    process.env.JWT_SEC,
     { expiresIn: "7d" }
   );
 };
@@ -42,6 +46,41 @@ router.get(
     return res.status(200).json({ success: true });
   }
 );
+
+
+// POST /api/authenticate/login
+router.post("/login-super-admin", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if(!username || !password){
+      return res.status(500).json({ message: "Username & Password required" });
+    }
+    // Check in Master DB
+    // Note: In a real scenario, we might want to bootstrap the first super admin if none exists
+    const admin = await SuperAdmin.findOne({ username }).select("+password");
+    if(!admin){
+      return res.status(500).json({ message: "Only super admin access allowed!" });
+    }
+    const isMatch = await bcrypt.compare(password, admin.password);
+    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+
+    // const token = jwt.sign({ id: admin._id, role: "super_admin" }, JWT_SEC, { expiresIn: "1d" });
+       const token = generateToken({
+        id: admin._id,
+        userId: admin.userId,
+        role: "super_admin",
+        username: admin.username,
+        isMasterAdmin: true
+      }, "SUPERADMIN");
+
+    res.json({ token, user: { username: admin.username, fullName: admin.fullName } });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Login failed" });
+  }
+});
+
 
 // ==========================================
 // 1. STAFF / DOCTOR / LOCAL ADMIN LOGIN (Password)

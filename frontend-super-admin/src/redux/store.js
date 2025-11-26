@@ -66,7 +66,7 @@ const rootReducer = (state, action) => {
         ...state,
         [process.env.REACT_APP_ACCESS_TOKEN_KEY]: undefined,
         [process.env.REACT_APP_UI_DATA_KEY]: undefined,
-
+        [process.env.REACT_APP_INSTITUTIONS_DATA_KEY] : undefined
       },
       action
     );

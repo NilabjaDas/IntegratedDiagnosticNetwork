@@ -1,9 +1,7 @@
-// models/Institutions.js
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
-const bcrypt = require("bcrypt");
 
-// Sub-schemas (kept defined outside to keep main schema clean)
+// Sub-schemas
 const maintenanceSchema = new mongoose.Schema({
   activeStatus: { type: Boolean, default: false },
   startTime: { type: String, default: "" },
@@ -32,15 +30,11 @@ const outletSchema = new mongoose.Schema({
 const institutionsSchema = new mongoose.Schema({
   institutionId: { type: String, default: () => uuidv4(), index: true, unique: true },
 
-  // --- Identity & Routing (Unique/Required) ---
+  // --- Identity & Routing ---
   institutionName: { type: String, required: true, trim: true },
-  
-  // We don't set static defaults for these because they must be unique.
-  // We will generate them in the controller if missing.
   primaryDomain: { type: String, required: true, lowercase: true, trim: true, unique: true },
-  dbName: { type: String, required: true, unique: true, lowercase: true, trim: true }, 
+  dbName: { type: String, required: true, unique: true, trim: true }, 
   institutionCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
-
   domains: [{ type: String, lowercase: true, trim: true }],
 
   // --- Branding ---
@@ -51,14 +45,14 @@ const institutionsSchema = new mongoose.Schema({
   favicon: { type: String, default: "" },
   status: { type: Boolean, default: true },
 
-  // --- Theme Defaults ---
+  // --- Theme ---
   theme: {
     primaryColor: { type: String, default: "#007bff" },
     secondaryColor: { type: String, default: "#6c757d" },
     logoBackground: { type: String, default: "#ffffff" }
   },
 
-  // --- Subscription (Requested Updates) ---
+  // --- Subscription ---
   subscription: {
     type: { 
         type: String, 
@@ -70,14 +64,16 @@ const institutionsSchema = new mongoose.Schema({
         enum: ["active", "deactive"], 
         default: "active" 
     },
-    value: { type: String, default: "0" }, // Stored as string to avoid floating point math issues
+    trialDuration: { type: Number, default: 14 }, // Duration in days
+    usageCounter: { type: Number, default: 0 },   // Counter of service usage in days
+    value: { type: String, default: "0" },
     frequency: { 
         type: String, 
         enum: ["monthly", "yearly"], 
         default: "monthly" 
     },
     startDate: { type: Date, default: Date.now },
-    endDate: { type: Date } // Can calculate based on frequency in controller
+    endDate: { type: Date }
   },
 
   // --- Contact & Address ---
@@ -102,7 +98,7 @@ const institutionsSchema = new mongoose.Schema({
     coordinates: { type: [Number], default: [0, 0] },
   },
 
-  // --- Billing Defaults ---
+  // --- Billing ---
   billing: {
     gstin: { type: String, default: "" },
     pan: { type: String, default: "" },
@@ -113,7 +109,7 @@ const institutionsSchema = new mongoose.Schema({
 
   outlets: [outletSchema],
 
-  // --- Feature Toggles Defaults ---
+  // --- Feature Toggles ---
   features: {
     hasRadiology: { type: Boolean, default: false },
     hasPACS: { type: Boolean, default: false },
@@ -121,7 +117,7 @@ const institutionsSchema = new mongoose.Schema({
     hasTeleReporting: { type: Boolean, default: false },
   },
 
-  // --- Platform Settings Defaults ---
+  // --- Settings ---
   settings: {
     timezone: { type: String, default: "Asia/Kolkata" },
     locale: { type: String, default: "en-IN" },
@@ -149,7 +145,6 @@ const institutionsSchema = new mongoose.Schema({
   },
 
   // --- Sensitive Data ---
-  masterPassword: { type: String, select: false }, 
   paymentGateway: {
     provider: { type: String, default: "" },
     config: { type: mongoose.Schema.Types.Mixed, select: false, default: {} }
@@ -180,17 +175,5 @@ institutionsSchema.index({ primaryDomain: 1 }, { unique: true, sparse: true });
 institutionsSchema.index({ institutionId: 1 }, { unique: true });
 institutionsSchema.index({ "contact.email": 1 });
 institutionsSchema.index({ "location": "2dsphere" });
-
-// Hash Master Password before saving if it's modified
-institutionsSchema.pre('save', async function(next) {
-    if (!this.isModified('masterPassword') || !this.masterPassword) return next();
-    try {
-        const salt = await bcrypt.genSalt(10);
-        this.masterPassword = await bcrypt.hash(this.masterPassword, salt);
-        next();
-    } catch (err) {
-        next(err);
-    }
-});
 
 module.exports = mongoose.model("Institution", institutionsSchema);

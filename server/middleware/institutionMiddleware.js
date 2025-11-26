@@ -20,6 +20,7 @@ const institutionMiddleware = () => async (req, res, next) => {
 
   // Exclude global routes (Super Admin, Consumer App, Webhooks)
   const globalPrefixes = [
+    "/api/authenticate/login-super-admin",
     "/api/authenticate/connect",
     "/api/authenticate/ping",
     "/api/admin-master", // Super Admin

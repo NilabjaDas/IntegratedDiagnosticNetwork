@@ -69,10 +69,13 @@ const encrypt = (obj) => {
   }
 };
 
-const decrypt = (data) => {
+// UPDATED: Accepts optional customKey, and returns original data if decryption fails
+const decrypt = (data, customKey = null) => {
   if (!data) return data;
   try {
-    const bytes = CryptoJS.AES.decrypt(data, getKey());
+    // Use customKey if provided, else fallback to Redux store key
+    const secret = customKey || getKey();
+    const bytes = CryptoJS.AES.decrypt(data, secret);
     const text = bytes.toString(CryptoJS.enc.Utf8);
     try {
       return JSON.parse(text);
@@ -80,6 +83,7 @@ const decrypt = (data) => {
       return text;
     }
   } catch (e) {
+    // If decryption fails (e.g. not encrypted), return original data
     return data;
   }
 };
@@ -233,7 +237,7 @@ const getRequestKey = (cfg = {}) => {
     (err) => Promise.reject(err)
   );
 
-  // 4) Decrypt responses (success)
+  // 4) Decrypt responses (success) -- UPDATED for Auto-Detection & Custom Key
   inst.interceptors.response.use(
     (res) => {
       try {
@@ -242,12 +246,21 @@ const getRequestKey = (cfg = {}) => {
       } catch (e) {}
 
       try {
+        const rawData = res.data;
         const ct = (res?.headers?.["content-type"] || "").toString();
-        if (typeof res.data === "string" && ct.includes("text/plain")) {
-          res.data = decrypt(res.data);
+
+        // Check if data is a string AND (Header matches OR Body looks like AES "Salted__")
+        const isEncryptedString =
+          typeof rawData === "string" &&
+          (ct.includes("text/plain") || rawData.startsWith("U2FsdGVkX1"));
+
+        if (isEncryptedString) {
+          // Check if a custom key was passed in the request config
+          const customKey = res.config?.customDecryptKey;
+          res.data = decrypt(rawData, customKey);
         }
       } catch (e) {
-        // ignore decryption errors
+        console.warn("Decryption error in interceptor:", e);
       }
       return res;
     },
@@ -259,11 +272,19 @@ const getRequestKey = (cfg = {}) => {
         if (key && pendingRequests.has(key)) pendingRequests.delete(key);
       } catch (e) {}
 
-      // attempt to decrypt textual error payload if present
+      // attempt to decrypt textual error payload if present -- UPDATED
       try {
+        const rawData = err?.response?.data;
         const ct = (err?.response?.headers?.["content-type"] || "").toString();
-        if (err?.response?.data && typeof err.response.data === "string" && ct.includes("text/plain")) {
-          err.response.data = decrypt(err.response.data);
+
+        const isEncryptedString =
+          typeof rawData === "string" &&
+          (ct.includes("text/plain") || rawData.startsWith("U2FsdGVkX1"));
+
+        if (isEncryptedString) {
+          const customKey =
+            err?.config?.customDecryptKey || err?.response?.config?.customDecryptKey;
+          err.response.data = decrypt(rawData, customKey);
         }
       } catch (e) {
         // ignore

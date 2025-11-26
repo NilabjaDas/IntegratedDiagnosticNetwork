@@ -8,17 +8,16 @@ import {
   Tooltip,
   Modal,
   message,
-  Spin, // Import Spin for the loader
+  Spin,
 } from "antd";
 import {
   PlusOutlined,
   EditOutlined,
   StopOutlined,
-  SearchOutlined,
+  ReloadOutlined,
   DeleteOutlined,
-  ReloadOutlined
 } from "@ant-design/icons";
-import { useDispatch, useSelector } from "react-redux"; 
+import { useDispatch, useSelector } from "react-redux";
 import InstitutionForm from "../components/InstitutionForm";
 import {
   getAllInstitutions,
@@ -32,31 +31,32 @@ const { confirm } = Modal;
 
 const InstitutionsPage = () => {
   const dispatch = useDispatch();
-  
-  // 1. SAFE SELECTOR: Handle the case where state.institution is undefined
-  const institutionData = useSelector((state) => state.institution);
 
-  // 2. DEFAULTS: Provide default values to prevent crash on first load
-  const { 
-    institutions = [], 
-    isFetching = false, 
-    pagination = { current: 1, pageSize: 10, total: 0 } 
-  } = institutionData || {};
+  // --- FIXED SELECTOR ---
+  // We select the whole slice ("state.institution"), NOT "state.institution.institutions"
+  // Make sure 'institution' matches the key you used in store.js combineReducers
+  const institutionSlice = useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY]);
+
+  // --- DESTRUCTURING ---
+  // Now we can safely extract the array, fetching status, and pagination from the slice
+  const {
+    institutions = [],
+    isFetching = false,
+    pagination = { current: 1, pageSize: 10, total: 0 },
+  } = institutionSlice || {};
 
   const [searchText, setSearchText] = useState("");
-  // Drawer / Form State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
 
-  // Initial Fetch Logic
   useEffect(() => {
-    // Only fetch if we have no data or if the slice was undefined
-    if (!institutionData || institutions.length === 0) {
+    // Check if the slice exists and if the list is empty
+    if (!institutionSlice || institutions.length === 0) {
       handleRefresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
+  }, []);
 
   const handleRefresh = (page = 1, limit = 10, search = searchText) => {
     getAllInstitutions(dispatch, page, limit, search);
@@ -187,7 +187,7 @@ const InstitutionsPage = () => {
               onClick={() => handleEdit(record)}
             />
           </Tooltip>
-          
+
           {record.status && (
             <Tooltip title="Deactivate">
               <Button
@@ -201,10 +201,10 @@ const InstitutionsPage = () => {
 
           <Tooltip title="Delete Permanently">
             <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => handleDelete(record)}
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleDelete(record)}
             />
           </Tooltip>
         </Space>
@@ -212,10 +212,17 @@ const InstitutionsPage = () => {
     },
   ];
 
-  // 3. FULL PAGE LOADER: If Redux slice is completely missing (initial load before setup)
-  if (!institutionData) {
+  // Loader if slice is not yet initialized
+  if (!institutionSlice) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+        }}
+      >
         <Spin size="large" tip="Loading..." />
       </div>
     );
@@ -238,9 +245,11 @@ const InstitutionsPage = () => {
             style={{ width: 300 }}
             allowClear
           />
-          <Button 
-            icon={<ReloadOutlined />} 
-            onClick={() => handleRefresh(pagination.current, pagination.pageSize, searchText)} 
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() =>
+              handleRefresh(pagination.current, pagination.pageSize, searchText)
+            }
           />
         </Space>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
@@ -252,13 +261,13 @@ const InstitutionsPage = () => {
         columns={columns}
         dataSource={institutions}
         rowKey="institutionId"
-        loading={isFetching} // Table handles the loader for API calls
+        loading={isFetching}
         onChange={handleTableChange}
         scroll={{ x: 800 }}
         pagination={{
-            current: pagination.current, // Use defaults if pagination is empty
-            pageSize: pagination.pageSize,
-            total: pagination.total
+          current: pagination.page, // Note: Redux stores 'page', AntD expects 'current'
+          pageSize: pagination.limit,
+          total: pagination.total,
         }}
       />
 
