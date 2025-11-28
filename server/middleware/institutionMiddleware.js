@@ -42,4 +42,18 @@ const institutionMiddleware = () => {
   };
 };
 
-module.exports = institutionMiddleware;
+const getTenantUserModel = async (institutionId) => {
+    const institution = await Institution.findOne({ institutionId });
+    if (!institution) return null;
+
+    // Connect to the specific tenant database
+    const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+    
+    // Handle both Schema export and Model export patterns safely
+    const UserSchema = User.schema || User; 
+    
+    // Return the compiled model for this specific DB
+    return getModel(tenantDb, "User", UserSchema);
+};
+
+module.exports = {institutionMiddleware, getTenantUserModel};

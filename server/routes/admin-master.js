@@ -13,6 +13,9 @@ const { requireSuperAdmin } = require("../middleware/auth");
 const { encryptResponse } = require("../middleware/encryptResponse");
 
 
+
+
+
 /**
  * @route   POST /api/admin-master/create-admin
  * @desc    Create a new Super Admin
@@ -266,6 +269,153 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
             return res.status(409).json({ message: "Duplicate key error." });
         }
         res.status(500).json({ message: "Internal Server Error: " + err.message });
+    }
+});
+
+
+/**
+ * @route   GET /api/institutions/:id/users
+ * @desc    Get all users (admins, staff, etc.) for a specific institution
+ */
+router.get("/institutions/:id/users", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const TenantUser = await getTenantUserModel(id);
+        
+        if (!TenantUser) {
+            return res.status(404).json({ message: "Institution not found." });
+        }
+
+        const users = await TenantUser.find({}).select("-password").sort({ createdAt: -1 });
+        res.json({ data: users });
+    } catch (err) {
+        console.error("Get Tenant Users Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+/**
+ * @route   POST /api/institutions/:id/users
+ * @desc    Create a new user (e.g. another admin) for a specific institution
+ */
+router.post("/institutions/:id/users", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { username, password, fullName, role, email, phone, designation, isActive } = req.body;
+
+        if (!username || !password || !fullName) {
+            return res.status(400).json({ message: "Username, password, and full name are required." });
+        }
+
+        const TenantUser = await getTenantUserModel(id);
+        if (!TenantUser) {
+            return res.status(404).json({ message: "Institution not found." });
+        }
+
+        // Check if username exists in tenant DB
+        const existingUser = await TenantUser.findOne({ username });
+        if (existingUser) {
+            return res.status(409).json({ message: "Username already exists in this institution." });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const newUser = new TenantUser({
+            institutionId: id, 
+            userId: uuidv4(),
+            username,
+            password: hashedPassword,
+            fullName,
+            role: role || "admin", // Default to admin for manual creation
+            email,
+            phone,
+            designation,
+            isActive: isActive !== undefined ? isActive : true
+        });
+
+        await newUser.save();
+
+        const responseObj = newUser.toObject();
+        delete responseObj.password;
+
+        res.status(201).json({ message: "User created successfully", data: responseObj });
+
+    } catch (err) {
+        console.error("Create Tenant User Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+/**
+ * @route   PUT /api/institutions/:id/users/:userId
+ * @desc    Update a user for a specific institution
+ */
+router.put("/institutions/:id/users/:userId", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id, userId } = req.params;
+        const updates = req.body;
+
+        const TenantUser = await getTenantUserModel(id);
+        if (!TenantUser) {
+            return res.status(404).json({ message: "Institution not found." });
+        }
+
+        // Handle password update specially
+        if (updates.password && updates.password.trim() !== "") {
+            const salt = await bcrypt.genSalt(10);
+            updates.password = await bcrypt.hash(updates.password, salt);
+        } else {
+            // Remove empty password field to prevent overwriting with empty string
+            delete updates.password;
+        }
+
+        // Prevent updating immutable fields
+        delete updates.userId;
+        delete updates._id;
+        delete updates.institutionId;
+
+        const updatedUser = await TenantUser.findOneAndUpdate(
+            { userId: userId },
+            { $set: updates },
+            { new: true, runValidators: true }
+        ).select("-password");
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        res.json({ message: "User updated successfully", data: updatedUser });
+
+    } catch (err) {
+        console.error("Update Tenant User Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+/**
+ * @route   DELETE /api/institutions/:id/users/:userId
+ * @desc    Delete a user for a specific institution
+ */
+router.delete("/institutions/:id/users/:userId", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id, userId } = req.params;
+
+        const TenantUser = await getTenantUserModel(id);
+        if (!TenantUser) {
+            return res.status(404).json({ message: "Institution not found." });
+        }
+
+        const deletedUser = await TenantUser.findOneAndDelete({ userId: userId });
+
+        if (!deletedUser) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        res.json({ message: "User deleted successfully" });
+
+    } catch (err) {
+        console.error("Delete Tenant User Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
     }
 });
 

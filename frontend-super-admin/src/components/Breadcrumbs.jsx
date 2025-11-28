@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 
 const breadcrumbNameMap = {
+  "/institutions": "Institutions",
   "/page1": "Page 1",
   "/page2": "Page 2",
   "/page3": "Page 3",

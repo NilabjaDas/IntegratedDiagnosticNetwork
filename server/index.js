@@ -20,8 +20,8 @@ const ServerRoute = require("./sse")
 const decryptBody = require("./middleware/decryptBody");
 const bodyParser = require("body-parser");
 const { ConnectToDB } = require("./handlers/dbConnection");
-const institutionMiddleware = require("./middleware/institutionMiddleware");
 const sseManager = require("./sse");
+const { institutionMiddleware } = require("./middleware/institutionMiddleware");
 
 // Security: Restrict CORS in production
 // TODO: Replace '*' with specific domains (e.g., process.env.ALLOWED_ORIGINS.split(','))
