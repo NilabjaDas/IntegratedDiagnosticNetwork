@@ -85,42 +85,34 @@ const generateInstitutionCode = (name) => {
  * @desc    Get All Institutions (with Pagination & Search)
  * @access  Super Admin Only
  */
-router.get("/institutions", requireSuperAdmin, encryptResponse, async (req, res) => {
+router.get("/institutions", requireSuperAdmin, async (req, res) => {
     try {
-        // 1. Pagination & Query Params
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const search = req.query.search || "";
-        const status = req.query.status; // Optional: filter by 'active' (true) or 'inactive' (false)
+        const status = req.query.status;
 
         const skip = (page - 1) * limit;
+        let query = { deleted: false };
 
-        // 2. Build Query Object
-        let query = { deleted: false }; // Don't show soft-deleted ones
-
-        // Add Search (Name, Code, or Domain)
         if (search) {
             query.$or = [
-                { institutionName: { $regex: search, $options: "i" } }, // Case-insensitive regex
+                { institutionName: { $regex: search, $options: "i" } },
                 { institutionCode: { $regex: search, $options: "i" } },
-                { primaryDomain: { $regex: search, $options: "i" } }
+                // Search inside the domains array
+                { domains: { $regex: search, $options: "i" } }
             ];
         }
 
-        // Add Status Filter if provided
         if (status !== undefined) {
             query.status = status === 'true';
         }
 
-        // 3. Execute Query
-        // The sensitive fields (masterPassword, etc.) are {select: false} in schema, 
-        // so they are automatically excluded here.
         const institutions = await Institution.find(query)
-            .sort({ createdAt: -1 }) // Newest first
+            .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit);
 
-        // 4. Get Total Count (for frontend pagination UI)
         const total = await Institution.countDocuments(query);
 
         res.json({
@@ -146,27 +138,24 @@ router.get("/institutions", requireSuperAdmin, encryptResponse, async (req, res)
  */
 router.post("/institutions", requireSuperAdmin, async (req, res) => {
     try {
-        // 1. Authorization
         if (!req.user.isMasterAdmin) {
             return res.status(403).json({ message: "Forbidden: Only Master Admin can create institutions." });
         }
 
         const data = req.body;
         
-        // 2. Validate Institution Basics
         if (!data.institutionName) {
             return res.status(400).json({ message: "institutionName is required." });
         }
 
-        // 3. Validate Admin User Data (Required to create the DB)
         const adminData = data.admin || {}; 
         if (!adminData.username || !adminData.password || !adminData.fullName) {
              return res.status(400).json({ 
-                 message: "Admin details (username, password, fullName) are required to initialize the database." 
+                 message: "Admin details (username, password, fullName) are required." 
              });
         }
 
-        // 4. Auto-Generate & Sanitize Unique Fields
+        // 1. Auto-Generate & Sanitize DB Name
         if (data.dbName) {
             data.dbName = generateDbName(data.dbName);
         } else {
@@ -176,16 +165,28 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
             }
         }
 
+        // 2. Generate Code
         if (!data.institutionCode) {
             data.institutionCode = generateInstitutionCode(data.institutionName);
         }
 
-        if (!data.primaryDomain) {
-            const baseDomain = process.env.BASE_DOMAIN || "scholastech.com"; 
-            data.primaryDomain = `${data.dbName}.${baseDomain}`.toLowerCase();
+        // 3. Domain Logic
+        // Ensure domains is an array
+        if (!data.domains || !Array.isArray(data.domains)) {
+            data.domains = [];
         }
 
-        // 5. Subscription Logic
+        // If no domains provided, generate a default one
+        if (data.domains.length === 0) {
+            const baseDomain = process.env.BASE_DOMAIN || "scholastech.com"; 
+            const defaultDomain = `${data.dbName}.${baseDomain}`.toLowerCase();
+            data.domains.push(defaultDomain);
+        } else {
+            // Ensure all provided domains are lowercase
+            data.domains = data.domains.map(d => d.toLowerCase());
+        }
+
+        // 4. Subscription Logic
         if (data.subscription) {
             if (!data.subscription.endDate) {
                 const startDate = data.subscription.startDate ? new Date(data.subscription.startDate) : new Date();
@@ -202,22 +203,22 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
             }
         }
 
-        // 6. Conflict Check
+        // 5. Conflict Check (Updated for domains array)
         const existing = await Institution.findOne({
             $or: [
                 { dbName: data.dbName },
-                { primaryDomain: data.primaryDomain },
+                { domains: { $in: data.domains } }, // Check if ANY of the new domains are already taken
                 { institutionCode: data.institutionCode }
             ]
         });
 
         if (existing) {
             return res.status(409).json({ 
-                message: "Conflict: Domain, DB Name, or Code already exists.",
+                message: "Conflict: One of the Domains, DB Name, or Code already exists.",
             });
         }
 
-        // 7. Create Institution Document (Master DB)
+        // 6. Create Institution Document
         const newInstitution = new Institution({
             ...data,
             createdBy: req.user.userId || req.user.username,
@@ -226,33 +227,29 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
 
         const savedInstitution = await newInstitution.save();
 
-        // 8. Initialize Tenant Database & Create Admin User
-        //    (This physically creates the DB in MongoDB)
-        
-        // Switch context to the new tenant DB
+        // 7. Initialize Tenant DB & Admin User
         const tenantDb = mongoose.connection.useDb(savedInstitution.dbName, { useCache: true });
         
-        // Compile the User model on this specific connection
-        const TenantUser = getModel(tenantDb, "User", User);
+        const UserSchema = User.schema || User; 
+        const TenantUser = getModel(tenantDb, "User", UserSchema);
 
-        // Hash password for the new admin
         const salt = await bcrypt.genSalt(10);
         const hashedAdminPassword = await bcrypt.hash(adminData.password, salt);
 
         const newAdminUser = new TenantUser({
             institutionId: savedInstitution.institutionId,
+            userId: uuidv4(),
             username: adminData.username,
             password: hashedAdminPassword,
             fullName: adminData.fullName,
             email: adminData.email || "",
             phone: adminData.phone || "",
-            role: "admin", // Default to admin for the tenant
+            role: "admin", 
             isActive: true
         });
 
         await newAdminUser.save();
 
-        // 9. Return Success
         res.status(201).json({
             message: "Institution and Database created successfully.",
             institution: savedInstitution,
@@ -306,6 +303,105 @@ router.put("/institutions/:id/deactivate", requireSuperAdmin, async (req, res) =
 
     } catch (err) {
         console.error("Deactivate Institution Error:", err);
+        res.status(500).json({ message: "Internal Server Error: " + err.message });
+    }
+});
+
+router.put("/institutions/:id/activate", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. Find and update
+        const updatedInstitution = await Institution.findOneAndUpdate(
+            { institutionId: id },
+            { 
+                $set: { 
+                    status: true, 
+                    updatedBy: req.user.username || "SuperAdmin"
+                } 
+            },
+            { new: true } // Return the updated document
+        );
+
+        // 2. Handle Not Found
+        if (!updatedInstitution) {
+            return res.status(404).json({ message: "Institution not found." });
+        }
+
+        res.json({ 
+            message: "Institution successfully deactivated.", 
+            institutionName: updatedInstitution.institutionName,
+            status: "Active"
+        });
+
+    } catch (err) {
+        console.error("Deactivate Institution Error:", err);
+        res.status(500).json({ message: "Internal Server Error: " + err.message });
+    }
+});
+
+
+
+/**
+ * @route   PUT /api/institutions/:id
+ * @desc    Update an Institution (Generic)
+ * @access  Super Admin Only
+ */
+router.put("/institutions/:id", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        // 1. Prevent updating immutable fields
+        // Changing these would break tenant connections or data integrity
+        delete updates.institutionId;
+        delete updates.dbName; 
+        delete updates.institutionCode; // Usually constant, but can be allowed if careful
+        delete updates._id;
+        delete updates.createdAt;
+        delete updates.createdBy;
+
+        // 2. Add audit trail
+        updates.updatedBy = req.user.username || "SuperAdmin";
+
+        // 3. Handle Domain Formatting (if domains are being updated)
+        if (updates.domains) {
+            if (!Array.isArray(updates.domains)) {
+                return res.status(400).json({ message: "Domains must be an array of strings." });
+            }
+            // Ensure lowercase for uniqueness checks
+            updates.domains = updates.domains.map(d => d.toLowerCase().trim());
+        }
+
+        // 4. Find and Update
+        // runValidators: true ensures schema validation (e.g. enums, types) runs on update
+        const updatedInstitution = await Institution.findOneAndUpdate(
+            { institutionId: id },
+            { $set: updates },
+            { new: true, runValidators: true, context: 'query' } 
+        );
+
+        // 5. Handle Not Found
+        if (!updatedInstitution) {
+            return res.status(404).json({ message: "Institution not found." });
+        }
+
+        res.json({
+            message: "Institution updated successfully.",
+            data: updatedInstitution
+        });
+
+    } catch (err) {
+        console.error("Update Institution Error:", err);
+
+        // Handle Duplicate Key Errors (e.g., Domain already taken by another institution)
+        if (err.code === 11000) {
+            const field = Object.keys(err.keyPattern)[0];
+            return res.status(409).json({ 
+                message: `Conflict: The ${field} provided is already in use by another institution.` 
+            });
+        }
+
         res.status(500).json({ message: "Internal Server Error: " + err.message });
     }
 });

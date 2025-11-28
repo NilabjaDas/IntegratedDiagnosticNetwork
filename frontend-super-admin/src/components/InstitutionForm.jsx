@@ -14,39 +14,42 @@ import {
   Switch,
   Tabs,
 } from "antd";
-import moment from "moment";
+import dayjs from "dayjs"; // CHANGED: Switched from moment to dayjs for AntD v5 compatibility
 
 const { Option } = Select;
+const { RangePicker } = DatePicker;
 
 const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) => {
   const [form] = Form.useForm();
   const isEditMode = !!initialValues;
-  const [size, setSize] = useState(1000);
+  const [size, setSize] = useState(800);
+
+  // Watch subscription type to handle dynamic disabling logic
+  const planType = Form.useWatch(["subscription", "type"], form);
+  
+  const isTrial = planType === "trial";
+  const isFree = planType === "free";
+
   useEffect(() => {
     if (open) {
       if (initialValues) {
-        // Map data to form fields, handling dates specially
+        // Map data to form fields
         const formattedValues = {
           ...initialValues,
           subscription: {
             ...initialValues.subscription,
-            startDate: initialValues.subscription?.startDate
-              ? moment(initialValues.subscription.startDate)
-              : null,
-            endDate: initialValues.subscription?.endDate
-              ? moment(initialValues.subscription.endDate)
-              : null,
+            // Use dayjs objects for the RangePicker
+            dateRange: [
+              initialValues.subscription?.startDate ? dayjs(initialValues.subscription.startDate) : null,
+              initialValues.subscription?.endDate ? dayjs(initialValues.subscription.endDate) : null,
+            ],
           },
-          // Ensure nested objects exist for the form to map correctly
-          location: {
-            longitude: initialValues.location?.coordinates?.[0] || 0,
-            latitude: initialValues.location?.coordinates?.[1] || 0,
-          },
+          domains: initialValues.domains || [],
         };
         form.setFieldsValue(formattedValues);
       } else {
         form.resetFields();
-        // Set default values for new entry as per schema
+        // Set default values
         form.setFieldsValue({
           subscription: {
             type: "trial",
@@ -54,6 +57,8 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             status: "active",
             trialDuration: 14,
             value: "0",
+            // Default range: Today to 14 days later
+            dateRange: [dayjs(), dayjs().add(14, 'day')]
           },
           address: {
             country: "India",
@@ -90,21 +95,28 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
   }, [open, initialValues, form]);
 
   const handleFinish = (values) => {
-    // Transform separate lat/lng back to GeoJSON coordinates array
+    // 1. Handle Date Range Extraction
+    const [start, end] = values.subscription.dateRange || [];
+    
+    // 2. Prepare Payload
     const submissionData = {
       ...values,
-      location: {
-        type: "Point",
-        coordinates: [
-          values.location?.longitude || 0,
-          values.location?.latitude || 0,
-        ],
+      subscription: {
+        ...values.subscription,
+        // Convert dayjs back to ISO strings
+        startDate: start ? start.toISOString() : null,
+        endDate: end ? end.toISOString() : null,
+        // Force value to "0" if trial or free
+        value: (isTrial || isFree) ? "0" : values.subscription.value
       },
+      domains: values.domains || [],
     };
+
+    delete submissionData.subscription.dateRange;
+
     onSubmit(submissionData);
   };
 
-  // Organize fields into tabs for better UX
   const items = [
     {
       key: "1",
@@ -123,11 +135,18 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             </Col>
             <Col span={12}>
               <Form.Item
-                name="primaryDomain"
-                label="Primary Domain"
-                tooltip="Will be auto-generated if left blank"
+                name="domains"
+                label="Domains"
+                tooltip="Type and press enter or comma to add multiple domains"
+                rules={[{ required: true, message: "At least one domain is required" }]}
               >
-                <Input placeholder="e.g. apollo.scholastech.com" />
+                <Select
+                  mode="tags"
+                  style={{ width: '100%' }}
+                  placeholder="e.g. mylab.com, lab.hospital.com"
+                  tokenSeparators={[',']}
+                  open={false}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -152,7 +171,6 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             </Col>
           </Row>
 
-          {/* Admin Creation Section - Only visible when creating new */}
           {!isEditMode && (
             <>
               <Divider orientation="left">Initial Super Admin</Divider>
@@ -265,17 +283,9 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
                 <Input />
               </Form.Item>
             </Col>
-          </Row>
-          <Divider orientation="left">Coordinates</Divider>
-          <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name={["location", "latitude"]} label="Latitude">
-                <InputNumber style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name={["location", "longitude"]} label="Longitude">
-                <InputNumber style={{ width: "100%" }} />
+              <Form.Item name={["address", "gmapLink"]} label="Google Maps Link">
+                <Input placeholder="https://maps.google.com/..." />
               </Form.Item>
             </Col>
           </Row>
@@ -292,9 +302,9 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
               <Form.Item name={["subscription", "type"]} label="Plan Type">
                 <Select>
                   <Option value="trial">Trial</Option>
+                  <Option value="free">Free</Option>
                   <Option value="basic">Basic</Option>
                   <Option value="pro">Pro</Option>
-                  <Option value="free">Free</Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -308,7 +318,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             </Col>
             <Col span={8}>
               <Form.Item name={["subscription", "frequency"]} label="Frequency">
-                <Select>
+                <Select disabled={isTrial || isFree}>
                   <Option value="monthly">Monthly</Option>
                   <Option value="yearly">Yearly</Option>
                 </Select>
@@ -318,30 +328,27 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name={["subscription", "value"]} label="Plan Value">
-                <Input />
+                <Input disabled={isTrial || isFree} />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item name={["subscription", "trialDuration"]} label="Trial Days">
-                <InputNumber min={0} style={{ width: "100%" }} />
+                <InputNumber min={0} style={{ width: "100%" }} disabled={isFree} />
               </Form.Item>
             </Col>
             <Col span={8}>
-                {/* Usage counter usually read-only, but keeping editable as per request */}
               <Form.Item name={["subscription", "usageCounter"]} label="Usage (Days)">
                 <InputNumber min={0} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name={["subscription", "startDate"]} label="Start Date">
-                <DatePicker style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name={["subscription", "endDate"]} label="End Date">
-                <DatePicker style={{ width: "100%" }} />
+            <Col span={24}>
+              <Form.Item name={["subscription", "dateRange"]} label="Subscription Duration">
+                <RangePicker 
+                  disabled={isFree} 
+                  format="DD MMM YYYY"
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -603,12 +610,10 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
   return (
     <Drawer
       title={isEditMode ? "Edit Institution" : "Add New Institution"}
-      size={size}
-       resizable={{
-          onResize: (newSize) => setSize(newSize),
-        }}
+      width={size}
       onClose={onClose}
       open={open}
+      bodyStyle={{ paddingBottom: 80 }}
       extra={
         <Space>
           <Button onClick={onClose}>Cancel</Button>

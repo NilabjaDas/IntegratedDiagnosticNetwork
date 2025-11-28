@@ -3,23 +3,11 @@ import axios from "axios";
 import CryptoJS from "crypto-js";
 import { store } from "./redux/store";
 
-/* -------------------------
-   Domain / baseURL helpers
-   ------------------------- */
-// Get the protocol (e.g., "https:")
-const protocol = typeof window !== "undefined" ? window.location.protocol : "https:";
-// Get hostname and remove admin. prefix if present
-const hostname = typeof window !== "undefined" ? window.location.hostname : "saltstayz.ai";
-const mainDomain = hostname.startsWith("admin.") ? hostname.slice(6) : hostname;
-const finalUrl = `${protocol}//${mainDomain}`;
 
 export const BASE_URL = "/";
 // export const BASE_URL = process.env.REACT_APP_BASE_URL;
 
-export const currentDomain =
-  BASE_URL === "/" || (typeof window !== "undefined" && window.location.origin === "http://localhost:3000")
-    ? "https://saltstayz.ai"
-    : finalUrl;
+export const currentDomain = "super-admin"
 
 /* -------------------------
    Create axios instances

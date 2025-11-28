@@ -90,6 +90,18 @@ export const createInstitution = async (institutionData) => {
   }
 };
 
+export const activateInstitution = async (id) => {
+  try {
+    const res = await userRequest.put(`/admin-master/institutions/${id}/activate`);
+    return { status: 200, data: res.data };
+  } catch (error) {
+    return { 
+      status: error.response?.status || 500, 
+      message: error.response?.data?.message || "Activation failed" 
+    };
+  }
+};
+
 export const deactivateInstitution = async (id) => {
   try {
     const res = await userRequest.put(`/admin-master/institutions/${id}/deactivate`);
@@ -98,6 +110,18 @@ export const deactivateInstitution = async (id) => {
     return { 
       status: error.response?.status || 500, 
       message: error.response?.data?.message || "Deactivation failed" 
+    };
+  }
+};
+
+export const editInstitution = async (id, institutionData) => {
+  try {
+    const res = await userRequest.put(`/admin-master/institutions/${id}`,institutionData);
+    return { status: 200, data: res.data };
+  } catch (error) {
+    return { 
+      status: error.response?.status || 500, 
+      message: error.response?.data?.message || "Edit failed" 
     };
   }
 };

@@ -132,11 +132,11 @@ function App() {
     let retryTimeout;
 
     const connectEventSource = () => {
-      eventSource = new EventSource(
-        BASE_URL === "/"
-          ? `/server/events?token=${token}`
-          : `${BASE_URL}/server/events?token=${token}`
-      );
+      const eventUrl = BASE_URL === "/"
+          ? `/server/events?token=${token}&domain=super-admin`
+          : `${BASE_URL}/server/events?token=${token}&domain=super-admin`;
+
+      eventSource = new EventSource(eventUrl);
 
       eventSource.onmessage = (event) => {
         // console.log("SSE message:", event.data);

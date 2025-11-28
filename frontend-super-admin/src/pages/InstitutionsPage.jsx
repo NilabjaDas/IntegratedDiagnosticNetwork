@@ -14,6 +14,7 @@ import {
   PlusOutlined,
   EditOutlined,
   StopOutlined,
+  CheckCircleOutlined,
   ReloadOutlined,
   DeleteOutlined,
 } from "@ant-design/icons";
@@ -23,7 +24,9 @@ import {
   getAllInstitutions,
   createInstitution,
   deactivateInstitution,
+  editInstitution,
   deleteInstitution,
+  activateInstitution,
 } from "../redux/apiCalls";
 
 const { Search } = Input;
@@ -83,6 +86,25 @@ const InstitutionsPage = () => {
     setIsDrawerOpen(true);
   };
 
+
+   const handleActivate = (record) => {
+    confirm({
+      title: "Activate Institution?",
+      content: `Are you sure you want to activate ${record.institutionName}?`,
+      okText: "Yes, Activate",
+      okType: "danger",
+      onOk: async () => {
+        const res = await activateInstitution(record.institutionId);
+        if (res.status === 200) {
+          message.success("Institution activated successfully");
+          handleRefresh(pagination.current, pagination.pageSize, searchText);
+        } else {
+          message.error(res.message);
+        }
+      },
+    });
+  };
+
   const handleDeactivate = (record) => {
     confirm({
       title: "Deactivate Institution?",
@@ -120,9 +142,18 @@ const InstitutionsPage = () => {
   };
 
   const handleFormSubmit = async (values) => {
+    console.log(editingItem)
     setFormLoading(true);
     if (editingItem) {
-      message.warning("Edit functionality requires backend update endpoint.");
+      const res = await editInstitution(editingItem.institutionId,values);
+      console.log(res)
+      if (res.status === 200) {
+        message.success("Institution updated successfully!");
+        setIsDrawerOpen(false);
+        handleRefresh(1, pagination.pageSize, searchText);
+      } else {
+        message.error(res.message);
+      }
     } else {
       const res = await createInstitution(values);
       if (res.status === 201) {
@@ -195,6 +226,18 @@ const InstitutionsPage = () => {
                 danger
                 icon={<StopOutlined />}
                 onClick={() => handleDeactivate(record)}
+              />
+            </Tooltip>
+          )}
+
+          {!record.status && (
+            <Tooltip title="Activate">
+              <Button
+                type="text"
+                variant = "text" 
+                color = "green"
+                icon={<CheckCircleOutlined/>}
+                onClick={() => handleActivate(record)}
               />
             </Tooltip>
           )}

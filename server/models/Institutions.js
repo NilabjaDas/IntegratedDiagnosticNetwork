@@ -1,7 +1,8 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
+const bcrypt = require("bcrypt");
 
-// Sub-schemas
+// Sub-schemas (Maintenance & Outlets - Unchanged)
 const maintenanceSchema = new mongoose.Schema({
   activeStatus: { type: Boolean, default: false },
   startTime: { type: String, default: "" },
@@ -32,10 +33,19 @@ const institutionsSchema = new mongoose.Schema({
 
   // --- Identity & Routing ---
   institutionName: { type: String, required: true, trim: true },
-  primaryDomain: { type: String, required: true, lowercase: true, trim: true, unique: true },
+  
+  // REMOVED: primaryDomain
+  
+  // Domains Array: Now the sole source of truth for routing
+  domains: [{ 
+    type: String, 
+    lowercase: true, 
+    trim: true,
+    required: true
+  }],
+
   dbName: { type: String, required: true, unique: true, trim: true }, 
   institutionCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
-  domains: [{ type: String, lowercase: true, trim: true }],
 
   // --- Branding ---
   brand: { type: String, default: "" },
@@ -54,24 +64,12 @@ const institutionsSchema = new mongoose.Schema({
 
   // --- Subscription ---
   subscription: {
-    type: { 
-        type: String, 
-        enum: ["trial", "basic", "pro", "free"], 
-        default: "trial" 
-    },
-    status: { 
-        type: String, 
-        enum: ["active", "deactive"], 
-        default: "active" 
-    },
-    trialDuration: { type: Number, default: 14 }, // Duration in days
-    usageCounter: { type: Number, default: 0 },   // Counter of service usage in days
+    type: { type: String, enum: ["trial", "basic", "pro", "free"], default: "trial" },
+    status: { type: String, enum: ["active", "deactive"], default: "active" },
+    trialDuration: { type: Number, default: 14 },
+    usageCounter: { type: Number, default: 0 },
     value: { type: String, default: "0" },
-    frequency: { 
-        type: String, 
-        enum: ["monthly", "yearly"], 
-        default: "monthly" 
-    },
+    frequency: { type: String, enum: ["monthly", "yearly"], default: "monthly" },
     startDate: { type: Date, default: Date.now },
     endDate: { type: Date }
   },
@@ -90,15 +88,11 @@ const institutionsSchema = new mongoose.Schema({
     state: { type: String, default: "" },
     country: { type: String, default: "India" },
     pincode: { type: String, default: "" },
+    gmapLink:{ type: String, default: "" },
   },
 
-  // --- Location ---
-  location: {
-    type: { type: String, enum: ["Point"], default: "Point" },
-    coordinates: { type: [Number], default: [0, 0] },
-  },
 
-  // --- Billing ---
+
   billing: {
     gstin: { type: String, default: "" },
     pan: { type: String, default: "" },
@@ -109,7 +103,6 @@ const institutionsSchema = new mongoose.Schema({
 
   outlets: [outletSchema],
 
-  // --- Feature Toggles ---
   features: {
     hasRadiology: { type: Boolean, default: false },
     hasPACS: { type: Boolean, default: false },
@@ -117,7 +110,6 @@ const institutionsSchema = new mongoose.Schema({
     hasTeleReporting: { type: Boolean, default: false },
   },
 
-  // --- Settings ---
   settings: {
     timezone: { type: String, default: "Asia/Kolkata" },
     locale: { type: String, default: "en-IN" },
@@ -129,7 +121,6 @@ const institutionsSchema = new mongoose.Schema({
     }
   },
 
-  // --- Integrations ---
   integrations: {
     firebaseBucketName: { type: String, default: "" },
     uploadUrlDomain: { type: String, default: "" },
@@ -144,7 +135,6 @@ const institutionsSchema = new mongoose.Schema({
     }
   },
 
-  // --- Sensitive Data ---
   paymentGateway: {
     provider: { type: String, default: "" },
     config: { type: mongoose.Schema.Types.Mixed, select: false, default: {} }
@@ -171,9 +161,9 @@ const institutionsSchema = new mongoose.Schema({
 });
 
 // Indexes
-institutionsSchema.index({ primaryDomain: 1 }, { unique: true, sparse: true });
+// Removed primaryDomain index. Added domains index to ensure uniqueness across documents.
+institutionsSchema.index({ domains: 1 }, { unique: true, sparse: true });
 institutionsSchema.index({ institutionId: 1 }, { unique: true });
 institutionsSchema.index({ "contact.email": 1 });
-institutionsSchema.index({ "location": "2dsphere" });
 
 module.exports = mongoose.model("Institution", institutionsSchema);
