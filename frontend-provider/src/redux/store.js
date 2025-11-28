@@ -25,7 +25,7 @@ import storage from "redux-persist/lib/storage";
 const encrypt = (data) => {
   return CryptoJS.AES.encrypt(
     JSON.stringify(data),
-    process.env.REACT_APP_REDUX_ENCRYPTION_KEY
+    "Mgt#%2KW3W3Wn.p1KX72kYXU[Af:+:"
   ).toString();
 };
 
@@ -33,7 +33,7 @@ const encrypt = (data) => {
 const decrypt = (encryptedData) => {
   const bytes = CryptoJS.AES.decrypt(
     encryptedData,
-    process.env.REACT_APP_REDUX_ENCRYPTION_KEY
+    "Mgt#%2KW3W3Wn.p1KX72kYXU[Af:+:"
   );
   return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
 };
