@@ -13,7 +13,19 @@ const { requireSuperAdmin } = require("../middleware/auth");
 const { encryptResponse } = require("../middleware/encryptResponse");
 
 
+const getTenantUserModel = async (institutionId) => {
+    const institution = await Institution.findOne({ institutionId });
+    if (!institution) return null;
 
+    // Connect to the specific tenant database
+    const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+    
+    // Handle both Schema export and Model export patterns safely
+    const UserSchema = User.schema || User; 
+    
+    // Return the compiled model for this specific DB
+    return getModel(tenantDb, "User", UserSchema);
+};
 
 
 /**
@@ -137,7 +149,7 @@ router.get("/institutions", requireSuperAdmin, async (req, res) => {
 
 /**
  * @route   POST /api/institutions
- * @desc    Create a new Institution (Master Admin Only)
+ * @desc    Create a new Institution with Auto-Generated Admin
  */
 router.post("/institutions", requireSuperAdmin, async (req, res) => {
     try {
@@ -151,12 +163,16 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
             return res.status(400).json({ message: "institutionName is required." });
         }
 
-        const adminData = data.admin || {}; 
-        if (!adminData.username || !adminData.password || !adminData.fullName) {
-             return res.status(400).json({ 
-                 message: "Admin details (username, password, fullName) are required." 
-             });
-        }
+        // --- HARDCODED ADMIN CREDENTIALS ---
+        const adminData = {
+            username: "superadmin",
+            password: "TechFloater@2025",
+            fullName: "Super Admin",
+            email: data.contact?.email || "admin@placeholder.com",
+            phone: data.contact?.phone || "",
+            role: "admin",
+            isActive: true
+        };
 
         // 1. Auto-Generate & Sanitize DB Name
         if (data.dbName) {
@@ -174,18 +190,15 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
         }
 
         // 3. Domain Logic
-        // Ensure domains is an array
         if (!data.domains || !Array.isArray(data.domains)) {
             data.domains = [];
         }
 
-        // If no domains provided, generate a default one
         if (data.domains.length === 0) {
             const baseDomain = process.env.BASE_DOMAIN || "scholastech.com"; 
             const defaultDomain = `${data.dbName}.${baseDomain}`.toLowerCase();
             data.domains.push(defaultDomain);
         } else {
-            // Ensure all provided domains are lowercase
             data.domains = data.domains.map(d => d.toLowerCase());
         }
 
@@ -206,11 +219,11 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
             }
         }
 
-        // 5. Conflict Check (Updated for domains array)
+        // 5. Conflict Check
         const existing = await Institution.findOne({
             $or: [
                 { dbName: data.dbName },
-                { domains: { $in: data.domains } }, // Check if ANY of the new domains are already taken
+                { domains: { $in: data.domains } },
                 { institutionCode: data.institutionCode }
             ]
         });
@@ -245,9 +258,9 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
             username: adminData.username,
             password: hashedAdminPassword,
             fullName: adminData.fullName,
-            email: adminData.email || "",
-            phone: adminData.phone || "",
-            role: "admin", 
+            email: adminData.email,
+            phone: adminData.phone,
+            role: adminData.role,
             isActive: true
         });
 
@@ -271,7 +284,6 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
         res.status(500).json({ message: "Internal Server Error: " + err.message });
     }
 });
-
 
 /**
  * @route   GET /api/institutions/:id/users

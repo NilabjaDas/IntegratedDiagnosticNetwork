@@ -11,7 +11,7 @@ import {
   setUsername,
   tokenFailureMessage,
 } from "./tokenRedux";
-import { setBrandDetails } from "./brandRedux";
+import { setInstitutionDetails } from "./InstitutionRedux";
 
 //Get Encryption Key
 export const getKey = async (dispatch) => {
@@ -26,15 +26,15 @@ export const getKey = async (dispatch) => {
 //Ping for Token Validity Check
 export const getPing = async () => {
   try {
-    const res = await userRequest.get("/authenticate/brand-ping");
+    const res = await userRequest.get("/authenticate/ping");
     return res.status;
   } catch (error) {
     return error.status;
   }
 };
 
-//Admin Login
-export const adminLogin = async (dispatch, username, password) => {
+//Staff Login
+export const staffLogin = async (dispatch, username, password) => {
   dispatch(getTokenStart());
   try {
     const res = await publicRequest.post("/authenticate/login-staff", {
@@ -56,11 +56,11 @@ export const adminLogin = async (dispatch, username, password) => {
 };
 
 //Get Brand Details
-export const getBrandDetails = async (dispatch) => {
+export const getInstitutionDetails = async (dispatch) => {
   try {
-    const response = await publicRequest.get("/admin/brand-details");
+    const response = await publicRequest.get("/institutions/details");
 
-    dispatch(setBrandDetails(response.data));
+    dispatch(setInstitutionDetails(response.data));
   } catch (error) {
     console.error("Error fetching brand details:", error);
   }

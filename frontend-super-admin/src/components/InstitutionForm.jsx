@@ -14,7 +14,7 @@ import {
   Switch,
   Tabs,
 } from "antd";
-import dayjs from "dayjs"; // CHANGED: Switched from moment to dayjs for AntD v5 compatibility
+import dayjs from "dayjs"; 
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -33,12 +33,10 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
   useEffect(() => {
     if (open) {
       if (initialValues) {
-        // Map data to form fields
         const formattedValues = {
           ...initialValues,
           subscription: {
             ...initialValues.subscription,
-            // Use dayjs objects for the RangePicker
             dateRange: [
               initialValues.subscription?.startDate ? dayjs(initialValues.subscription.startDate) : null,
               initialValues.subscription?.endDate ? dayjs(initialValues.subscription.endDate) : null,
@@ -49,7 +47,6 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
         form.setFieldsValue(formattedValues);
       } else {
         form.resetFields();
-        // Set default values
         form.setFieldsValue({
           subscription: {
             type: "trial",
@@ -57,7 +54,6 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             status: "active",
             trialDuration: 14,
             value: "0",
-            // Default range: Today to 14 days later
             dateRange: [dayjs(), dayjs().add(14, 'day')]
           },
           address: {
@@ -95,32 +91,27 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
   }, [open, initialValues, form]);
 
   const handleFinish = (values) => {
-    // 1. Handle Date Range Extraction
-    const [start, end] = values.subscription.dateRange || [];
+    const [start, end] = values.subscription?.dateRange || [];
     
-    // 2. Prepare Payload
     const submissionData = {
       ...values,
       subscription: {
         ...values.subscription,
-        // Convert dayjs back to ISO strings
         startDate: start ? start.toISOString() : null,
         endDate: end ? end.toISOString() : null,
-        // Force value to "0" if trial or free
-        value: (isTrial || isFree) ? "0" : values.subscription.value
+        value: (isTrial || isFree) ? "0" : values.subscription?.value
       },
       domains: values.domains || [],
     };
 
     delete submissionData.subscription.dateRange;
-
     onSubmit(submissionData);
   };
 
   const items = [
     {
       key: "1",
-      label: "Identity & Admin",
+      label: "Identity",
       children: (
         <>
           <Row gutter={16}>
@@ -154,66 +145,28 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             <Col span={12}>
               <Form.Item
                 name="dbName"
-                label="Database Name"
-                tooltip="Unique DB identifier. Auto-generated if blank."
+                label="Database Name (Optional)"
+                tooltip="Unique DB identifier. Auto-generated from name if left blank."
               >
-                <Input placeholder="e.g. apollo_db" disabled={isEditMode} />
+                <Input placeholder="(Auto-generated) e.g. apollo_db" disabled={isEditMode} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
                 name="institutionCode"
-                label="Institution Code"
-                tooltip="Unique short code. Auto-generated if blank."
+                label="Institution Code (Optional)"
+                tooltip="Unique short code. Auto-generated from name if left blank."
               >
-                <Input placeholder="e.g. APLO-X92" disabled={isEditMode} />
+                <Input placeholder="(Auto-generated) e.g. APLO-X92" disabled={isEditMode} />
               </Form.Item>
             </Col>
           </Row>
-
           {!isEditMode && (
-            <>
-              <Divider orientation="left">Initial Super Admin</Divider>
-              <p style={{ color: "#888", marginBottom: 16 }}>
-                This user will be created in the new database to manage the institution.
-              </p>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item
-                    name={["admin", "fullName"]}
-                    label="Admin Full Name"
-                    rules={[{ required: true, message: "Required" }]}
-                  >
-                    <Input placeholder="John Doe" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    name={["admin", "username"]}
-                    label="Admin Username"
-                    rules={[{ required: true, message: "Required" }]}
-                  >
-                    <Input placeholder="admin_user" />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item
-                    name={["admin", "password"]}
-                    label="Admin Password"
-                    rules={[{ required: true, message: "Required" }]}
-                  >
-                    <Input.Password placeholder="Secret Password" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name={["admin", "email"]} label="Admin Email">
-                    <Input placeholder="admin@hospital.com" />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </>
+             <p style={{ color: "#1677ff", marginTop: 8, background: "#e6f7ff", padding: "10px", borderRadius: "6px", border: "1px solid #91caff" }}>
+                <strong>Note:</strong> A default superadmin user will be automatically created. <br/>
+                Username: <b>superadmin</b> <br/>
+                Password: <b>TechFloater@2025</b>
+             </p>
           )}
         </>
       ),
@@ -464,7 +417,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
         <>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="brand" label="Brand Code">
+              <Form.Item name="brandCode" label="Brand Code">
                 <Input />
               </Form.Item>
             </Col>
@@ -477,6 +430,13 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="institutionLogoUrl" label="Logo URL">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+           <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item name="institutionSymbolUrl" label="Short Logo URL">
                 <Input />
               </Form.Item>
             </Col>

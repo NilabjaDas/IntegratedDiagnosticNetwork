@@ -12,6 +12,7 @@ import {
 } from "antd";
 import {
   PlusOutlined,
+  TeamOutlined,
   EditOutlined,
   StopOutlined,
   CheckCircleOutlined,
@@ -28,6 +29,7 @@ import {
   deleteInstitution,
   activateInstitution,
 } from "../redux/apiCalls";
+import UserManagementDrawer from "../components/UserManagementDrawer";
 
 const { Search } = Input;
 const { confirm } = Modal;
@@ -52,6 +54,8 @@ const InstitutionsPage = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
+  const [userDrawerOpen, setUserDrawerOpen] = useState(false);
+  const [selectedInstitutionForUsers, setSelectedInstitutionForUsers] = useState(null);
 
   useEffect(() => {
     // Check if the slice exists and if the list is empty
@@ -85,7 +89,10 @@ const InstitutionsPage = () => {
     setEditingItem(record);
     setIsDrawerOpen(true);
   };
-
+const handleManageUsers = (record) => {
+    setSelectedInstitutionForUsers(record);
+    setUserDrawerOpen(true);
+  };
 
    const handleActivate = (record) => {
     confirm({
@@ -142,11 +149,9 @@ const InstitutionsPage = () => {
   };
 
   const handleFormSubmit = async (values) => {
-    console.log(editingItem)
     setFormLoading(true);
     if (editingItem) {
       const res = await editInstitution(editingItem.institutionId,values);
-      console.log(res)
       if (res.status === 200) {
         message.success("Institution updated successfully!");
         setIsDrawerOpen(false);
@@ -180,14 +185,21 @@ const InstitutionsPage = () => {
       dataIndex: "institutionCode",
       key: "institutionCode",
     },
-    {
+ {
       title: "Domain",
-      dataIndex: "primaryDomain",
-      key: "primaryDomain",
-      render: (text) => (
-        <a href={`http://${text}`} target="_blank" rel="noopener noreferrer">
-          {text}
-        </a>
+      dataIndex: "domains",
+      key: "domains",
+      render: (domains) => (
+        <div>
+          {Array.isArray(domains) && domains.map((domain, index) => (
+            <span key={domain}>
+              <a href={`http://${domain}`} target="_blank" rel="noopener noreferrer">
+                {domain}
+              </a>
+              {index < domains.length - 1 && ", "}
+            </span>
+          ))}
+        </div>
       ),
     },
     {
@@ -211,6 +223,15 @@ const InstitutionsPage = () => {
       key: "action",
       render: (_, record) => (
         <Space size="middle">
+
+          <Tooltip title="Manage Users">
+            <Button
+              type="text"
+              icon={<TeamOutlined />}
+              onClick={() => handleManageUsers(record)}
+            />
+          </Tooltip>
+
           <Tooltip title="Edit Details">
             <Button
               type="text"
@@ -320,6 +341,12 @@ const InstitutionsPage = () => {
         onSubmit={handleFormSubmit}
         initialValues={editingItem}
         loading={formLoading}
+      />
+
+      <UserManagementDrawer
+        open={userDrawerOpen}
+        onClose={() => setUserDrawerOpen(false)}
+        institution={selectedInstitutionForUsers}
       />
     </div>
   );

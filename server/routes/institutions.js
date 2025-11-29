@@ -44,11 +44,66 @@ const checkOwnership = (reqUser, targetId) => {
 // ==========================================
 
 /**
+ * @route   GET /api/institutions/public/details
+ * @desc    Get Public Institution Details (Theme, Logo, Name) based on Domain
+ * @access  Public (No Auth Required)
+ */
+router.get("/details", async (req, res) => {
+    try {
+        // req.institution is automatically attached by institutionMiddleware
+        // based on the 'branddomain' header or 'domain' query param.
+        const institution = req.institution;
+
+        if (!institution) {
+            return res.status(404).json({ message: "Institution not found for this domain." });
+        }
+
+        // Construct a safe, public-facing object
+        // We DO NOT return dbName, secrets, or internal configs here.
+        const publicData = {
+            institutionId: institution.institutionId,
+            institutionName: institution.institutionName,
+            institutionCode: institution.institutionCode,
+            
+            // Branding & Visuals
+            brandName: institution.brandName,
+            brand: institution.brand,
+            loginPageImgUrl: institution.loginPageImgUrl,
+            institutionLogoUrl: institution.institutionLogoUrl,
+            institutionSymbolUrl : institution.institutionSymbolUrl,
+            favicon: institution.favicon,
+            theme: institution.theme, // primaryColor, etc.
+
+            // Public Contact Info
+            contact: institution.contact,
+            address: institution.address,
+            
+            // UI Toggles (So frontend knows what to hide/show)
+            features: institution.features, 
+            
+            // Localization
+            settings: {
+                locale: institution.settings?.locale,
+                timezone: institution.settings?.timezone,
+                defaultLanguage: institution.settings?.defaultLanguage,
+                queue: institution.settings?.queue // If needed for public token display
+            }
+        };
+
+        res.json(publicData);
+
+    } catch (err) {
+        console.error("Public Details API Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+/**
  * @route   GET /api/institutions/:id
  * @desc    Get Institution Details
  * @access  Private (Any Auth User belonging to this Institution)
  */
-router.get("/institutions/:id", async (req, res) => {
+router.get("/:id", async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -77,7 +132,7 @@ router.get("/institutions/:id", async (req, res) => {
 });
 
 
-router.put("/institutions/:id", authorizeRoles("admin"), async (req, res) => {
+router.put("/:id", authorizeRoles("admin"), async (req, res) => {
     try {
         const { id } = req.params;
         const updateData = req.body;
@@ -124,39 +179,6 @@ router.put("/institutions/:id", authorizeRoles("admin"), async (req, res) => {
 });
 
 
-router.put("/institutions/:id/status", authorizeRoles("admin"), async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-
-        // RESTRICTION: Only Master Admin can change status (recommended)
-        if (!req.user.isMasterAdmin) {
-             return res.status(403).json({ message: "Only Master Admin can change institution status" });
-        }
-
-        if (typeof status !== 'boolean') {
-            return res.status(400).json({ message: "Invalid 'status'. Must be boolean." });
-        }
-
-        const updatedInstitution = await Institution.findOneAndUpdate(
-            { institutionId: id },
-            { $set: { status: status } },
-            { new: true }
-        );
-
-        if (!updatedInstitution) {
-            return res.status(404).json({ message: "Institution not found" });
-        }
-
-        res.json({ 
-            message: `Status updated to ${status ? 'Active' : 'Inactive'}`,
-            institution: filterInstitutionForClient(updatedInstitution)
-        });
-
-    } catch (err) {
-        res.status(500).json({ message: "Error updating status: " + err.message });
-    }
-});
 
 
 router.post("/users/:institutionId", authorizeRoles("admin"), async (req, res) => {

@@ -7,6 +7,7 @@ const UserSchema = require("../models/User").schema;
 const SuperAdmin = require("../models/SuperAdmin");
 const { authenticateUser } = require("../middleware/auth");
 const { encryptResponse } = require("../middleware/encryptResponse");
+const userSchema = require("../models/User");
 
 
 
@@ -91,39 +92,13 @@ router.post("/login-staff", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Super Admin Check
-    if (username.toLowerCase() === "admin" || username.toLowerCase() === "superadmin") {
-      const superAdmin = await SuperAdmin.findOne({ username: "admin" }).select("+password");
-      if (!superAdmin) return res.status(404).json({ message: "Super admin not found." });
-
-      const isMatch = await bcrypt.compare(password, superAdmin.password);
-      if (!isMatch) return res.status(401).json({ message: "Invalid credentials." });
-
-      const token = generateToken({
-        _id: superAdmin._id,
-        userId: superAdmin.userId,
-        role: "superadmin",
-        username: superAdmin.username,
-        isMasterAdmin: true
-      }, "MASTER");
-
-      return res.json({
-        token,
-        user: {
-          id: superAdmin._id,
-          name: superAdmin.fullName,
-          role: "superadmin",
-          isMasterAdmin: true
-        }
-      });
-    }
 
     if (!req.db) {
         return res.status(500).json({ message: "Database connection failed. Is the Institution ID correct?" });
     }
 
     // 1. Get User Model for this Institution
-    const User = req.db.model("User", UserSchema);
+    const User = req.db.model("User", userSchema);
 
     // 2. Find User (explicitly select password)
     const user = await User.findOne({ 

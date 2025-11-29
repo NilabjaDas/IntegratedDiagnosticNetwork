@@ -30,7 +30,7 @@ import HomePage from "./pages/HomePage";
 import Page1 from "./pages/Page1";
 import Page2 from "./pages/Page2";
 import Page3 from "./pages/Page3";
-import { getBrandDetails, getPing } from "./redux/apiCalls";
+import { getInstitutionDetails, getPing } from "./redux/apiCalls";
 
 import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
@@ -67,9 +67,7 @@ function App() {
   const dispatch = useDispatch();
   const blockedRef = useRef(false);
   // --- selectors (kept those still used) ---
-  const brandDetails = useSelector(
-    (state) => state[process.env.REACT_APP_BRAND_DETAILS_KEY]?.brandDetails
-  );
+   const institutionDetails =  useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails)
   const token = useSelector(
     (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
   );
@@ -123,12 +121,12 @@ function App() {
   // -------------------------
   // Fetch brand details (unchanged)
   // -------------------------
-  // useEffect(() => {
-  //   const fetchBrandDetails = async () => {
-  //     await getBrandDetails(dispatch);
-  //   };
-  //   fetchBrandDetails();
-  // }, [dispatch]);
+  useEffect(() => {
+    const fetchInstitutionDetails = async () => {
+      await getInstitutionDetails(dispatch);
+    };
+    fetchInstitutionDetails();
+  }, [dispatch]);
 
 
 
@@ -271,9 +269,9 @@ function BackWatcher() {
   return (
     <ConfigProvider theme={theme === "dark" ? darkTheme : {}}>
       <Helmet>
-        <link rel="icon" href={brandDetails?.favicon} />
+        <link rel="icon" href={institutionDetails?.favicon} />
         <title>
-          {`Medico Control Center | ${brandDetails?.brandName || "TechFloater"}`}
+          {`Medico Control Center | ${institutionDetails?.brandName || "TechFloater"}`}
         </title>
       </Helmet>
 

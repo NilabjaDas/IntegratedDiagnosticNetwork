@@ -16,7 +16,7 @@ const Sidebar = ({ collapsed }) => {
   const location = useLocation();
   const dispatch = useDispatch();
   const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
-
+  const institutionDetails =  useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails)
   const handleMenuClick = (e) => {
     dispatch(setPageLocation(e.key));
   };
@@ -41,14 +41,53 @@ const Sidebar = ({ collapsed }) => {
         boxShadow: theme === "light" ? "2px 0 8px 0 rgba(29,35,41,.05)" : "none",
       }}
     >
-      <div
-        className="logo"
-        style={{
-          height: "32px",
-          margin: "16px",
-          background: theme === "dark" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
-        }}
-      />
+        {collapsed ? (
+        <div
+          style={{
+            height: "80px",
+            margin: "10px",
+            // Optional: Use flex to center if the image aspect ratio leaves gaps
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            // background: theme === "dark" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
+          }}
+        >
+          <img
+            src= {institutionDetails?.institutionSymbolUrl}
+            alt="Logo"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain", // Ensures the full logo is visible without stretching
+              display: "block", // Removes potential extra space below the image
+            }}
+          />
+        </div>
+      ) : (
+        <div
+          style={{
+            height: "150px",
+            margin: "5px",
+            // Optional: Use flex to center if the image aspect ratio leaves gaps
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            // background: theme === "dark" ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
+          }}
+        >
+          <img
+            src={institutionDetails?.institutionLogoUrl}
+            alt="Logo"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain", // Ensures the full logo is visible without stretching
+              display: "block", // Removes potential extra space below the image
+            }}
+          />
+        </div>
+      )}
       <Menu
         theme={theme === "dark" ? "dark" : "light"}
         mode="inline"

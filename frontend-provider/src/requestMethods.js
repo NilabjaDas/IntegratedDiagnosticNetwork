@@ -16,7 +16,7 @@ const finalUrl = `${protocol}//${mainDomain}`;
 export const BASE_URL = "/";
 // export const BASE_URL = process.env.REACT_APP_BASE_URL;
 
-export const currentDomain = "apollo"
+export const currentDomain = "wakilslab.com"
 
 /* -------------------------
    Create axios instances

@@ -137,3 +137,52 @@ export const deleteInstitution = async (id) => {
     };
   }
 };
+
+export const getInstitutionUsers = async (institutionId) => {
+  try {
+    // Note: Route is /admin-master/institutions/:id/users
+    const res = await userRequest.get(`/admin-master/institutions/${institutionId}/users`);
+    return { status: 200, data: res.data.data };
+  } catch (error) {
+    return {
+      status: error.response?.status || 500,
+      message: error.response?.data?.message || "Fetch users failed"
+    };
+  }
+};
+
+export const createInstitutionUser = async (institutionId, userData) => {
+  try {
+    const res = await userRequest.post(`/admin-master/institutions/${institutionId}/users`, userData);
+    return { status: 201, data: res.data.data };
+  } catch (error) {
+    return {
+      status: error.response?.status || 500,
+      message: error.response?.data?.message || "Create user failed"
+    };
+  }
+};
+
+export const updateInstitutionUser = async (institutionId, userId, userData) => {
+  try {
+    const res = await userRequest.put(`/admin-master/institutions/${institutionId}/users/${userId}`, userData);
+    return { status: 200, data: res.data.data };
+  } catch (error) {
+    return {
+      status: error.response?.status || 500,
+      message: error.response?.data?.message || "Update user failed"
+    };
+  }
+};
+
+export const deleteInstitutionUser = async (institutionId, userId) => {
+  try {
+    const res = await userRequest.delete(`/admin-master/institutions/${institutionId}/users/${userId}`);
+    return { status: 200, data: res.data };
+  } catch (error) {
+    return {
+      status: error.response?.status || 500,
+      message: error.response?.data?.message || "Delete user failed"
+    };
+  }
+};

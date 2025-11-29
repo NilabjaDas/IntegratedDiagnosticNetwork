@@ -34,7 +34,6 @@ const institutionsSchema = new mongoose.Schema({
   // --- Identity & Routing ---
   institutionName: { type: String, required: true, trim: true },
   
-  // REMOVED: primaryDomain
   
   // Domains Array: Now the sole source of truth for routing
   domains: [{ 
@@ -48,10 +47,11 @@ const institutionsSchema = new mongoose.Schema({
   institutionCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
 
   // --- Branding ---
-  brand: { type: String, default: "" },
+  brandCode: { type: String, default: "" },
   brandName: { type: String, default: "" },
   loginPageImgUrl: { type: String, default: "" },
   institutionLogoUrl: { type: String, default: "" },
+  institutionSymbolUrl: { type: String, default: "" },
   favicon: { type: String, default: "" },
   status: { type: Boolean, default: true },
 
@@ -161,7 +161,6 @@ const institutionsSchema = new mongoose.Schema({
 });
 
 // Indexes
-// Removed primaryDomain index. Added domains index to ensure uniqueness across documents.
 institutionsSchema.index({ domains: 1 }, { unique: true, sparse: true });
 institutionsSchema.index({ institutionId: 1 }, { unique: true });
 institutionsSchema.index({ "contact.email": 1 });

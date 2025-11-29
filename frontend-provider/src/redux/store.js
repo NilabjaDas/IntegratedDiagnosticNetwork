@@ -3,7 +3,7 @@ import { configureStore, combineReducers } from "@reduxjs/toolkit";
 
 import tokenReducer from "./tokenRedux";
 import uiReducer from "./uiRedux";
-import brandReducer from "./brandRedux";
+import institutionReducer from "./InstitutionRedux";
 
 import { CLEAR_ALL_REDUCERS } from "./actionTypes";
 
@@ -54,7 +54,7 @@ const persistConfig = {
 const appReducer = combineReducers({
   [process.env.REACT_APP_ACCESS_TOKEN_KEY]: tokenReducer,
   [process.env.REACT_APP_UI_DATA_KEY]: uiReducer,
-  [process.env.REACT_APP_BRAND_DETAILS_KEY] : brandReducer,
+  [process.env.REACT_APP_INSTITUTIONS_DATA_KEY] : institutionReducer,
 
 });
 
@@ -66,7 +66,6 @@ const rootReducer = (state, action) => {
         ...state,
         [process.env.REACT_APP_ACCESS_TOKEN_KEY]: undefined,
         [process.env.REACT_APP_UI_DATA_KEY]: undefined,
-
       },
       action
     );

@@ -16,6 +16,9 @@ const { Header } = Layout;
 const Navbar = ({ collapsed, setCollapsed }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+
+  const institutionDetails =  useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails)
+  console.log(institutionDetails)
   const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
   const [modalOpen, setModalOpen] = useState(false);
   const {
@@ -74,6 +77,7 @@ const Navbar = ({ collapsed, setCollapsed }) => {
           transition: "background 0.3s, border-color 0.3s",
         }}
       >
+     
         <div style={{ display: "flex", alignItems: "center" }}>
           <Button
             type="text"
@@ -87,6 +91,9 @@ const Navbar = ({ collapsed, setCollapsed }) => {
               marginLeft: -24, // Aligns button flush with edge
             }}
           />
+           <b>
+                {institutionDetails?.institutionName}
+          </b>
         </div>
 
         <div style={{ display: "flex", alignItems: "center" }}>

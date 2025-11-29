@@ -32,7 +32,7 @@ export const getPing = async () => {
 };
 
 //Admin Login
-export const adminLogin = async (dispatch, username, password) => {
+export const staffLogin = async (dispatch, username, password) => {
   dispatch(getTokenStart());
   try {
     const res = await publicRequest.post("/admin-master/login", {
@@ -54,7 +54,7 @@ export const adminLogin = async (dispatch, username, password) => {
 };
 
 //Get Brand Details
-export const getBrandDetails = async (dispatch) => {
+export const getInstitutionDetails = async (dispatch) => {
   try {
     const response = await publicRequest.get("/admin/brand-details");
 
