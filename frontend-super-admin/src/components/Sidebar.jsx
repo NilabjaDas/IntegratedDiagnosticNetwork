@@ -39,7 +39,7 @@ const Sidebar = ({ collapsed }) => {
         bottom: 0,
         zIndex: 10,
         // Force white background in light mode to avoid default navy blue
-        background: theme === "dark" ? "#000000" : "#ffffff",
+        background: theme === "dark" ? "#181818" : "#ffffff",
         borderRight: theme === "dark" ? "1px solid #303030" : "none",
         boxShadow:
           theme === "light" ? "2px 0 8px 0 rgba(29,35,41,.05)" : "none",

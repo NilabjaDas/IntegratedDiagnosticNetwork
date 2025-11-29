@@ -629,34 +629,180 @@ router.get("/base-tests", requireSuperAdmin, async (req, res) => {
     res.json(tests);
 });
 
-// POST /api/admin-master/seed-base (Legacy/Bulk)
-router.post("/seed-base", requireSuperAdmin, async (req, res) => {
-  try {
-    const tests = req.body;
-    if (!Array.isArray(tests)) return res.status(400).json({ message: "Body must be an array" });
+router.get("/base-tests", async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const search = req.query.search || "";
+        const department = req.query.department;
 
-    const operations = tests.map(test => ({
-      updateOne: {
-        filter: { code: test.testCode || test.code },
-        update: { 
-          $set: {
-            code: test.testCode || test.code,
-            name: test.name,
-            department: test.department,
-            category: test.category,
-            parameters: test.parameters,
-            template: test.template
-          }
-        },
-        upsert: true
-      }
-    }));
+        const skip = (page - 1) * limit;
+        let query = {};
 
-    const result = await BaseTest.bulkWrite(operations);
-    res.json({ message: "Base Master Updated", result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+        if (search) {
+            query.$text = { $search: search };
+        }
+
+        if (department) {
+            query.department = department;
+        }
+
+        const tests = await BaseTest.find(query)
+            .sort({ name: 1 })
+            .skip(skip)
+            .limit(limit);
+
+        const total = await BaseTest.countDocuments(query);
+
+        res.json({
+            data: tests,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+    } catch (err) {
+        console.error("Get Base Tests Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+/**
+ * @route   POST /api/catalog/base-tests
+ * @desc    Create a Single Base Test
+ * @access  Super Admin Only
+ */
+router.post("/base-tests", requireSuperAdmin, async (req, res) => {
+    try {
+        const { code, name, department, category, specimenType, method, parameters, description, prerequisites } = req.body;
+
+        if (!code || !name || !department) {
+            return res.status(400).json({ message: "Code, Name, and Department are required." });
+        }
+
+        const existing = await BaseTest.findOne({ code: code.toUpperCase() });
+        if (existing) {
+            return res.status(409).json({ message: `Test with code ${code} already exists.` });
+        }
+
+        const newTest = new BaseTest({
+            code: code.toUpperCase(),
+            name,
+            department,
+            category,
+            specimenType,
+            method,
+            parameters,     // Array of objects
+            description,
+            prerequisites,
+            isActive: true
+        });
+
+        await newTest.save();
+        res.status(201).json({ message: "Base Test created successfully", data: newTest });
+
+    } catch (err) {
+        console.error("Create Base Test Error:", err);
+        res.status(500).json({ message: "Internal Server Error: " + err.message });
+    }
+});
+
+/**
+ * @route   PUT /api/catalog/base-tests/:id
+ * @desc    Update a Base Test
+ * @access  Super Admin Only
+ */
+router.put("/base-tests/:id", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        // Prevent changing immutable fields if necessary, typically code should be stable
+        // updates.code = updates.code?.toUpperCase(); 
+
+        const updatedTest = await BaseTest.findByIdAndUpdate(
+            id,
+            { $set: updates },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedTest) {
+            return res.status(404).json({ message: "Test not found." });
+        }
+
+        res.json({ message: "Base Test updated successfully", data: updatedTest });
+
+    } catch (err) {
+        console.error("Update Base Test Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+/**
+ * @route   DELETE /api/catalog/base-tests/:id
+ * @desc    Delete (Soft or Hard) a Base Test
+ * @access  Super Admin Only
+ */
+router.delete("/base-tests/:id", requireSuperAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Hard Delete
+        const deletedTest = await BaseTest.findByIdAndDelete(id);
+
+        if (!deletedTest) {
+            return res.status(404).json({ message: "Test not found." });
+        }
+
+        res.json({ message: "Base Test deleted successfully." });
+
+    } catch (err) {
+        console.error("Delete Base Test Error:", err);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+/**
+ * @route   POST /api/catalog/seed-base
+ * @desc    Bulk Upsert Base Tests (For seeding/migration)
+ * @access  Super Admin Only
+ */
+router.post("/seed-base", async (req, res) => {
+    try {
+        const tests = req.body;
+        if (!Array.isArray(tests)) return res.status(400).json({ message: "Body must be an array" });
+
+        const operations = tests.map(test => ({
+            updateOne: {
+                filter: { code: test.code?.toUpperCase() }, // Match by Code
+                update: { 
+                    $set: {
+                        code: test.code?.toUpperCase(),
+                        name: test.name,
+                        department: test.department,
+                        category: test.category,
+                        specimenType: test.specimenType,
+                        method: test.method,
+                        parameters: test.parameters,
+                        description: test.description,
+                        prerequisites: test.prerequisites,
+                        isDescriptive: test.isDescriptive,
+                        template: test.template
+                    }
+                },
+                upsert: true
+            }
+        }));
+
+        const result = await BaseTest.bulkWrite(operations);
+        res.json({ message: "Base Master Catalog Updated", result });
+
+    } catch (err) {
+        console.error("Seed Error:", err);
+        res.status(500).json({ error: err.message });
+    }
 });
 
 module.exports = router;

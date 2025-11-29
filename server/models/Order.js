@@ -1,64 +1,92 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
+const resultSchema = new mongoose.Schema({
+  parameterId: { type: String }, // Link to the parameter definition inside Test
+  name: { type: String, required: true }, // e.g. "Hemoglobin"
+  value: { type: String }, // The actual reading
+  unit: { type: String },  // e.g. "g/dL"
+  isAbnormal: { type: Boolean, default: false }, // Flagged if outside bioRefRange
+  notes: { type: String } // Technician remarks
+}, { _id: false });
+
 const orderItemSchema = new mongoose.Schema({
-  // Type is CRITICAL now
+  // Type distinguishing
   itemType: { type: String, enum: ["Test", "Package", "Consultation"], required: true },
   
-  // ID of the Test OR the Doctor
+  // Link to the Catalog Item
   itemId: { type: String, required: true }, 
-  name: { type: String }, // "CBC" or "Dr. Sweetheart Consultation"
+  name: { type: String, required: true }, 
   
-  price: Number, // The amount billed to patient (e.g., 1000)
-  
-  // === NEW: Financial Split (Calculated at booking) ===
+  // Financials
+  price: { type: Number, required: true }, // Billed amount for this line item
   financials: {
-    doctorShare: { type: Number, default: 0 },      // e.g., 700
-    institutionShare: { type: Number, default: 0 }  // e.g., 300
+    doctorShare: { type: Number, default: 0 },
+    institutionShare: { type: Number, default: 0 }
   },
 
-  // Lab Results (If itemType == Test)
-  results: [mongoose.Schema.Types.Mixed],
+  // --- PACKAGE HANDLING ---
+  // If this item is a Test inside a Package, this ID points to the Package Item's _id
+  parentPackageId: { type: String, default: null },
+
+  // --- EXECUTION STATUS ---
+  // Tracks lifecycle of this specific test/consultation
+  status: { 
+    type: String, 
+    enum: ["Pending", "SampleCollected", "Processing", "Completed", "Cancelled", "Reported"], 
+    default: "Pending" 
+  },
+
+  // --- OUTCOMES ---
+  // For Tests:
+  results: [resultSchema],
   
-  // Consultation Notes (If itemType == Consultation)
+  // For Consultations:
   consultationNotes: { type: String }, 
   prescription: {
-      url: { type: String }, // For image uploads
-      text: { type: String }, // For typed prescriptions
+      url: { type: String }, 
+      text: { type: String },
       medicines: [{
           name: String,
           dosage: String,
-          frequency: String, // e.g., 1-0-1
-          duration: String, // e.g., 5 Days
-          instruction: String // e.g., Before Food
+          frequency: String, 
+          duration: String, 
+          instruction: String 
       }]
-  },
-
-  status: { type: String, default: "Pending" }
+  }
 });
 
 const orderSchema = new mongoose.Schema({
   institutionId: { type: String, required: true, index: true },
-  orderId: { type: String, default: () => uuidv4(), unique: true },
-  displayId: { type: String }, 
+  orderId: { type: String, default: () => uuidv4(), unique: true, index: true },
+  displayId: { type: String }, // Short ID for humans (e.g. "ORD-1001")
   
   patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   
-  // === UPDATED APPOINTMENT LOGIC ===
+  // Appointment Details (Optional for direct lab walk-ins)
   appointment: {
-    doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' }, // Link to Doctor
+    doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
     date: { type: Date },
-    tokenNumber: { type: Number }, // Queue Serial: #13
-    estimatedTime: { type: String }, // "11:45 AM"
-    status: { type: String, default: "Scheduled" } // Scheduled, Checked-In, Completed
+    tokenNumber: { type: Number },
+    estimatedTime: { type: String },
+    status: { type: String, default: "Scheduled" } 
   },
   
-  items: [orderItemSchema], // Can be [Consultation] OR [Test, Test] OR [Consultation, Test]
+  // The "Exploded" List of Items
+  // Contains Packages (for billing) AND their individual Tests (for execution)
+  items: [orderItemSchema], 
   
-  totalAmount: Number,
-  netAmount: Number,
-  paymentStatus: { type: String, default: "Pending" },
+  // Order Level Finances
+  totalAmount: { type: Number, required: true },
+  discountAmount: { type: Number, default: 0 },
+  netAmount: { type: Number, required: true },
+  
+  paymentStatus: { type: String, enum: ["Pending", "Paid", "PartiallyPaid"], default: "Pending" },
+  paymentMode: { type: String }, // e.g. "Cash", "UPI", "Card"
   
 }, { timestamps: true });
+
+// Index for fetching a patient's history quickly
+orderSchema.index({ institutionId: 1, patientId: 1 });
 
 module.exports = orderSchema;

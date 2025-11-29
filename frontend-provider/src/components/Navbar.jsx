@@ -60,7 +60,7 @@ const Navbar = ({ collapsed, setCollapsed }) => {
         top: 0,
         zIndex: 999,
         width: "100%",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+        boxShadow: "0 0px 0px rgba(0,0,0,0.15)",
       }}
     >
       {/* Main Top Bar */}

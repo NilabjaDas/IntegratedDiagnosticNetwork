@@ -11,7 +11,7 @@ import {
   setUsername,
   tokenFailureMessage,
 } from "./tokenRedux";
-import { setInstitutionDetails } from "./InstitutionRedux";
+import { setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
 
 //Get Encryption Key
 export const getKey = async (dispatch) => {
@@ -61,6 +61,16 @@ export const getInstitutionDetails = async (dispatch) => {
     const response = await publicRequest.get("/institutions/details");
 
     dispatch(setInstitutionDetails(response.data));
+  } catch (error) {
+    console.error("Error fetching brand details:", error);
+  }
+};
+
+export const getInstitutionStatus = async (dispatch) => {
+  try {
+    const response = await publicRequest.get("/institutions/status");
+
+    dispatch(setInstitutionStatus(response.data));
   } catch (error) {
     console.error("Error fetching brand details:", error);
   }

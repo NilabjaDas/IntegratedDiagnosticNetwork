@@ -83,21 +83,25 @@ router.post("/login-super-admin", async (req, res) => {
 });
 
 
-// ==========================================
 // 1. STAFF / DOCTOR / LOCAL ADMIN LOGIN (Password)
-// ==========================================
-// This route is called by the Provider Portal
-// It MUST be aware of the Institution context (req.db)
 router.post("/login-staff", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-
+    // 0. Pre-flight Checks
     if (!req.db) {
-        return res.status(500).json({ message: "Database connection failed. Is the Institution ID correct?" });
+        return res.status(500).json({ message: "Database connection failed. Domain configuration might be missing." });
     }
 
-    // 1. Get User Model for this Institution
+    // CHECK: Is the Institution Active?
+    // req.institution is populated by institutionMiddleware
+    if (req.institution && req.institution.status === false) {
+        return res.status(403).json({ 
+            message: "Access Denied: This institution is currently inactive. Please contact the administrator." 
+        });
+    }
+
+    // 1. Get User Model for this Institution (Tenant DB)
     const User = req.db.model("User", userSchema);
 
     // 2. Find User (explicitly select password)
@@ -105,14 +109,14 @@ router.post("/login-staff", async (req, res) => {
         $or: [{ username }, { email: username }] 
     }).select("+password");
 
-    if (!user) return res.status(400).json({ message: "User not found in this institution." });
+    if (!user) return res.status(400).json({ message: "User not found." });
 
     // 3. Verify Password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
-    // 4. Check Active Status
-    if (user.isActive === false) return res.status(403).json({ message: "Account is disabled" });
+    // 4. Check User Active Status
+    if (user.isActive === false) return res.status(403).json({ message: "Your account has been disabled." });
 
     // 5. Generate Token
     const token = generateToken(user, user.institutionId);
@@ -126,6 +130,7 @@ router.post("/login-staff", async (req, res) => {
         user: { 
             id: user._id, 
             name: user.fullName, 
+            username: user.username,
             role: user.role,
             institutionId: user.institutionId,
             isMasterAdmin: user.isMasterAdmin 
@@ -137,7 +142,6 @@ router.post("/login-staff", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // ==========================================
 // 2. CREATE STAFF (Local Admin Only)

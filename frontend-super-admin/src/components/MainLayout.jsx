@@ -19,7 +19,7 @@ const MainLayout = ({ children }) => {
         style={{
           marginLeft: collapsed ? 80 : 220,
           transition: "margin-left 0.2s",
-          background: theme === "dark" ? "#000000" : "#f5f5f5",
+          background: theme === "dark" ? "#282828" : "#f5f5f5",
         }}
       >
         <Navbar collapsed={collapsed} setCollapsed={setCollapsed} />
@@ -30,7 +30,7 @@ const MainLayout = ({ children }) => {
             style={{
               padding: 24,
               minHeight: 360,
-              background: theme === "dark" ? "#141414" : "#fff",
+              background: theme === "dark" ? "#181818" : "#fff",
               borderRadius: "4px",
             }}
           >

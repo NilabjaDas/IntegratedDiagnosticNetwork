@@ -13,14 +13,8 @@ import { useDispatch, useSelector } from "react-redux";
 import { Helmet } from "react-helmet";
 import { useEffect, useRef, useState } from "react";
 import { darkTheme } from "./themes";
-import {
-  setAnalyticsData,
-  setMasterReportsData,
-} from "./redux/tokenRedux";
-import {
-  setScheduledMaintenanceData,
-  viewPortData,
-} from "./redux/uiRedux";
+import { setAnalyticsData, setMasterReportsData } from "./redux/tokenRedux";
+import { setScheduledMaintenanceData, viewPortData } from "./redux/uiRedux";
 
 import { CLEAR_ALL_REDUCERS } from "./redux/actionTypes";
 import { BASE_URL, currentDomain } from "./requestMethods";
@@ -30,11 +24,16 @@ import HomePage from "./pages/HomePage";
 import Page1 from "./pages/Page1";
 import Page2 from "./pages/Page2";
 import Page3 from "./pages/Page3";
-import { getInstitutionDetails, getPing } from "./redux/apiCalls";
+import {
+  getInstitutionDetails,
+  getInstitutionStatus,
+  getPing,
+} from "./redux/apiCalls";
 
 import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
+import DeactivatedOverlayComp from "./components/DeactivatedOverlayComp";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -63,11 +62,18 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-  const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
+  const theme = useSelector(
+    (state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme
+  );
   const dispatch = useDispatch();
   const blockedRef = useRef(false);
   // --- selectors (kept those still used) ---
-   const institutionDetails =  useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails)
+  const institutionDetails = useSelector(
+    (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails
+  );
+  const institutionStatus = useSelector(
+    (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].status
+  );
   const token = useSelector(
     (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
   );
@@ -82,8 +88,8 @@ function App() {
   const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(
     maintenanceDataFromRedux?.activeStatus
   );
-  const [modalOpen, setModalOpen] = useState(false)
-  const [modalResponse, setModalResponse] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalResponse, setModalResponse] = useState(false);
   // utility to check if current route is login
   const isOnLoginRoute = () => {
     try {
@@ -101,7 +107,9 @@ function App() {
 
     const pingServer = async () => {
       if (isOnLoginRoute()) return;
-      const res = await getPing(dispatch, /* pass viewPort if your API expects it */);
+      const res = await getPing(
+        dispatch /* pass viewPort if your API expects it */
+      );
       if (res === 403) {
         alert("Session Has Expired");
         dispatch({ type: CLEAR_ALL_REDUCERS });
@@ -123,12 +131,11 @@ function App() {
   // -------------------------
   useEffect(() => {
     const fetchInstitutionDetails = async () => {
+      await getInstitutionStatus(dispatch);
       await getInstitutionDetails(dispatch);
     };
     fetchInstitutionDetails();
   }, [dispatch]);
-
-
 
   // -------------------------
   // SSE / EventSource (kept intact, but uses route check instead of viewPortRef)
@@ -138,7 +145,8 @@ function App() {
     let retryTimeout;
 
     const connectEventSource = () => {
-  const eventUrl = BASE_URL === "/"
+      const eventUrl =
+        BASE_URL === "/"
           ? `/server/events?token=${token}&domain=${currentDomain}`
           : `${BASE_URL}/server/events?token=${token}&domain=${currentDomain}`;
 
@@ -210,58 +218,59 @@ function App() {
     };
   }, [token, dispatch]);
 
-
-
- const handleLogout = () => {
+  const handleLogout = () => {
     dispatch({ type: CLEAR_ALL_REDUCERS });
   };
 
-   const handleModalClose = () =>{
-    setModalOpen(false)
-  }
+  const handleModalClose = () => {
+    setModalOpen(false);
+  };
 
-  const handleModalResponse = (val) =>{
-    setModalResponse(val)
+  const handleModalResponse = (val) => {
+    setModalResponse(val);
+  };
+
+  if (!institutionStatus.status) {
+    handleLogout();
   }
 
   useEffect(() => {
-    if(modalResponse){
-    handleLogout()
+    if (modalResponse) {
+      handleLogout();
     }
-  }, [modalResponse, handleLogout])
+  }, [modalResponse, handleLogout]);
 
+  function BackWatcher() {
+    const navigate = useNavigate();
+    const blockedRef = useRef(false);
 
-function BackWatcher() {
-  const navigate = useNavigate();
-  const blockedRef = useRef(false);
+    useOnBack(
+      (prevLocation, newLocation) => {
+        // If we just programmatically corrected navigation, ignore this event.
+        // (defensive — replace navigations shouldn't trigger onBack, but this avoids flicker/loops.)
+        if (blockedRef.current) {
+          // reset the flag and ignore
+          blockedRef.current = false;
+          return;
+        }
 
-  useOnBack(
-    (prevLocation, newLocation) => {
-      // If we just programmatically corrected navigation, ignore this event.
-      // (defensive — replace navigations shouldn't trigger onBack, but this avoids flicker/loops.)
-      if (blockedRef.current) {
-        // reset the flag and ignore
-        blockedRef.current = false;
-        return;
-      }
-
-      // Only block if the user WAS on "/" when they pressed back
-      if (prevLocation?.pathname === "/") {
-        setModalOpen(true)
-        // Prevent leaving "/" by replacing the current entry with "/"
-        blockedRef.current = true;
-        navigate("/", { replace: true });
-      }
-    },
-    {
-      onForward: (prevLocation, newLocation) => {
-        // optional: handle forward if needed
+        // Only block if the user WAS on "/" when they pressed back
+        if (prevLocation?.pathname === "/") {
+          setModalOpen(true);
+          // Prevent leaving "/" by replacing the current entry with "/"
+          blockedRef.current = true;
+          navigate("/", { replace: true });
+        }
       },
-    }
-  );
+      {
+        onForward: (prevLocation, newLocation) => {
+          // optional: handle forward if needed
+        },
+      }
+    );
 
-  return null;
-}
+    return null;
+  }
 
   // -------------------------
   // Render (URL-based routing)
@@ -269,15 +278,19 @@ function BackWatcher() {
   return (
     <ConfigProvider theme={theme === "dark" ? darkTheme : {}}>
       <Helmet>
-        <link rel="icon" href={institutionDetails?.favicon} />
+        <link rel="icon" href={institutionDetails?.favicon || institutionDetails?.institutionSymbolUrl || institutionDetails?.institutionLogoUrl} />
         <title>
-          {`Medico Control Center | ${institutionDetails?.brandName || "TechFloater"}`}
+          {`Medico Control Center | ${
+            institutionDetails?.brandName || "TechFloater"
+          }`}
         </title>
       </Helmet>
 
       <GlobalStyle />
       <ToastContainer />
-
+      {!institutionStatus.status &&
+       <DeactivatedOverlayComp institutionStatus = {institutionStatus}/>
+      }
       <Modal
         open={isMaintenanceModalOpen}
         footer={null}
@@ -297,8 +310,14 @@ function BackWatcher() {
       </Modal>
 
       <BrowserRouter>
-       <BackWatcher />
-        <LogoutModal open={modalOpen} close={handleModalClose} modalResponse = {(val)=>handleModalResponse(val)}  yesText= "Yes" noText= "No"/>
+        <BackWatcher />
+        <LogoutModal
+          open={modalOpen}
+          close={handleModalClose}
+          modalResponse={(val) => handleModalResponse(val)}
+          yesText="Yes"
+          noText="No"
+        />
         <Routes>
           {/* Public login route: redirect to / if already logged in */}
           <Route

@@ -13,10 +13,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { Helmet } from "react-helmet";
 import { useEffect, useRef, useState } from "react";
 import { darkTheme } from "./themes";
-import {
-  setAnalyticsData,
-  setMasterReportsData,
-} from "./redux/tokenRedux";
+
 import {
   setScheduledMaintenanceData,
   viewPortData,
@@ -67,10 +64,7 @@ function App() {
   const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
   const dispatch = useDispatch();
   const blockedRef = useRef(false);
-  // --- selectors (kept those still used) ---
-  const brandDetails = useSelector(
-    (state) => state[process.env.REACT_APP_BRAND_DETAILS_KEY]?.brandDetails
-  );
+
   const token = useSelector(
     (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY].token
   );
@@ -259,12 +253,12 @@ function BackWatcher() {
   // -------------------------
   // Render (URL-based routing)
   // -------------------------
+
   return (
     <ConfigProvider theme={theme === "dark" ? darkTheme : {}}>
       <Helmet>
-        <link rel="icon" href={brandDetails?.favicon} />
         <title>
-          {`Medico Control Center | ${brandDetails?.brandName || "TechFloater"}`}
+          {`Medico Control Center | TechFloater`}
         </title>
       </Helmet>
 

@@ -37,13 +37,7 @@ const { confirm } = Modal;
 const InstitutionsPage = () => {
   const dispatch = useDispatch();
 
-  // --- FIXED SELECTOR ---
-  // We select the whole slice ("state.institution"), NOT "state.institution.institutions"
-  // Make sure 'institution' matches the key you used in store.js combineReducers
   const institutionSlice = useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY]);
-
-  // --- DESTRUCTURING ---
-  // Now we can safely extract the array, fetching status, and pagination from the slice
   const {
     institutions = [],
     isFetching = false,

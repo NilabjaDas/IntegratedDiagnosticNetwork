@@ -5,12 +5,6 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt"); // Needed for user creation
 const Institution = require("../models/Institutions");
 const { authorizeRoles } = require("../middleware/auth"); 
-// Note: Ensure 'authenticateUser' is applied before these routes in your app.js 
-// or add strictly to the router lines below.
-
-// ==========================================
-// HELPERS
-// ==========================================
 
 // 1. Filter Sensitive Data
 function filterInstitutionForClient(doc) {
@@ -28,7 +22,6 @@ function filterInstitutionForClient(doc) {
 }
 
 // 2. Ownership & Permission Check
-// Returns TRUE if access is allowed, FALSE otherwise.
 const checkOwnership = (reqUser, targetId) => {
     // 1. Master Admin allows all
     if (reqUser.isMasterAdmin) return true;
@@ -39,15 +32,30 @@ const checkOwnership = (reqUser, targetId) => {
     return false;
 };
 
-// ==========================================
-// ROUTES
-// ==========================================
 
-/**
- * @route   GET /api/institutions/public/details
- * @desc    Get Public Institution Details (Theme, Logo, Name) based on Domain
- * @access  Public (No Auth Required)
- */
+router.get("/status", async (req, res) => {
+    try {
+        // req.institution is attached by the global middleware based on domain
+        const institution = req.institution;
+
+        if (!institution) {
+            return res.status(404).json({ message: "Institution not found" });
+        }
+
+        // Return only status and basic identity
+        res.json({
+            institutionId: institution.institutionId,
+            institutionName: institution.institutionName,
+            status: institution.status, // true (Active) or false (Inactive)
+            maintenance: institution.maintenance // Return maintenance info if you want to show a maintenance page
+        });
+
+    } catch (err) {
+        console.error("Status Check Error:", err);
+        res.status(500).json({ message: "Server error checking status" });
+    }
+});
+
 router.get("/details", async (req, res) => {
     try {
         // req.institution is automatically attached by institutionMiddleware

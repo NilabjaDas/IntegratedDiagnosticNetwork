@@ -47,7 +47,7 @@ const Navbar = ({ collapsed, setCollapsed }) => {
     setModalOpen(false);
   };
 
-  const bgStyle = theme === "dark" ? "#141414" : colorBgContainer;
+  const bgStyle = theme === "dark" ? "#181818" : colorBgContainer;
   const borderStyle = theme === "dark" ? "#303030" : "#f0f0f0";
 
   return (
@@ -57,7 +57,7 @@ const Navbar = ({ collapsed, setCollapsed }) => {
         top: 0,
         zIndex: 999,
         width: "100%",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+        // boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
       }}
     >
       {/* Main Top Bar */}
