@@ -4,6 +4,7 @@ import { configureStore, combineReducers } from "@reduxjs/toolkit";
 import tokenReducer from "./tokenRedux";
 import uiReducer from "./uiRedux";
 import institutionReducer from "./InstitutionRedux";
+import testsReducer from "./testRedux"
 
 import { CLEAR_ALL_REDUCERS } from "./actionTypes";
 
@@ -55,7 +56,7 @@ const appReducer = combineReducers({
   [process.env.REACT_APP_ACCESS_TOKEN_KEY]: tokenReducer,
   [process.env.REACT_APP_UI_DATA_KEY]: uiReducer,
   [process.env.REACT_APP_INSTITUTIONS_DATA_KEY] : institutionReducer,
-
+  [process.env.REACT_APP_TESTS_DATA_KEY] : testsReducer,
 });
 
 const rootReducer = (state, action) => {

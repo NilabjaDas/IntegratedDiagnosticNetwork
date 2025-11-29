@@ -106,11 +106,7 @@ router.get("/details", async (req, res) => {
     }
 });
 
-/**
- * @route   GET /api/institutions/:id
- * @desc    Get Institution Details
- * @access  Private (Any Auth User belonging to this Institution)
- */
+
 router.get("/:id", async (req, res) => {
     try {
         const { id } = req.params;
@@ -185,8 +181,6 @@ router.put("/:id", authorizeRoles("admin"), async (req, res) => {
         res.status(500).json({ message: "Failed to update: " + err.message });
     }
 });
-
-
 
 
 router.post("/users/:institutionId", authorizeRoles("admin"), async (req, res) => {

@@ -11,6 +11,21 @@ import {
   setUsername,
   tokenFailureMessage,
 } from "./tokenRedux";
+
+import {
+  processStart,
+  processFailure,
+  getMasterTestsSuccess,
+  getTestsSuccess,
+  addTestSuccess,
+  updateTestSuccess,
+  deleteTestSuccess,
+  getPackagesSuccess,
+  addPackageSuccess,
+  updatePackageSuccess,
+  deletePackageSuccess,
+} from "./testRedux";
+
 import { setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
 
 //Get Encryption Key
@@ -73,5 +88,134 @@ export const getInstitutionStatus = async (dispatch) => {
     dispatch(setInstitutionStatus(response.data));
   } catch (error) {
     console.error("Error fetching brand details:", error);
+  }
+};
+
+// --- MASTER CATALOG ---
+export const searchMasterCatalog = async (dispatch, query) => {
+  dispatch(processStart());
+  try {
+    const res = await userRequest.get(`/tests/master-catalog?search=${query}`);
+    dispatch(getMasterTestsSuccess(res.data));
+  } catch (err) {
+    dispatch(processFailure());
+  }
+};
+
+// --- LOCAL TESTS ---
+export const getMyTests = async (dispatch) => {
+  dispatch(processStart());
+  try {
+    const res = await userRequest.get("/tests");
+    dispatch(getTestsSuccess(res.data));
+  } catch (err) {
+    dispatch(processFailure());
+  }
+};
+
+export const addTestFromMaster = async (dispatch, testData) => {
+  dispatch(processStart());
+  try {
+    const res = await userRequest.post("/tests", testData);
+    dispatch(addTestSuccess(res.data));
+    return { status: 201 };
+  } catch (err) {
+    dispatch(processFailure());
+    return { status: err.response?.status, message: err.response?.data?.message };
+  }
+};
+
+export const updateMyTest = async (dispatch, id, updates) => {
+  dispatch(processStart());
+  try {
+    const res = await userRequest.put(`/tests/${id}`, updates);
+    dispatch(updateTestSuccess(res.data));
+    return { status: 200 };
+  } catch (err) {
+    dispatch(processFailure());
+    return { status: 500 };
+  }
+};
+
+export const deleteMyTest = async (dispatch, id) => {
+  dispatch(processStart());
+  try {
+    await userRequest.delete(`/tests/${id}`);
+    dispatch(deleteTestSuccess(id));
+  } catch (err) {
+    dispatch(processFailure());
+  }
+};
+
+// --- PACKAGES ---
+export const getPackages = async (dispatch) => {
+  dispatch(processStart());
+  try {
+    const res = await userRequest.get("/tests/packages");
+    dispatch(getPackagesSuccess(res.data));
+  } catch (err) {
+    dispatch(processFailure());
+  }
+};
+
+export const createPackage = async (dispatch, packageData) => {
+  dispatch(processStart());
+  try {
+    const res = await userRequest.post("/tests/packages", packageData);
+    dispatch(addPackageSuccess(res.data));
+    return { status: 201 };
+  } catch (err) {
+    dispatch(processFailure());
+    return { status: err.response?.status, message: err.response?.data?.message };
+  }
+};
+
+export const updatePackage = async (dispatch, id, packageData) => {
+  dispatch(processStart());
+  try {
+    const res = await userRequest.put(`/tests/packages/${id}`, packageData);
+    dispatch(updatePackageSuccess(res.data));
+    return { status: 200 };
+  } catch (err) {
+    dispatch(processFailure());
+  }
+};
+
+export const deletePackage = async (dispatch, id) => {
+  dispatch(processStart());
+  try {
+    await userRequest.delete(`/tests/packages/${id}`);
+    dispatch(deletePackageSuccess(id));
+  } catch (err) {
+    dispatch(processFailure());
+  }
+};
+
+
+export const createCustomTest = async (dispatch, testData) => {
+  dispatch(processStart());
+  try {
+    const res = await userRequest.post("/tests/custom", testData);
+    dispatch(addTestSuccess(res.data));
+    return { status: 201, data: res.data };
+  } catch (err) {
+    dispatch(processFailure());
+    return {
+      status: err.response?.status || 500,
+      message: err.response?.data?.message || "Creation failed"
+    };
+  }
+};
+
+// --- GET SINGLE TEST DETAILS ---
+export const getTestDetails = async (id) => {
+  try {
+    const res = await userRequest.get(`/tests/${id}`);
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { 
+      status: err.response?.status || 500, 
+      message: err.response?.data?.message || "Fetch failed" 
+    };
   }
 };

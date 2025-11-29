@@ -33,6 +33,7 @@ import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
 import InstitutionsPage from "./pages/InstitutionsPage";
+import BaseTestsPage from "./pages/BaseTestsPage";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -302,6 +303,7 @@ function BackWatcher() {
                   <Routes>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/institutions" element={<InstitutionsPage />} />
+                    <Route path="/tests-directory" element={<BaseTestsPage />} />
                     <Route path="/page1" element={<Page1 />} />
                     <Route path="/page2" element={<Page2 />} />
                     <Route path="/page3" element={<Page3 />} />

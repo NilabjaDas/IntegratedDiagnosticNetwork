@@ -5,6 +5,7 @@ import tokenReducer from "./tokenRedux";
 import uiReducer from "./uiRedux";
 import brandReducer from "./brandRedux";
 import institutionReducer from "./institutionRedux";
+import baseTestsReducer from "./baseTestRedux";
 import { CLEAR_ALL_REDUCERS } from "./actionTypes";
 
 import CryptoJS from "crypto-js";
@@ -56,6 +57,7 @@ const appReducer = combineReducers({
   [process.env.REACT_APP_UI_DATA_KEY]: uiReducer,
   [process.env.REACT_APP_BRAND_DETAILS_KEY] : brandReducer,
   [process.env.REACT_APP_INSTITUTIONS_DATA_KEY] : institutionReducer,
+  [process.env.REACT_APP_BASETESTS_DATA_KEY] : baseTestsReducer,
 });
 
 const rootReducer = (state, action) => {
@@ -66,7 +68,8 @@ const rootReducer = (state, action) => {
         ...state,
         [process.env.REACT_APP_ACCESS_TOKEN_KEY]: undefined,
         [process.env.REACT_APP_UI_DATA_KEY]: undefined,
-        [process.env.REACT_APP_INSTITUTIONS_DATA_KEY] : undefined
+        [process.env.REACT_APP_INSTITUTIONS_DATA_KEY] : undefined,
+        [process.env.REACT_APP_BASETESTS_DATA_KEY] : undefined,
       },
       action
     );

@@ -624,12 +624,9 @@ router.delete("/institutions/:id", requireSuperAdmin, async (req, res) => {
 // --- BASE TEST MANAGEMENT ---
 
 // GET /api/admin-master/base-tests
-router.get("/base-tests", requireSuperAdmin, async (req, res) => {
-    const tests = await BaseTest.find().sort({ name: 1 });
-    res.json(tests);
-});
 
-router.get("/base-tests", async (req, res) => {
+
+router.get("/base-tests",requireSuperAdmin, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
@@ -769,7 +766,7 @@ router.delete("/base-tests/:id", requireSuperAdmin, async (req, res) => {
  * @desc    Bulk Upsert Base Tests (For seeding/migration)
  * @access  Super Admin Only
  */
-router.post("/seed-base", async (req, res) => {
+router.post("/seed-base", requireSuperAdmin, async (req, res) => {
     try {
         const tests = req.body;
         if (!Array.isArray(tests)) return res.status(400).json({ message: "Body must be an array" });

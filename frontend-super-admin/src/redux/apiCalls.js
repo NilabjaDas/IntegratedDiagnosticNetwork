@@ -18,6 +18,12 @@ import {
   getInstitutionsFailure,
 } from "./institutionRedux";
 
+import {
+  getTestsStart,
+  getTestsSuccess,
+  getTestsFailure,
+} from "./baseTestRedux";
+
 import { setBrandDetails } from "./brandRedux";
 
 //Get Encryption Key
@@ -183,6 +189,57 @@ export const deleteInstitutionUser = async (institutionId, userId) => {
     return {
       status: error.response?.status || 500,
       message: error.response?.data?.message || "Delete user failed"
+    };
+  }
+};
+
+
+export const getAllBaseTests = async (dispatch, page = 1, limit = 20, search = "", department = "") => {
+  dispatch(getTestsStart());
+  try {
+    let url = `/admin-master/base-tests?page=${page}&limit=${limit}`;
+    if (search) url += `&search=${search}`;
+    if (department) url += `&department=${department}`;
+    
+    const res = await userRequest.get(url);
+    dispatch(getTestsSuccess(res.data));
+  } catch (error) {
+    dispatch(getTestsFailure());
+  }
+};
+
+export const createBaseTest = async (testData) => {
+  try {
+    const res = await userRequest.post("/admin-master/base-tests", testData);
+    return { status: 201, data: res.data };
+  } catch (error) {
+    return { 
+      status: error.response?.status || 500, 
+      message: error.response?.data?.message || "Creation failed" 
+    };
+  }
+};
+
+export const updateBaseTest = async (id, testData) => {
+  try {
+    const res = await userRequest.put(`/admin-master/base-tests/${id}`, testData);
+    return { status: 200, data: res.data };
+  } catch (error) {
+    return { 
+      status: error.response?.status || 500, 
+      message: error.response?.data?.message || "Update failed" 
+    };
+  }
+};
+
+export const deleteBaseTest = async (id) => {
+  try {
+    const res = await userRequest.delete(`/admin-master/base-tests/${id}`);
+    return { status: 200, data: res.data };
+  } catch (error) {
+    return { 
+      status: error.response?.status || 500, 
+      message: error.response?.data?.message || "Deletion failed" 
     };
   }
 };

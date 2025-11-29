@@ -5,6 +5,7 @@ import { useSelector } from "react-redux";
 
 const breadcrumbNameMap = {
   "/institutions": "Institutions",
+  "/tests-directory" : "Tests Directory",
   "/page1": "Page 1",
   "/page2": "Page 2",
   "/page3": "Page 3",

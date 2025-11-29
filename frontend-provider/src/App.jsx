@@ -34,6 +34,7 @@ import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
 import DeactivatedOverlayComp from "./components/DeactivatedOverlayComp";
+import TestsPage from "./pages/TestsPage";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -333,6 +334,7 @@ function App() {
                 <MainLayout>
                   <Routes>
                     <Route path="/" element={<HomePage />} />
+                    <Route path="/tests-management" element={<TestsPage />} />
                     <Route path="/page1" element={<Page1 />} />
                     <Route path="/page2" element={<Page2 />} />
                     <Route path="/page3" element={<Page3 />} />

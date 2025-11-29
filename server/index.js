@@ -12,6 +12,7 @@ const BookingsRoute = require("./routes/bookings")
 const CatalogRoute = require("./routes/catalog")
 const DoctorBookingRoute = require("./routes/doctor-bookings")
 const InstitutionRoute = require("./routes/institutions")
+const TestsRoute = require("./routes/tests")
 const OrderRoute = require("./routes/orders")
 const PaitentRoute = require("./routes/patients")
 const queueManagerRoute = require("./routes/queue-manager")
@@ -54,6 +55,7 @@ app.use("/api/bookings", BookingsRoute);
 app.use("/api/catalog", CatalogRoute);
 app.use("/api/doctor-bookings", DoctorBookingRoute);
 app.use("/api/institutions", InstitutionRoute);
+app.use("/api/tests",TestsRoute);
 app.use("/api/orders", OrderRoute);
 app.use("/api/patients", PaitentRoute);
 app.use("/api/queue-manager", queueManagerRoute);

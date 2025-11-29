@@ -3,6 +3,9 @@ import { Layout, Menu } from "antd";
 import { Link, useLocation } from "react-router-dom";
 import {
   HomeOutlined,
+  CrownOutlined,
+  MedicineBoxOutlined,
+  ExperimentOutlined,
   UserOutlined,
   VideoCameraOutlined,
   UploadOutlined,
@@ -105,8 +108,11 @@ const Sidebar = ({ collapsed }) => {
         <Menu.Item key="/" icon={<HomeOutlined />}>
           <Link to="/">Home</Link>
         </Menu.Item>
-        <Menu.Item key="/institutions" icon={<UserOutlined />}>
+        <Menu.Item key="/institutions" icon={<CrownOutlined />}>
           <Link to="/institutions">Institutions</Link>
+        </Menu.Item>
+        <Menu.Item key="/tests-directory" icon={<ExperimentOutlined />}>
+          <Link to="/tests-directory">Tests Directory</Link>
         </Menu.Item>
         <Menu.Item key="/page1" icon={<UserOutlined />}>
           <Link to="/page1">Page 1</Link>
