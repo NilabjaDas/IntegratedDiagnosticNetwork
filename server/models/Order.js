@@ -1,92 +1,89 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
-const resultSchema = new mongoose.Schema({
-  parameterId: { type: String }, // Link to the parameter definition inside Test
-  name: { type: String, required: true }, // e.g. "Hemoglobin"
-  value: { type: String }, // The actual reading
-  unit: { type: String },  // e.g. "g/dL"
-  isAbnormal: { type: Boolean, default: false }, // Flagged if outside bioRefRange
-  notes: { type: String } // Technician remarks
-}, { _id: false });
+// Sub-schema for individual payments (The Ledger)
+const transactionSchema = new mongoose.Schema({
+  paymentMode: { type: String, enum: ["Cash", "UPI", "Card"], required: true },
+  amount: { type: Number, required: true }, // Amount paid in this transaction
+  
+  // For Manual/Card/Cash
+  transactionId: { type: String }, // Manual entry or Ref No.
+  notes: { type: String }, // e.g. "Paid by Father", "Advance"
+  
+  // For Razorpay (UPI/Online)
+  razorpayOrderId: { type: String },
+  razorpayPaymentId: { type: String },
+  razorpaySignature: { type: String },
+  
+  recordedBy: { type: String }, // User ID of staff who took payment
+  date: { type: Date, default: Date.now }
+});
 
 const orderItemSchema = new mongoose.Schema({
-  // Type distinguishing
   itemType: { type: String, enum: ["Test", "Package", "Consultation"], required: true },
-  
-  // Link to the Catalog Item
   itemId: { type: String, required: true }, 
   name: { type: String, required: true }, 
-  
-  // Financials
-  price: { type: Number, required: true }, // Billed amount for this line item
-  financials: {
-    doctorShare: { type: Number, default: 0 },
-    institutionShare: { type: Number, default: 0 }
-  },
-
-  // --- PACKAGE HANDLING ---
-  // If this item is a Test inside a Package, this ID points to the Package Item's _id
-  parentPackageId: { type: String, default: null },
-
-  // --- EXECUTION STATUS ---
-  // Tracks lifecycle of this specific test/consultation
-  status: { 
-    type: String, 
-    enum: ["Pending", "SampleCollected", "Processing", "Completed", "Cancelled", "Reported"], 
-    default: "Pending" 
-  },
-
-  // --- OUTCOMES ---
-  // For Tests:
-  results: [resultSchema],
-  
-  // For Consultations:
-  consultationNotes: { type: String }, 
-  prescription: {
-      url: { type: String }, 
-      text: { type: String },
-      medicines: [{
-          name: String,
-          dosage: String,
-          frequency: String, 
-          duration: String, 
-          instruction: String 
-      }]
-  }
+  price: { type: Number, required: true }, 
+  status: { type: String, default: "Pending" },
+  results: [mongoose.Schema.Types.Mixed] 
 });
 
 const orderSchema = new mongoose.Schema({
   institutionId: { type: String, required: true, index: true },
   orderId: { type: String, default: () => uuidv4(), unique: true, index: true },
-  displayId: { type: String }, // Short ID for humans (e.g. "ORD-1001")
+  displayId: { type: String }, 
   
   patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
   
-  // Appointment Details (Optional for direct lab walk-ins)
   appointment: {
     doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
     date: { type: Date },
-    tokenNumber: { type: Number },
-    estimatedTime: { type: String },
     status: { type: String, default: "Scheduled" } 
   },
   
-  // The "Exploded" List of Items
-  // Contains Packages (for billing) AND their individual Tests (for execution)
   items: [orderItemSchema], 
   
-  // Order Level Finances
-  totalAmount: { type: Number, required: true },
-  discountAmount: { type: Number, default: 0 },
-  netAmount: { type: Number, required: true },
+  // --- UPDATED FINANCIALS (LEDGER) ---
+  financials: {
+    totalAmount: { type: Number, required: true }, // Bill Total
+    discountAmount: { type: Number, default: 0 },
+    netAmount: { type: Number, required: true }, // Final Payable (Total - Discount)
+    
+    paidAmount: { type: Number, default: 0 }, // Sum of all transactions
+    dueAmount: { type: Number, default: 0 },  // Net - Paid
+    
+    status: { 
+      type: String, 
+      enum: ["Pending", "PartiallyPaid", "Paid", "Overdue"], 
+      default: "Pending" 
+    }
+  },
+
+  // History of all payments made for this order
+  transactions: [transactionSchema],
   
-  paymentStatus: { type: String, enum: ["Pending", "Paid", "PartiallyPaid"], default: "Pending" },
-  paymentMode: { type: String }, // e.g. "Cash", "UPI", "Card"
-  
+  // Flag for Report Delivery
+  isReportDeliveryBlocked: { type: Boolean, default: true } // True if dues exist
+
 }, { timestamps: true });
 
-// Index for fetching a patient's history quickly
-orderSchema.index({ institutionId: 1, patientId: 1 });
+// Auto-calculate dues and status before saving
+orderSchema.pre('save', function(next) {
+  if (this.financials) {
+    this.financials.dueAmount = this.financials.netAmount - this.financials.paidAmount;
+    
+    if (this.financials.paidAmount >= this.financials.netAmount) {
+      this.financials.status = "Paid";
+      this.isReportDeliveryBlocked = false;
+    } else if (this.financials.paidAmount > 0) {
+      this.financials.status = "PartiallyPaid";
+      this.isReportDeliveryBlocked = true; // Block reports if partial (optional business logic)
+    } else {
+      this.financials.status = "Pending";
+      this.isReportDeliveryBlocked = true;
+    }
+  }
+  next();
+});
 
 module.exports = orderSchema;

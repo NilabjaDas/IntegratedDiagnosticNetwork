@@ -15,6 +15,7 @@ const InstitutionRoute = require("./routes/institutions")
 const TestsRoute = require("./routes/tests")
 const OrderRoute = require("./routes/orders")
 const PaitentRoute = require("./routes/patients")
+const paymentRoutes = require("./routes/payments");
 const queueManagerRoute = require("./routes/queue-manager")
 const ReportRoute = require("./routes/reports")
 const ServerRoute = require("./sse")
@@ -58,6 +59,7 @@ app.use("/api/institutions", InstitutionRoute);
 app.use("/api/tests",TestsRoute);
 app.use("/api/orders", OrderRoute);
 app.use("/api/patients", PaitentRoute);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/queue-manager", queueManagerRoute);
 app.use("/api/reports", ReportRoute);
 app.use("/api/server",ServerRoute)

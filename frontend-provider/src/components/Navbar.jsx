@@ -18,7 +18,6 @@ const Navbar = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
 
   const institutionDetails =  useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails)
-  console.log(institutionDetails)
   const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
   const [modalOpen, setModalOpen] = useState(false);
   const {

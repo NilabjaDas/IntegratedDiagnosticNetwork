@@ -106,6 +106,9 @@ const Sidebar = ({ collapsed }) => {
           <Menu.Item key="/tests-management" icon={<ExperimentOutlined />}>
           <Link to="/tests-management">Tests Management</Link>
         </Menu.Item>
+        <Menu.Item key="/orders-management" icon={<ExperimentOutlined />}>
+          <Link to="/orders-management">Orders Management</Link>
+        </Menu.Item>
         <Menu.Item key="/page1" icon={<UserOutlined />}>
           <Link to="/page1">Page 1</Link>
         </Menu.Item>

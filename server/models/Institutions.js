@@ -1,8 +1,7 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
-const bcrypt = require("bcrypt");
 
-// Sub-schemas (Maintenance & Outlets - Unchanged)
+// ... (Sub-schemas remain unchanged) ...
 const maintenanceSchema = new mongoose.Schema({
   activeStatus: { type: Boolean, default: false },
   startTime: { type: String, default: "" },
@@ -31,18 +30,18 @@ const outletSchema = new mongoose.Schema({
 const institutionsSchema = new mongoose.Schema({
   institutionId: { type: String, default: () => uuidv4(), index: true, unique: true },
 
-  // --- Identity & Routing ---
+  // --- Identity ---
   institutionName: { type: String, required: true, trim: true },
   
-  
-  // Domains Array: Now the sole source of truth for routing
-  domains: [{ 
+  // NEW FIELD: Institution Type
+  institutionType: { 
     type: String, 
-    lowercase: true, 
-    trim: true,
-    required: true
-  }],
+    enum: ["soloDoc", "multiDoc", "pathologyWithDoc"], 
+    default: "pathologyWithDoc",
+    required: true 
+  },
 
+  domains: [{ type: String, lowercase: true, trim: true, required: true }],
   dbName: { type: String, required: true, unique: true, trim: true }, 
   institutionCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
 
@@ -74,7 +73,7 @@ const institutionsSchema = new mongoose.Schema({
     endDate: { type: Date }
   },
 
-  // --- Contact & Address ---
+  // --- Contact & Billing ---
   contact: {
     phone: { type: String, default: "" },
     altPhone: { type: String, default: "" },
@@ -90,9 +89,6 @@ const institutionsSchema = new mongoose.Schema({
     pincode: { type: String, default: "" },
     gmapLink:{ type: String, default: "" },
   },
-
-
-
   billing: {
     gstin: { type: String, default: "" },
     pan: { type: String, default: "" },
@@ -135,10 +131,18 @@ const institutionsSchema = new mongoose.Schema({
     }
   },
 
+  // --- PAYMENT GATEWAY ---
   paymentGateway: {
-    provider: { type: String, default: "" },
+    provider: { type: String, default: "razorpay" }, 
+    
+    // Explicit keys for Razorpay (Hidden by default, must be explicitly selected if needed)
+    razorpayKeyId: { type: String, select: false, trim: true },
+    razorpayKeySecret: { type: String, select: false, trim: true },
+    
+    // Config for other providers/future use
     config: { type: mongoose.Schema.Types.Mixed, select: false, default: {} }
   },
+
   smtp: {
     host: { type: String, default: "" },
     port: { type: Number, default: 587 },
@@ -155,10 +159,7 @@ const institutionsSchema = new mongoose.Schema({
   updatedBy: String,
   metadata: mongoose.Schema.Types.Mixed,
 
-}, {
-  timestamps: true,
-  collection: "Institutions"
-});
+}, { timestamps: true, collection: "Institutions" });
 
 // Indexes
 institutionsSchema.index({ domains: 1 }, { unique: true, sparse: true });

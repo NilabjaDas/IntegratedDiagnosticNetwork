@@ -1,284 +1,188 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const moment = require("moment");
 const { v4: uuidv4 } = require("uuid");
 
-// Models
-const Order = require("../models/Order");
-const Test = require("../models/Test");
-const Package = require("../models/Package");
-const Patient = require("../models/Patient");
+const Institution = require("../models/Institutions");
+const Patient = require("../models/Patient"); // Master DB Import for Merging
 
-// Middleware
-const { authenticateUser } = require("../middleware/auth");
+// Schemas
+const OrderSchema = require("../models/Order");
+const TestSchema = require("../models/Test");
+const PackageSchema = require("../models/Package");
 
-// ==========================================
-// 1. CREATE ORDER (Booking)
-// ==========================================
-router.post("/", authenticateUser, async (req, res) => {
+const getModel = require("../middleware/getModelsHandler");
+const { verifyToken } = require("../middleware/verifyToken");
+
+// --- HELPER: Merge Patient Info ---
+const mergePatientsWithOrders = async (orders) => {
+    const patientIds = [...new Set(orders.map(o => o.patientId).filter(id => id))];
+    const patients = await Patient.find({ _id: { $in: patientIds } });
+    const patientMap = {};
+    patients.forEach(p => { patientMap[p._id.toString()] = p; });
+
+    return orders.map(order => {
+        const orderObj = order.toObject ? order.toObject() : order;
+        orderObj.patient = patientMap[orderObj.patientId.toString()] || null;
+        return orderObj;
+    });
+};
+
+// --- MIDDLEWARE ---
+const getTenantContext = async (req, res, next) => {
   try {
-    const { 
-      patientId, 
-      referringDoctor, 
-      items, // Array of { type: 'test'|'package', id: '...' }
-      discount = 0, 
-      paymentMode 
-    } = req.body;
+    const institutionId = req.user.institutionId;
+    if (!institutionId) return res.status(400).json({ message: "Institution ID missing." });
+
+    const institution = await Institution.findOne({ institutionId });
+    if (!institution) return res.status(404).json({ message: "Institution not found." });
+
+    const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+    req.TenantOrder = getModel(tenantDb, "Order", OrderSchema);
+    req.TenantTest = getModel(tenantDb, "Test", TestSchema);
+    req.TenantPackage = getModel(tenantDb, "Package", PackageSchema);
     
+    next();
+  } catch (err) {
+    res.status(500).json({ message: "Database Connection Error" });
+  }
+};
+
+router.use(verifyToken, getTenantContext);
+
+// 1. CREATE ORDER
+router.post("/", async (req, res) => {
+  try {
+    const { patientId, items, paymentMode, discountAmount = 0 } = req.body;
     const instId = req.user.institutionId;
 
-    // Validate Patient
-    const patient = await Patient.findOne({ _id: patientId, institutionId: instId });
-    if (!patient) return res.status(404).json({ message: "Patient not found" });
+    // A. Verify Patient Exists Globally
+    const patient = await Patient.findById(patientId);
+    if (!patient) return res.status(404).json({ message: "Patient not found in global registry." });
 
-    // Arrays to hold our final data
-    let orderItems = []; // This goes into DB
+    // B. Build Line Items
+    let orderItems = [];
     let totalAmount = 0;
 
-    // ---------------------------------------------------------
-    // CORE LOGIC: Loop through items (Tests or Packages)
-    // ---------------------------------------------------------
     for (const item of items) {
-      
-      // === SCENARIO A: It is a Single Test ===
-      if (item.type === 'test') {
-        const test = await Test.findOne({ _id: item.id, institutionId: instId });
-        
+      if (item.type === 'Test') {
+        const test = await req.TenantTest.findById(item._id);
         if (test) {
-          // 1. Financials: Add full test price
-          totalAmount += test.price;
-
-          // 2. Worklist: Add test parameters for the technician
+          totalAmount += (test.price || 0);
           orderItems.push({
             itemType: "Test",
             itemId: test._id,
             name: test.name,
-            price: test.price,
-            financials: { institutionShare: test.price, doctorShare: 0 },
-
-            // Legacy/Extra fields for reports
+            price: test.price || 0,
             status: "Pending",
-            results: test.department === 'Pathology' 
-              ? test.parameters.map(p => ({ 
-                  parameterName: p.name, 
-                  unit: p.unit, 
-                  refRange: p.bioRefRange?.General?.text || "-"
-                })) 
-              : []
+            results: test.parameters?.map(p => ({ name: p.name, unit: p.unit, value: "" })) || []
           });
         }
-      } 
-      
-      // === SCENARIO B: It is a Package (Bundle) ===
-      else if (item.type === 'package') {
-        // Fetch package and populate the tests inside it
-        const pkg = await Package.findOne({ _id: item.id, institutionId: instId })
-                                 .populate('tests');
-        
+      } else if (item.type === 'Package') {
+        const pkg = await req.TenantPackage.findById(item._id).populate('tests');
         if (pkg) {
-          // 1. Financials: Add PACKAGE price
-          totalAmount += pkg.offerPrice;
-
-          // 2. Worklist: Unfold package -> Tests
-          // Logic: We add the Package as an Item? Or the Tests?
-          // To keep reporting simple, let's add individual Tests as items, but with price 0
-
-          if (pkg.tests && pkg.tests.length > 0) {
-            pkg.tests.forEach(test => {
-              orderItems.push({
-                itemType: "Test", // Tech treats it as a test
-                itemId: test._id,
-                name: `${test.name} (Pkg: ${pkg.name})`,
-                price: 0, // Bundled
-                financials: { institutionShare: 0, doctorShare: 0 },
-                
-                status: "Pending",
-                results: test.department === 'Pathology' 
-                  ? test.parameters.map(p => ({ 
-                      parameterName: p.name, 
-                      unit: p.unit,
-                      refRange: p.bioRefRange?.General?.text || "-" 
-                    })) 
-                  : []
-              });
+          totalAmount += (pkg.offerPrice || 0);
+          if (pkg.tests) {
+            pkg.tests.forEach(t => {
+               if(t._id) {
+                   orderItems.push({
+                    itemType: "Test",
+                    itemId: t._id,
+                    name: `${t.name} (Pkg)`,
+                    price: 0,
+                    parentPackageId: pkg._id,
+                    status: "Pending",
+                    results: t.parameters?.map(p => ({ name: p.name, unit: p.unit, value: "" })) || []
+                   });
+               }
             });
           }
         }
       }
     }
 
-    if (orderItems.length === 0) {
-      return res.status(400).json({ message: "No valid tests or packages selected." });
-    }
+    if (orderItems.length === 0) return res.status(400).json({ message: "No valid items." });
 
-    // ---------------------------------------------------------
-    // GENERATE IDs
-    // ---------------------------------------------------------
-    // Format: YYMMDD-001 (Daily incremental)
+    // C. Generate ID
     const startOfDay = moment().startOf('day').toDate();
-    const count = await Order.countDocuments({ 
-      institutionId: instId, 
-      createdAt: { $gte: startOfDay } 
-    });
-    
-    const dateStr = moment().format("YYMMDD");
-    const displayId = `${dateStr}-${String(count + 1).padStart(3, '0')}`;
+    const count = await req.TenantOrder.countDocuments({ createdAt: { $gte: startOfDay } });
+    const displayId = `${moment().format("YYMMDD")}-${String(count + 1).padStart(3, '0')}`;
 
-    // ---------------------------------------------------------
-    // CALCULATE FINAL BILL
-    // ---------------------------------------------------------
-    const netAmount = totalAmount - discount;
-
-    // ---------------------------------------------------------
-    // SAVE ORDER
-    // ---------------------------------------------------------
-    const newOrder = new Order({
+    // D. Save Order
+    const newOrder = new req.TenantOrder({
       institutionId: instId,
       orderId: uuidv4(),
-      displayId: displayId,
-      patientId: patientId,
-      
-      // Note: referringDoctor field was in route but maybe not in schema?
-      // Schema has 'appointment.doctorId'. If this is an external ref doc, we might need a field for it.
-      // Checking Order.js: It has 'appointment.doctorId'.
-      // If 'referringDoctor' is just a string name, we might need to add it to schema or put it in notes.
-      // For now, let's map it if it exists or ignore.
-
+      displayId,
+      patientId: patient._id, 
       items: orderItems,
       
-      totalAmount,
-      netAmount, // Discount handled in frontend or separate logic needed
-      paymentStatus: "Pending"
+      // -- NEW FINANCIALS STRUCTURE --
+      financials: {
+          totalAmount,
+          discountAmount,
+          netAmount: totalAmount - discountAmount,
+          paidAmount: 0, // Will be updated if immediate payment exists
+          dueAmount: totalAmount - discountAmount
+      },
+      transactions: []
     });
+
+    // E. Handle Immediate Payment (if sent with booking)
+    // Expecting req.body.initialPayment = { mode: 'Cash', amount: 500, transactionId: '...' }
+    if (req.body.initialPayment && req.body.initialPayment.amount > 0) {
+        const { mode, amount, transactionId, notes } = req.body.initialPayment;
+        
+        newOrder.transactions.push({
+            paymentMode: mode,
+            amount: Number(amount),
+            transactionId,
+            notes,
+            recordedBy: req.user.userId
+        });
+
+        newOrder.financials.paidAmount = Number(amount);
+        newOrder.financials.dueAmount = newOrder.financials.netAmount - Number(amount);
+    }
 
     await newOrder.save();
+    
+    // E. Update Patient Enrollment
+    if(!patient.enrolledInstitutions.includes(instId)){
+        patient.enrolledInstitutions.push(instId);
+        await patient.save();
+    }
 
-    res.status(201).json({ message: "Order created successfully", order: newOrder });
+    res.status(201).json(newOrder);
 
   } catch (err) {
-    console.error("Order Create Error:", err);
-    res.status(500).json({ message: "Server Error", error: err.message });
+    console.error("Order Error:", err);
+    res.status(500).json({ message: err.message });
   }
 });
 
-
-// ==========================================
-// 2. ENTER RESULTS (Technician / Doctor)
-// ==========================================
-router.put("/:orderId/results", authenticateUser, async (req, res) => {
+// 2. LIST ORDERS
+router.get("/", async (req, res) => {
   try {
-    const { orderId } = req.params;
-    const { testId, results, reportText, status } = req.body; 
-    // results is an Array: [{ parameterName: 'Hb', value: '12.5' }]
+    const { search, startDate, endDate } = req.query;
+    let query = {};
 
-    const order = await Order.findOne({ 
-      _id: orderId, 
-      institutionId: req.user.institutionId 
-    });
-
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    // Find the specific test row within the order
-    // We use .id() if it's a subdocument array with _id, or .find() manual
-    const testItem = order.items.find(t => (t.itemId && t.itemId.toString() === testId) || t._id.toString() === testId);
-
-    if (!testItem) return res.status(404).json({ message: "Test not found in order" });
-
-    // Update PATHOLOGY Results
-    if (results && Array.isArray(results)) {
-      results.forEach(inputRes => {
-        // Find the parameter inside the test item
-        const param = testItem.results.find(p => p.parameterName === inputRes.parameterName);
-        if (param) {
-          param.value = inputRes.value;
-          // You can add logic here to auto-set 'High'/'Low' flag based on ranges
-          if (inputRes.flag) param.flag = inputRes.flag;
-        }
-      });
+    if (startDate && endDate) {
+        query.createdAt = {
+            $gte: moment(startDate).startOf('day').toDate(),
+            $lte: moment(endDate).endOf('day').toDate()
+        };
     }
-
-    // Update RADIOLOGY Report (Text based)
-    if (reportText) {
-      testItem.reportText = reportText;
-    }
-
-    // Update Status (e.g. from 'Pending' -> 'Authorized')
-    if (status) {
-      testItem.status = status;
-      if (status === 'Authorized') {
-        testItem.approvedBy = req.user.userId; // Sign off
-        testItem.approvedAt = new Date();
-      }
-    }
-
-    await order.save();
-    res.json({ message: "Results updated", order });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// ==========================================
-// 3. GET SINGLE ORDER (For View/Print)
-// ==========================================
-router.get("/:id", authenticateUser, async (req, res) => {
-  try {
-    const order = await Order.findOne({ 
-      _id: req.params.id, 
-      institutionId: req.user.institutionId 
-    })
-    .populate("patientId"); // Get full patient details
-
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    res.json(order);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-// ==========================================
-// 4. LIST ORDERS (Dashboard)
-// ==========================================
-router.get("/", authenticateUser, async (req, res) => {
-  try {
-    const { fromDate, toDate, search } = req.query;
-    const instId = req.user.institutionId;
-
-    let query = { institutionId: instId };
-
-    // Date Filter
-    if (fromDate && toDate) {
-      query.createdAt = {
-        $gte: moment(fromDate).startOf('day').toDate(),
-        $lte: moment(toDate).endOf('day').toDate()
-      };
-    } else {
-      // Default to today if no date provided? Or last 7 days?
-      // query.createdAt = { $gte: moment().startOf('day').toDate() };
-    }
-
-    // Text Search (Display ID or Patient Name requires aggregation lookup or separate index)
-    // For simplicity, let's search DisplayID or simple exact match
     if (search) {
-      query.$or = [
-        { displayId: { $regex: search, $options: 'i' } },
-        { referringDoctor: { $regex: search, $options: 'i' } }
-      ];
+        query.displayId = { $regex: search, $options: 'i' };
     }
 
-    const orders = await Order.find(query)
-      .populate("patientId", "firstName lastName mobile")
-      .sort({ createdAt: -1 })
-      .limit(50); // Pagination recommended for prod
+    const orders = await req.TenantOrder.find(query).sort({ createdAt: -1 }).limit(50);
+    const mergedOrders = await mergePatientsWithOrders(orders);
 
-    res.json(orders);
-
+    res.json(mergedOrders);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ message: err.message });
   }
 });
 

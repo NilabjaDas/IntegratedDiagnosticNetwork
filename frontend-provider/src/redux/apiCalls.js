@@ -26,6 +26,14 @@ import {
   deletePackageSuccess,
 } from "./testRedux";
 
+import {
+  orderProcessStart,
+  orderProcessFailure,
+  getOrdersSuccess,
+  patientSearchSuccess,
+  createOrderSuccess,
+} from "./orderRedux";
+
 import { setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
 
 //Get Encryption Key
@@ -216,6 +224,58 @@ export const getTestDetails = async (id) => {
     return { 
       status: err.response?.status || 500, 
       message: err.response?.data?.message || "Fetch failed" 
+    };
+  }
+};
+
+// --- ORDERS ---
+export const getOrders = async (dispatch, filters = {}) => {
+  dispatch(orderProcessStart());
+  try {
+    let qs = "";
+    if (filters.search) qs += `&search=${filters.search}`;
+    if (filters.startDate) qs += `&startDate=${filters.startDate}`;
+    if (filters.endDate) qs += `&endDate=${filters.endDate}`;
+
+    const res = await userRequest.get(`/orders?${qs}`);
+    dispatch(getOrdersSuccess(res.data));
+  } catch (err) {
+    dispatch(orderProcessFailure());
+  }
+};
+
+export const createOrder = async (dispatch, orderData) => {
+  dispatch(orderProcessStart());
+  try {
+    const res = await userRequest.post("/orders", orderData);
+    dispatch(createOrderSuccess(res.data));
+    return { status: 201, data: res.data };
+  } catch (err) {
+    dispatch(orderProcessFailure());
+    return { status: 500, message: err.response?.data?.message || "Error" };
+  }
+};
+
+// --- PATIENTS ---
+export const searchPatients = async (dispatch, query) => {
+  try {
+    const res = await userRequest.get(`/patients/search?query=${query}`);
+    dispatch(patientSearchSuccess(res.data));
+    return res.data;
+  } catch (err) {
+    console.error(err);
+    return [];
+  }
+};
+
+export const createGlobalPatient = async (patientData) => {
+  try {
+    const res = await userRequest.post("/patients", patientData);
+    return { status: 201, data: res.data };
+  } catch (err) {
+    return { 
+        status: err.response?.status || 500, 
+        message: err.response?.data?.message || "Failed to create patient" 
     };
   }
 };

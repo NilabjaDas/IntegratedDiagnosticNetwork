@@ -35,6 +35,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
       if (initialValues) {
         const formattedValues = {
           ...initialValues,
+          institutionType: initialValues.institutionType || "pathologyWithDoc", // Ensure default if missing
           subscription: {
             ...initialValues.subscription,
             dateRange: [
@@ -43,11 +44,22 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             ],
           },
           domains: initialValues.domains || [],
+          // Ensure nested objects are initialized to avoid issues if they come back null/undefined
+          paymentGateway: initialValues.paymentGateway || { provider: "razorpay" },
+          contact: initialValues.contact || {},
+          address: initialValues.address || { country: "India" },
+          theme: initialValues.theme || { primaryColor: "#007bff", secondaryColor: "#6c757d", logoBackground: "#ffffff" },
+          features: initialValues.features || { hasRadiology: false, hasPACS: false, hasHomeCollection: true, hasTeleReporting: false },
+          billing: initialValues.billing || { taxPercentage: 18, defaultCurrency: "INR", invoicePrefix: "INV" },
+          settings: initialValues.settings || { timezone: "Asia/Kolkata", locale: "en-IN", defaultLanguage: "en", sampleBarcodePrefix: "LAB", queue: { incrementalPerOutlet: true, tokenFormat: "{OUTLET}-{NUMBER}" } },
+          integrations: initialValues.integrations || {},
+          smtp: initialValues.smtp || {}
         };
         form.setFieldsValue(formattedValues);
       } else {
         form.resetFields();
         form.setFieldsValue({
+          institutionType: "pathologyWithDoc", // Default to Type 3
           subscription: {
             type: "trial",
             frequency: "monthly",
@@ -85,6 +97,9 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
               tokenFormat: "{OUTLET}-{NUMBER}",
             },
           },
+          paymentGateway: {
+            provider: "razorpay"
+          }
         });
       }
     }
@@ -121,10 +136,25 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
                 label="Institution Name"
                 rules={[{ required: true, message: "Please enter institution name" }]}
               >
-                <Input placeholder="e.g. Apollo Diagnostics" />
+                <Input placeholder="e.g. Apollo Diagnostics" autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
+              <Form.Item
+                name="institutionType"
+                label="Institution Type"
+                rules={[{ required: true, message: "Please select institution type" }]}
+              >
+                <Select placeholder="Select Type">
+                  <Option value="soloDoc">Solo Practice (Type 1)</Option>
+                  <Option value="multiDoc">Multi-Specialty Clinic (Type 2)</Option>
+                  <Option value="pathologyWithDoc">Polyclinic & Lab (Type 3)</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={24}>
               <Form.Item
                 name="domains"
                 label="Domains"
@@ -148,7 +178,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
                 label="Database Name (Optional)"
                 tooltip="Unique DB identifier. Auto-generated from name if left blank."
               >
-                <Input placeholder="(Auto-generated) e.g. apollo_db" disabled={isEditMode} />
+                <Input placeholder="(Auto-generated) e.g. apollo_db" disabled={isEditMode} autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -157,7 +187,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
                 label="Institution Code (Optional)"
                 tooltip="Unique short code. Auto-generated from name if left blank."
               >
-                <Input placeholder="(Auto-generated) e.g. APLO-X92" disabled={isEditMode} />
+                <Input placeholder="(Auto-generated) e.g. APLO-X92" disabled={isEditMode} autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
@@ -179,24 +209,24 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name={["contact", "email"]} label="General Email">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name={["contact", "supportEmail"]} label="Support Email">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name={["contact", "phone"]} label="Phone">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name={["contact", "altPhone"]} label="Alt Phone">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
@@ -204,41 +234,41 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name={["address", "line1"]} label="Line 1">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name={["address", "line2"]} label="Line 2">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name={["address", "city"]} label="City">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item name={["address", "state"]} label="State">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item name={["address", "pincode"]} label="Pincode">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name={["address", "country"]} label="Country">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name={["address", "gmapLink"]} label="Google Maps Link">
-                <Input placeholder="https://maps.google.com/..." />
+                <Input placeholder="https://maps.google.com/..." autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
@@ -281,7 +311,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name={["subscription", "value"]} label="Plan Value">
-                <Input disabled={isTrial || isFree} />
+                <Input disabled={isTrial || isFree} autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -310,12 +340,12 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name={["billing", "gstin"]} label="GSTIN">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item name={["billing", "pan"]} label="PAN">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -327,12 +357,12 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name={["billing", "invoicePrefix"]} label="Invoice Prefix">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name={["billing", "defaultCurrency"]} label="Currency">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
@@ -381,24 +411,24 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             </Col>
             <Col span={8}>
               <Form.Item name={["settings", "locale"]} label="Locale">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item name={["settings", "defaultLanguage"]} label="Language">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name={["settings", "sampleBarcodePrefix"]} label="Barcode Prefix">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={8}>
               <Form.Item name={["settings", "queue", "tokenFormat"]} label="Token Format">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -418,40 +448,40 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="brandCode" label="Brand Code">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="brandName" label="Brand Display Name">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="institutionLogoUrl" label="Logo URL">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
            <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="institutionSymbolUrl" label="Short Logo URL">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="loginPageImgUrl" label="Login Image URL">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={24}>
               <Form.Item name="favicon" label="Favicon URL">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
@@ -481,16 +511,37 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
       label: "Integrations",
       children: (
         <>
+          <Divider orientation="left">Payment Gateway (Razorpay)</Divider>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={["paymentGateway", "provider"]} label="Provider">
+                <Input disabled />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name={["paymentGateway", "razorpayKeyId"]} label="Key ID">
+                <Input placeholder="rzp_live_..." autoComplete="new-password" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name={["paymentGateway", "razorpayKeySecret"]} label="Key Secret">
+                <Input.Password placeholder="Secret..." autoComplete="new-password" />
+              </Form.Item>
+            </Col>
+          </Row>
+
           <Divider orientation="left">Cloud & Storage</Divider>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name={["integrations", "firebaseBucketName"]} label="Firebase Bucket">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name={["integrations", "uploadUrlDomain"]} label="Upload Domain">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
@@ -504,12 +555,12 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             </Col>
             <Col span={12}>
               <Form.Item name={["integrations", "pacs", "orthancUrl"]} label="Orthanc URL">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={6}>
               <Form.Item name={["integrations", "pacs", "aeTitle"]} label="AE Title">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
@@ -523,7 +574,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
             </Col>
             <Col span={18}>
               <Form.Item name={["integrations", "hl7", "listenerUrl"]} label="Listener URL">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
           </Row>
@@ -532,7 +583,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name={["smtp", "host"]} label="Host">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={6}>
@@ -544,21 +595,12 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name={["smtp", "user"]} label="SMTP User">
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name={["smtp", "password"]} label="SMTP Password">
-                <Input.Password />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Divider orientation="left">Payment Gateway</Divider>
-          <Row gutter={16}>
-            <Col span={24}>
-              <Form.Item name={["paymentGateway", "provider"]} label="Provider">
-                <Input placeholder="e.g. Razorpay" />
+                <Input.Password autoComplete="new-password" />
               </Form.Item>
             </Col>
           </Row>
@@ -583,7 +625,7 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
         </Space>
       }
     >
-      <Form layout="vertical" form={form} onFinish={handleFinish} hideRequiredMark>
+      <Form layout="vertical" form={form} onFinish={handleFinish} hideRequiredMark autoComplete="off">
         <Tabs defaultActiveKey="1" items={items} />
       </Form>
     </Drawer>

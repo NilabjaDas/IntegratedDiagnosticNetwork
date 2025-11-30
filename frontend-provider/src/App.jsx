@@ -35,6 +35,7 @@ import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
 import DeactivatedOverlayComp from "./components/DeactivatedOverlayComp";
 import TestsPage from "./pages/TestsPage";
+import OrdersPage from "./pages/OrdersPage";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -335,6 +336,7 @@ function App() {
                   <Routes>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/tests-management" element={<TestsPage />} />
+                    <Route path="/orders-management" element={<OrdersPage />} />
                     <Route path="/page1" element={<Page1 />} />
                     <Route path="/page2" element={<Page2 />} />
                     <Route path="/page3" element={<Page3 />} />

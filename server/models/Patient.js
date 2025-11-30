@@ -5,57 +5,62 @@ const encryptPlugin = require("./plugins/encryptPlugin");
 const patientSchema = new mongoose.Schema({
   patientId: { type: String, default: () => uuidv4(), unique: true },
   
-  // Searchable fields
-  uhid: { type: String }, // Custom short ID (e.g., P-1001)
-  firstName: { type: String, required: true, trim: true },
-  lastName: { type: String, trim: true },
+  // Searchable fields (Plaintext, Indexed for performance)
+  uhid: { type: String, index: true, uppercase: true, trim: true },
+  searchableName: { type: String, index: true }, 
+  searchableMobile: { type: String, index: true }, // NEW: Allows partial search (e.g. "9876%")
 
   // Encrypted fields (Stored as ciphertext)
-  mobile: { type: String, required: true },
+  firstName: { type: String, required: true, trim: true },
+  lastName: { type: String, trim: true },
+  mobile: { type: String, required: true }, // Encrypted Source of Truth
   email: { type: String, lowercase: true, trim: true },
   
-  // Blind Indexes for Searching (Hashed)
+  // Blind Indexes (Still useful for exact match speed)
   mobileHash: { type: String, index: true },
   emailHash: { type: String, index: true },
 
-  // Auth (OTP) - stored in Master DB
+  // ... (Rest of schema remains same: otp, dob, age, address, etc.)
   otp: { type: String, select: false },
   otpExpires: { type: Date },
   isVerified: { type: Boolean, default: false },
-
-  // Demographics (Critical for Normal Ranges)
   dob: { type: Date },
-  age: { type: Number }, // Fallback if DOB unknown
-  ageUnit: { type: String, enum: ["Years", "Months", "Days"], default: "Years" },
-  gender: { type: String, enum: ["Male", "Female", "Other"], required: true },
-  
-  address: {
-    line: String,
-    city: String,
-    pincode: String
-  },
-
-  medicalHistory: { type: String }, // Notes on diabetes, BP, etc.
-
-  // List of institutions this patient has visited (optional tracking)
+  age: { type: Number },
+  ageUnit: { type: String, default: "Years" },
+  gender: { type: String, required: true },
+  address: { line: String, city: String, pincode: String },
+  medicalHistory: { type: String },
   enrolledInstitutions: [{ type: String }],
 
 }, { timestamps: true });
 
-// Apply Encryption Plugin
-const DB_SECRET = process.env.DB_SECRET || process.env.AES_SEC || "dev-secret-key-123";
+// --- HOOK: Populate Searchable Fields ---
+// This runs BEFORE the encryption plugin, so 'this.mobile' is still plaintext
+patientSchema.pre('save', function(next) {
+    // 1. Prepare Name for Search (Lowercase)
+    if (this.isModified('firstName') || this.isModified('lastName')) {
+        const full = `${this.firstName} ${this.lastName || ''}`;
+        this.searchableName = full.toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+    
+    // 2. Prepare Mobile for Search (Plaintext)
+    if (this.isModified('mobile')) {
+        this.searchableMobile = this.mobile;
+    }
+    next();
+});
 
-if (!DB_SECRET) {
-    console.warn("WARNING: Missing DB_SECRET. Using fallback (INSECURE for production).");
-}
+// --- PLUGINS ---
+const DB_SECRET = process.env.DB_SECRET || process.env.AES_SEC || "dev-secret-key-123";
 
 patientSchema.plugin(encryptPlugin, {
   fields: ["firstName", "lastName", "mobile", "email", "address.line", "medicalHistory"],
-  blindIndexFields: ["mobile", "email"],
+  blindIndexFields: ["mobile", "email"], // Keep blind index for fast exact lookups
   secret: DB_SECRET
 });
 
-patientSchema.index({ mobileHash: 1 }, { unique: true });
-patientSchema.index({ firstName: 1, lastName: 1 });
+// Composite index for text searching
+patientSchema.index({ searchableMobile: 1 });
+patientSchema.index({ searchableName: 1 });
 
 module.exports = mongoose.model("Patient", patientSchema);
