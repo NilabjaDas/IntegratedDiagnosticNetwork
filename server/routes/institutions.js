@@ -99,7 +99,9 @@ router.get("/details", async (req, res) => {
                 timezone: institution.settings?.timezone,
                 defaultLanguage: institution.settings?.defaultLanguage,
                 queue: institution.settings?.queue // If needed for public token display
-            }
+            },
+
+            printTemplates: institution.printTemplates
         };
 
         res.json(publicData);
@@ -241,15 +243,5 @@ router.post("/users/:institutionId", authorizeRoles("admin"), async (req, res) =
 });
 
 
-
-// Helper: Get Current Institution (for loading config)
-router.get("/me", async (req, res) => {
-    try {
-        const institution = await Institution.findOne({ institutionId: req.user.institutionId });
-        res.json(institution);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
 
 module.exports = router;
