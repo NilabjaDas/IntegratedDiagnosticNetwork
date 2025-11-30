@@ -257,7 +257,7 @@ const PackageManager = () => {
               onChange={handleTestsChange}
               style={{ width: '100%' }}
             >
-              {tests.map((t) => (
+              {tests?.map((t) => (
                 <Option key={t._id} value={t._id}>
                   {t.name} ({t.code}) - ₹{t.price}
                 </Option>

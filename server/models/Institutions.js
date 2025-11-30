@@ -111,6 +111,7 @@ const institutionsSchema = new mongoose.Schema({
     locale: { type: String, default: "en-IN" },
     defaultLanguage: { type: String, default: "en" },
     sampleBarcodePrefix: { type: String, default: "LAB" },
+    discountOverrideCode: { type: String, select: false }, // The 6-digit PIN (e.g., "123456")
     queue: {
       incrementalPerOutlet: { type: Boolean, default: true },
       tokenFormat: { type: String, default: "{OUTLET}-{NUMBER}" }

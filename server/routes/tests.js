@@ -36,21 +36,65 @@ router.use(verifyToken, getTenantContext);
 // Search Master Catalog
 router.get("/master-catalog", async (req, res) => {
   try {
-    const { search, department, category } = req.query;
-    let query = { 
-        $or: [{ institutionId: null }, { institutionId: req.user.institutionId }],
-        isActive: true 
+    const { search, department, category, page = 1, limit = 10 } = req.query;
+
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // 1. Base Scoping (Global + Private)
+    const scopeQuery = {
+      $or: [{ institutionId: null }, { institutionId: req.user.institutionId }],
+      isActive: true 
     };
 
-    if (search) query.$text = { $search: search };
-    if (department) query.department = department;
-    if (category) query.category = category;
+    // 2. Build Search Logic
+    let searchQuery = {};
+    if (search && search.trim().length > 0) {
+        const regex = { $regex: search, $options: "i" };
+        searchQuery = {
+            $or: [
+                { name: regex },
+                { code: regex },
+                { alias: regex },
+                { category: regex }
+            ]
+        };
+    }
 
-    const masterTests = await BaseTest.find(query)
+    // 3. Filters
+    let filterQuery = {};
+    if (department) filterQuery.department = department;
+    if (category) filterQuery.category = category;
+
+    // 4. Combine
+    const finalQuery = {
+        $and: [
+            scopeQuery,
+            searchQuery,
+            filterQuery
+        ]
+    };
+
+    // 5. Query with Pagination
+    const total = await BaseTest.countDocuments(finalQuery);
+    
+    const masterTests = await BaseTest.find(finalQuery)
       .select("code name department category method specimenType")
-      .limit(50);
+      .sort({ name: 1 }) // Alphabetical sort for "All" view
+      .skip(skip)
+      .limit(limitNum);
 
-    res.json(masterTests);
+    res.json({
+        data: masterTests,
+        pagination: {
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum)
+        }
+    });
+
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

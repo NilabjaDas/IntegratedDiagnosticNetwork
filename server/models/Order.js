@@ -42,7 +42,7 @@ const orderSchema = new mongoose.Schema({
   // --- FINANCIALS (Updated with Discount Reason) ---
   financials: {
     totalAmount: { type: Number, required: true }, // Sum of Items
-    
+    discountOverriden: {type: Boolean, default: false},
     discountAmount: { type: Number, default: 0 },
     discountReason: { type: String }, // e.g. "Senior Citizen", "Staff"
     discountAuthorizedBy: { type: String }, // Stores User ID/Name

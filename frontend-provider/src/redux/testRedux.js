@@ -3,14 +3,19 @@ import { createSlice } from "@reduxjs/toolkit";
 const testSlice = createSlice({
   name: "test",
   initialState: {
-    tests: [],       // Local institution tests
-    packages: [],    // Local institution packages
-    masterTests: [], // Results from master catalog search
+    tests: [],       
+    packages: [],    
+    masterTests: [], // The List
+    masterPagination: { // NEW: Pagination Meta
+        total: 0,
+        page: 1,
+        limit: 10,
+        totalPages: 0
+    },
     isFetching: false,
     error: false,
   },
   reducers: {
-    // Generic Start/Failure
     processStart: (state) => {
       state.isFetching = true;
       state.error = false;
@@ -19,14 +24,15 @@ const testSlice = createSlice({
       state.isFetching = false;
       state.error = true;
     },
-
-    // Master Catalog
+    
+    // Updated to handle { data, pagination } structure
     getMasterTestsSuccess: (state, action) => {
       state.isFetching = false;
-      state.masterTests = action.payload;
+      state.masterTests = action.payload.data;
+      state.masterPagination = action.payload.pagination;
     },
 
-    // Local Tests
+    // ... (Keep other existing reducers like getTestsSuccess, etc.) ...
     getTestsSuccess: (state, action) => {
       state.isFetching = false;
       state.tests = action.payload;
@@ -45,8 +51,6 @@ const testSlice = createSlice({
       state.isFetching = false;
       state.tests = state.tests.filter((item) => item._id !== action.payload);
     },
-
-    // Packages
     getPackagesSuccess: (state, action) => {
       state.isFetching = false;
       state.packages = action.payload;

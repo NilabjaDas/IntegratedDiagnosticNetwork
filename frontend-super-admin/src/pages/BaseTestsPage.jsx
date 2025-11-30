@@ -17,6 +17,7 @@ import {
   ReloadOutlined,
   FileTextOutlined,
   ExperimentOutlined,
+  SearchOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import BaseTestForm from "../components/BaseTestForm";
@@ -27,46 +28,60 @@ import {
   deleteBaseTest,
 } from "../redux/apiCalls";
 
-const { Search } = Input;
 const { confirm } = Modal;
 const { Option } = Select;
 
 const BaseTestsPage = () => {
   const dispatch = useDispatch();
 
-  // Make sure 'baseTest' matches the key you used in store.js
+  // Redux Data
   const { tests, isFetching, pagination } = useSelector((state) => state[process.env.REACT_APP_BASETESTS_DATA_KEY]);
 
+  // Local State
   const [searchText, setSearchText] = useState("");
+  const [debouncedTerm, setDebouncedTerm] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
+  
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
 
+  // --- DEBOUNCE LOGIC ---
   useEffect(() => {
-    handleRefresh();
+    const timer = setTimeout(() => {
+      setDebouncedTerm(searchText);
+    }, 400); // 400ms delay
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  // --- FETCH LOGIC ---
+  useEffect(() => {
+    // Fetch when: Component Mounts OR Search Term Changes OR Department Filter Changes
+    // We pass Page 1 to reset to the first page on new search filters
+    getAllBaseTests(dispatch, 1, pagination.limit || 20, debouncedTerm, departmentFilter);
+    
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [debouncedTerm, departmentFilter]);
 
-  const handleRefresh = (page = 1, limit = 20) => {
-    getAllBaseTests(dispatch, page, limit, searchText, departmentFilter);
-  };
-
+  // Handle Table Page Change
   const handleTableChange = (newPagination) => {
-    handleRefresh(newPagination.current, newPagination.pageSize);
+    getAllBaseTests(dispatch, newPagination.current, newPagination.pageSize, debouncedTerm, departmentFilter);
   };
 
-  const handleSearch = (value) => {
-    setSearchText(value);
-    getAllBaseTests(dispatch, 1, pagination.limit, value, departmentFilter);
+  // Handle Input Typing
+  const handleSearchInput = (e) => {
+    setSearchText(e.target.value);
   };
 
   const handleDepartmentChange = (value) => {
     setDepartmentFilter(value);
-    getAllBaseTests(dispatch, 1, pagination.limit, searchText, value);
+    // Effect will trigger fetch
   };
 
-  // --- CRUD ---
+  // --- CRUD Handlers ---
+  const handleRefresh = () => {
+    getAllBaseTests(dispatch, pagination.page, pagination.limit, debouncedTerm, departmentFilter);
+  };
 
   const handleAdd = () => {
     setEditingItem(null);
@@ -88,7 +103,7 @@ const BaseTestsPage = () => {
         const res = await deleteBaseTest(record._id);
         if (res.status === 200) {
           message.success("Test deleted successfully");
-          handleRefresh(pagination.page, pagination.limit);
+          handleRefresh();
         } else {
           message.error(res.message);
         }
@@ -103,7 +118,7 @@ const BaseTestsPage = () => {
       if (res.status === 200) {
         message.success("Test updated successfully");
         setIsDrawerOpen(false);
-        handleRefresh(pagination.page, pagination.limit);
+        handleRefresh();
       } else {
         message.error(res.message);
       }
@@ -112,7 +127,7 @@ const BaseTestsPage = () => {
       if (res.status === 201) {
         message.success("Test created successfully");
         setIsDrawerOpen(false);
-        handleRefresh(1, pagination.limit);
+        handleRefresh(); // Should reset to page 1 ideally, but current page refresh works too
       } else {
         message.error(res.message);
       }
@@ -179,19 +194,10 @@ const BaseTestsPage = () => {
       render: (_, record) => (
         <Space>
           <Tooltip title="Edit">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-            />
+            <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           </Tooltip>
           <Tooltip title="Delete">
-            <Button
-              type="text"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => handleDelete(record)}
-            />
+            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} />
           </Tooltip>
         </Space>
       ),
@@ -203,7 +209,7 @@ const BaseTestsPage = () => {
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
         <Space>
           <h2 style={{ margin: 0 }}>Base Test Catalog</h2>
-          <Button icon={<ReloadOutlined />} onClick={() => handleRefresh(pagination.page, pagination.limit)} />
+          <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
         </Space>
         
         <Space style={{ flexWrap: "wrap" }}>
@@ -218,12 +224,17 @@ const BaseTestsPage = () => {
             <Option value="Cardiology">Cardiology</Option>
             <Option value="Other">Other</Option>
           </Select>
-          <Search
-            placeholder="Search code or name..."
-            onSearch={handleSearch}
+          
+          {/* Updated Search Input */}
+          <Input
+            placeholder="Search code, name, alias..."
+            prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+            value={searchText}
+            onChange={handleSearchInput}
             style={{ width: 250 }}
             allowClear
           />
+          
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             Add Test
           </Button>
@@ -242,6 +253,7 @@ const BaseTestsPage = () => {
           pageSize: pagination?.limit,
           total: pagination?.total,
           showSizeChanger: true,
+          showTotal: (total) => `Total ${total} tests`
         }}
       />
 

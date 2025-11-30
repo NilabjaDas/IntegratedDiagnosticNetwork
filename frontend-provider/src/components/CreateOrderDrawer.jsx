@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Drawer,
   Form,
@@ -31,7 +31,8 @@ import {
 import { useDispatch, useSelector } from "react-redux";
 import { createOrder, searchPatients } from "../redux/apiCalls";
 import CreatePatientModal from "./CreatePatientModal";
-import PaymentModal from "./PaymentModal"; // Import to chain online payment
+import PaymentModal from "./PaymentModal";
+import DiscountOverrideModal from "./DiscountOverrideModal"; // Ensure this file exists
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -58,6 +59,10 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [createdOrder, setCreatedOrder] = useState(null); // For chaining payment
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  
+  // --- NEW: Override State ---
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+  const [pendingSubmission, setPendingSubmission] = useState(null);
 
   // --- BILLING CALCULATOR ---
   const handleValuesChange = (changedValues, allValues) => {
@@ -71,21 +76,16 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     setDueAmount(newDue);
   };
 
-  // Recalculate when items change
   useEffect(() => {
     const sum = selectedItems.reduce((acc, item) => acc + (item.price || 0), 0);
     setTotalAmount(sum);
     
-    // Trigger re-calc of Net/Due based on current form values
     const currentDiscount = form.getFieldValue("discountAmount") || 0;
     const currentPaid = form.getFieldValue("paidAmount") || 0;
     
     const newNet = Math.max(0, sum - currentDiscount);
     setNetAmount(newNet);
     setDueAmount(Math.max(0, newNet - currentPaid));
-    
-    // Auto-fill "Paid Amount" with full amount if user hasn't edited it yet (Optional UX)
-    // For now, we let user type it.
   }, [selectedItems, form]);
 
 
@@ -109,7 +109,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     setPatientId(newPatient._id);
     message.success(`Selected ${newPatient.firstName}`);
     searchPatients(dispatch, newPatient.mobile);
-    form.setFieldsValue({ patientId: newPatient._id }); // Sync UI
+    form.setFieldsValue({ patientId: newPatient._id });
   };
 
   const handleAddItem = (value) => {
@@ -130,24 +130,41 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     setSelectedItems(selectedItems.filter(i => i._id !== id));
   };
 
+  // --- SUBMISSION LOGIC ---
+
   const onFinish = async (values) => {
-    if (!patientId) return message.error("Please select a patient");
-    if (selectedItems.length === 0) return message.error("Please select services");
+    // Determine which data to use (Pending/Retry vs Fresh Form)
+    const dataToSubmit = pendingSubmission 
+        ? { ...pendingSubmission, discountOverrideCode: values.overrideCode }
+        : values;
+
+    if (!pendingSubmission) {
+        if (!patientId) return message.error("Please select a patient");
+        if (selectedItems.length === 0) return message.error("Please select services");
+    }
 
     setLoading(true);
 
-    const { discountAmount = 0,discountReason, paidAmount = 0, paymentMode, transactionId, notes } = values;
+    const { 
+        discountAmount = 0,
+        discountReason, 
+        paidAmount = 0, 
+        paymentMode, 
+        transactionId, 
+        notes,
+        discountOverrideCode // From retry
+    } = dataToSubmit;
 
     const orderData = {
-        patientId,
+        patientId: patientId, // Using state variable (safe since component is mounted)
         items: selectedItems.map(i => ({ _id: i._id, type: i.type })),
         discountAmount,
         discountReason,
-        paymentMode
+        paymentMode,
+        discountOverrideCode, // Send to backend
+        notes
     };
 
-    // LOGIC: If Cash/Card, we record payment NOW.
-    // If Razorpay, we create order -> then open Payment Modal.
     if (paymentMode !== "Razorpay" && paidAmount > 0) {
         orderData.initialPayment = {
             mode: paymentMode,
@@ -161,37 +178,38 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     setLoading(false);
 
     if (res.status === 201) {
+        // Success Path
         message.success("Order Created Successfully!");
+        setIsOverrideModalOpen(false);
+        setPendingSubmission(null);
         
         if (paymentMode === "Razorpay" && paidAmount > 0) {
-            // Chain the Online Payment Flow
             setCreatedOrder(res.data);
             setIsPaymentModalOpen(true);
-            // We DO NOT close the drawer yet, or we close it and let the modal take over.
-            // Let's close the main drawer to clean up UI.
-            handleClose(false); // Pass false to NOT clear state needed for modal? 
-            // Actually, PaymentModal needs 'createdOrder'. 
-            // If we unmount this component, PaymentModal might disappear if it's inside.
-            // Strategy: Keep this drawer open? No, clutter.
-            // Strategy: The PaymentModal is rendered inside this component. 
-            // We must keep this component mounted OR move PaymentModal to a global level.
-            // Simple fix: Close this Drawer but keep the Payment Modal visible? 
-            // AntD Drawers/Modals are independent. 
-            // But if CreateOrderDrawer unmounts, its children unmount.
-            // We will just keep CreateOrderDrawer open but show the PaymentModal on top.
-            // Once PaymentModal closes, we close everything.
+            handleClose(false); // Keep drawer mounted but hidden/reset? 
+            // Actually, keep drawer logic same as before: 
+            // If we close fully, 'createdOrder' state might be lost if this component unmounts.
+            // Assuming CreateOrderDrawer is conditionally rendered by parent (e.g. {visible && <Drawer/>})
+            // If so, we should NOT close until payment is done.
+            // But visually, the Payment Modal should take over.
+            // Let's trust the parent handles unmounting correctly.
         } else {
-            handleClose();
+            handleClose(true);
         }
-    } else if (res.status === 403) {
-       // Specific UI for Limit Error
-       Modal.error({
-           title: "Authorization Failed",
-           content: res.message, // "You are only authorized to give up to 10%..."
-       });
+
+    } else if (res.status === 500 && res.requiresOverride) {
+        // Limit Exceeded -> Trigger Override Flow
+        setPendingSubmission(values); // Store form data
+        setIsOverrideModalOpen(true); // Show PIN Modal
     } else {
         message.error(res.message || "Creation Failed");
     }
+  };
+
+  // Handler for the PIN Modal
+  const handleOverrideSubmit = (code) => {
+      // Retry submission with the code
+      onFinish({ ...pendingSubmission, overrideCode: code });
   };
 
   const handleClose = (fullyClose = true) => {
@@ -202,6 +220,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         setTotalAmount(0);
         setNetAmount(0);
         setDueAmount(0);
+        setPendingSubmission(null);
         onClose();
     }
   };
@@ -241,27 +260,29 @@ const CreateOrderDrawer = ({ open, onClose }) => {
           
           {/* --- TOP SECTION: PATIENT & ITEMS --- */}
           <Row gutter={24}>
-              {/* Left Col: Patient & Services */}
               <Col span={14}>
                   <Card size="small" title="1. Patient" style={{ marginBottom: 16 }}>
                       <Form.Item name="patientId" noStyle rules={[{ required: true, message: "Select Patient" }]}>
                           <Select
                               showSearch
+                              style={{width: '100%'}}
                               placeholder="Search Mobile / UHID..."
                               filterOption={false}
                               onSearch={handlePatientSearch}
                               onChange={handlePatientSelect}
                               value={patientId}
                               notFoundContent={
-                                <Button type="link" icon={<UserAddOutlined />} onClick={() => setIsPatientModalOpen(true)}>
-                                    Register New Patient
-                                </Button>
+                                <div style={{textAlign: 'center', padding: 8}}>
+                                    <Button type="link" icon={<UserAddOutlined />} onClick={() => setIsPatientModalOpen(true)}>
+                                        Register New Patient
+                                    </Button>
+                                </div>
                               }
                           >
                               {searchResults.map(p => (
                                   <Option key={p._id} value={p._id}>{p.firstName} {p.lastName} ({p.mobile})</Option>
                               ))}
-                              <Option value="NEW_PATIENT" style={{ color: '#1890ff' }}>+ Add New</Option>
+                              <Option value="NEW_PATIENT" style={{ color: '#1890ff', borderTop: '1px solid #eee' }}>+ Add New</Option>
                           </Select>
                       </Form.Item>
                   </Card>
@@ -276,10 +297,10 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                               value={null}
                           >
                               <Select.OptGroup label="Packages">
-                                  {packages.map(p => <Option key={p._id} value={p._id}>{p.name} (₹{p.offerPrice})</Option>)}
+                                  {packages?.map(p => <Option key={p._id} value={p._id}>{p.name} (₹{p.offerPrice})</Option>)}
                               </Select.OptGroup>
                               <Select.OptGroup label="Tests">
-                                  {tests.map(t => <Option key={t._id} value={t._id}>{t.name} (₹{t.price})</Option>)}
+                                  {tests?.map(t => <Option key={t._id} value={t._id}>{t.name} (₹{t.price})</Option>)}
                               </Select.OptGroup>
                           </Select>
                       </Form.Item>
@@ -300,7 +321,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                   </Card>
               </Col>
 
-              {/* Right Col: Billing & Payment */}
               <Col span={10}>
                   <Card size="small" title="3. Billing" style={{ height: '100%' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -311,18 +331,20 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                       <Form.Item name="discountAmount" label="Discount">
                           <InputNumber style={{ width: '100%' }} min={0} max={totalAmount} prefix="₹" />
                       </Form.Item>
-                          <Form.Item
+                      
+                      <Form.Item
                         noStyle
                         shouldUpdate={(prev, curr) => prev.discountAmount !== curr.discountAmount}
                       >
                         {({ getFieldValue }) => 
                             getFieldValue("discountAmount") > 0 && (
-                                <Form.Item name="discountReason" label="Discount Reason">
+                                <Form.Item name="discountReason" label="Discount Reason" rules={[{required: true, message: 'Reason required'}]}>
                                     <Input placeholder="e.g. Staff, Senior Citizen" />
                                 </Form.Item>
                             )
                         }
                       </Form.Item>
+
                       <Divider style={{ margin: '12px 0' }} />
                       
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -355,7 +377,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                         }
                       </Form.Item>
 
-                      <Alert
+                      <Alert 
                         message={`Balance Due: ₹${dueAmount}`} 
                         type={dueAmount > 0 ? "warning" : "success"} 
                         showIcon 
@@ -379,13 +401,24 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         onSuccess={handleNewPatientCreated}
       />
 
-      {/* Chain Payment Modal if Online was selected */}
+      {/* Override Modal */}
+      <DiscountOverrideModal 
+        open={isOverrideModalOpen}
+        onCancel={() => {
+            setIsOverrideModalOpen(false);
+            setPendingSubmission(null);
+            setLoading(false);
+        }}
+        onSubmit={handleOverrideSubmit}
+      />
+
+      {/* Payment Modal */}
       {createdOrder && (
           <PaymentModal 
             open={isPaymentModalOpen}
             onCancel={() => {
                 setIsPaymentModalOpen(false);
-                handleClose(true); // Close parent drawer when payment modal closes
+                handleClose(true);
             }}
             order={createdOrder}
             onSuccess={() => {

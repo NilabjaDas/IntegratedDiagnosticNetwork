@@ -127,7 +127,8 @@ router.post("/", async (req, res) => {
         items, 
         paymentMode, 
         discountAmount = 0, 
-        discountReason, // NEW
+        discountReason, 
+        discountOverrideCode, // NEW: Input from Frontend Modal
         initialPayment, 
         notes 
     } = req.body;
@@ -138,35 +139,62 @@ router.post("/", async (req, res) => {
     const patient = await Patient.findById(patientId);
     if (!patient) return res.status(404).json({ message: "Patient not found." });
 
-    // B. Calculate Items (Using Helper from previous step)
+    // B. Calculate Items
     const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
     if (orderItems.length === 0) return res.status(400).json({ message: "No valid items." });
+
+    // --- C. DISCOUNT VALIDATION LOGIC ---
     let authorizerName = null;
+    let isOverridden = false;
+
     if (discountAmount > 0) {
         try {
+            // 1. Try User Limit Validation
             authorizerName = await validateDiscount(req.TenantUser, req.user.userId, calculatedTotal, discountAmount);
-        } catch (e) {
-            return res.status(403).json({ message: e.message });
+        
+        } catch (limitError) {
+            // 2. Limit Exceeded? Check for Override Code
+            if (discountOverrideCode) {
+                // Fetch Institution settings (hidden field)
+                const institution = await Institution.findOne({ institutionId: instId }).select("+settings.discountOverrideCode");
+                
+                if (institution.settings?.discountOverrideCode === discountOverrideCode) {
+                    isOverridden = true;
+                    authorizerName = `System Override (by ${req.user.username})`;
+                } else {
+                    return res.status(403).json({ message: "Invalid Override Code" });
+                }
+            } else {
+                // 3. No code provided? Tell frontend to ask for it.
+                return res.status(403).json({ 
+                    message: limitError.message, 
+                    requiresOverride: true // Signal to UI: "Open PIN Modal"
+                });
+            }
         }
     }
-    // C. Generate ID
+
+    // D. Generate ID
     const startOfDay = moment().startOf('day').toDate();
     const count = await req.TenantOrder.countDocuments({ createdAt: { $gte: startOfDay } });
     const displayId = `${moment().format("YYMMDD")}-${String(count + 1).padStart(3, '0')}`;
 
-    // D. Financials
+    // E. Financials
     let financials = {
         totalAmount: calculatedTotal,
+        
         discountAmount,
-        discountReason, // Store Reason
-        discountAuthorizedBy: authorizerName ? `${authorizerName} (${req.user.userId})` : null,
+        discountReason, 
+        discountAuthorizedBy: authorizerName ? `${authorizerName}` : null,
+        discountOverriden: isOverridden, // Save the flag
+        
         netAmount: calculatedTotal - discountAmount,
         paidAmount: 0,
         dueAmount: calculatedTotal - discountAmount,
         status: "Pending"
     };
 
-    // E. Initial Payment
+    // F. Initial Payment
     let transactions = [];
     if (initialPayment && initialPayment.amount > 0) {
         transactions.push({
@@ -182,7 +210,7 @@ router.post("/", async (req, res) => {
         financials.status = financials.dueAmount <= 0 ? "Paid" : "PartiallyPaid";
     }
 
-    // F. Save
+    // G. Save
     const newOrder = new req.TenantOrder({
       institutionId: instId,
       orderId: uuidv4(),

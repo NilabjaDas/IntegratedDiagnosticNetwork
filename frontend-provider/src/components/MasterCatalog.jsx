@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Table, Input, Button, Card, Tag, Modal, Form, InputNumber, message, Row, Col, Empty } from "antd";
 import { SearchOutlined, PlusOutlined, ExperimentOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
@@ -9,29 +9,56 @@ const { Search } = Input;
 
 const MasterCatalog = () => {
   const dispatch = useDispatch();
-  const { masterTests, isFetching, tests } = useSelector((state) => state[process.env.REACT_APP_TESTS_DATA_KEY]);
+  // Get Data & Pagination from Redux
+  const { masterTests, masterPagination, isFetching, tests } = useSelector(
+      (state) => state[process.env.REACT_APP_TESTS_DATA_KEY] || state.test
+  );
   
-  // State for Add from Master Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTest, setSelectedTest] = useState(null);
-  
-  // State for Create Custom Drawer
   const [isCustomDrawerOpen, setIsCustomDrawerOpen] = useState(false);
   
-  // Track if a search has been performed
-  const [hasSearched, setHasSearched] = useState(false);
+  // --- SEARCH & PAGINATION STATE ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedTerm, setDebouncedTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const [form] = Form.useForm();
 
-  // Check if test is already added to avoid duplicates
-  const isAlreadyAdded = (baseTestId) => {
-    return tests.some((t) => t.baseTestId === baseTestId);
+  // 1. Debounce Logic: Update 'debouncedTerm' after 500ms of no typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedTerm(searchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // 2. Fetch Logic: Runs when Debounced Term OR Page/Size Changes
+  useEffect(() => {
+    // Rule: 
+    // - If Empty: Fetch All (Page 1)
+    // - If 1 char: Skip
+    // - If 2+ chars: Fetch Search
+    if (debouncedTerm.length === 1) return;
+
+    searchMasterCatalog(dispatch, debouncedTerm, currentPage, pageSize);
+  }, [debouncedTerm, currentPage, pageSize, dispatch]);
+
+  // 3. Reset Page on new Search
+  const handleSearchInput = (e) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1); // Reset to page 1 when typing starts
   };
 
-  const handleSearch = (value) => {
-    if (value.trim()) {
-      setHasSearched(true);
-      searchMasterCatalog(dispatch, value);
-    }
+  const handleTableChange = (pagination) => {
+    setCurrentPage(pagination.current);
+    setPageSize(pagination.pageSize);
+  };
+
+  // --- CRUD Logic (Unchanged) ---
+  const isAlreadyAdded = (baseTestId) => {
+    return tests.some((t) => t.baseTestId === baseTestId);
   };
 
   const openAddModal = (record) => {
@@ -106,7 +133,7 @@ const MasterCatalog = () => {
   return (
     <div>
       <Card 
-        title="Search Global Database" 
+        title="Master Test Catalog" 
         style={{ marginBottom: 20 }}
         extra={
             <Button icon={<PlusOutlined />} onClick={() => setIsCustomDrawerOpen(true)}>
@@ -114,46 +141,58 @@ const MasterCatalog = () => {
             </Button>
         }
       >
-        <Search
-          placeholder="Type test name (e.g. CBC, Lipid Profile)..."
-          enterButton={<SearchOutlined />}
+        <Input
+          placeholder="Search test name, code, or category..."
+          prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
           size="large"
-          onSearch={handleSearch}
-          loading={isFetching}
+          value={searchTerm}
+          onChange={handleSearchInput}
+          allowClear
+          style={{ borderRadius: '6px' }}
         />
-        <div style={{ marginTop: 10, color: "#666" }}>
-          <small>Search the master catalog. If you can't find what you need, create a custom test.</small>
+        <div style={{ marginTop: 10, color: "#666", fontSize: '12px' }}>
+          <small>
+             {searchTerm.length === 0 
+                ? "Showing all available tests from the master database." 
+                : "Searching... (Results appear after 2 characters)"}
+          </small>
         </div>
       </Card>
 
-      {/* Results Table */}
-      {masterTests.length > 0 ? (
-        <Table
-          columns={columns}
-          dataSource={masterTests}
-          rowKey="_id"
-          pagination={false}
-          size="small"
-        />
-      ) : (
-        /* Show Empty State if searched but no results */
-        hasSearched && !isFetching && (
-            <Empty
-                image="https://gw.alipayobjects.com/zos/antfincdn/ZHrcdLPrvN/empty.svg"
-                imageStyle={{ height: 60 }}
-                description={
-                    <span>
-                        No matches found in global catalog. <br/>
-                        Need a specific test?
-                    </span>
-                }
-            >
-                <Button type="primary" icon={<ExperimentOutlined />} onClick={() => setIsCustomDrawerOpen(true)}>
-                    Create Custom Test Now
-                </Button>
-            </Empty>
-        )
-      )}
+      {/* Table handles both Results and 'No Data' state automatically via dataSource */}
+      <Table
+        columns={columns}
+        dataSource={masterTests}
+        rowKey="_id"
+        loading={isFetching}
+        pagination={{
+            current: currentPage,
+            pageSize: pageSize,
+            total: masterPagination?.total || 0,
+            showSizeChanger: true,
+            showTotal: (total) => `Total ${total} tests`
+        }}
+        onChange={handleTableChange}
+        size="small"
+        locale={{
+            emptyText: (
+                <Empty
+                    image="https://gw.alipayobjects.com/zos/antfincdn/ZHrcdLPrvN/empty.svg"
+                    imageStyle={{ height: 60 }}
+                    description={
+                        <span>
+                            No tests found. <br/>
+                            Need something specific?
+                        </span>
+                    }
+                >
+                    <Button type="primary" icon={<ExperimentOutlined />} onClick={() => setIsCustomDrawerOpen(true)}>
+                        Create Custom Test
+                    </Button>
+                </Empty>
+            )
+        }}
+      />
 
       {/* Add from Master Modal */}
       <Modal

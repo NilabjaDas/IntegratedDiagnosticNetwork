@@ -9,7 +9,6 @@ const TestManager = () => {
   const dispatch = useDispatch();
   // Ensure we select from the correct slice based on your env or default
   const { tests, isFetching } = useSelector((state) => state[process.env.REACT_APP_TESTS_DATA_KEY]);
-  
   // Inline Editing State
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({});
@@ -57,7 +56,7 @@ const TestManager = () => {
     });
   };
 
-  const filteredData = tests.filter(
+  const filteredData = tests?.filter(
     (t) =>
       t.name.toLowerCase().includes(searchText.toLowerCase()) ||
       t.testCode.toLowerCase().includes(searchText.toLowerCase())

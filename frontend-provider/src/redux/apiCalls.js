@@ -100,10 +100,12 @@ export const getInstitutionStatus = async (dispatch) => {
 };
 
 // --- MASTER CATALOG ---
-export const searchMasterCatalog = async (dispatch, query) => {
+export const searchMasterCatalog = async (dispatch, query, page = 1, limit = 10) => {
   dispatch(processStart());
   try {
-    const res = await userRequest.get(`/tests/master-catalog?search=${query}`);
+    // Ensure empty query is handled
+    const q = query ? `&search=${query}` : "";
+    const res = await userRequest.get(`/tests/master-catalog?page=${page}&limit=${limit}${q}`);
     dispatch(getMasterTestsSuccess(res.data));
   } catch (err) {
     dispatch(processFailure());
@@ -253,7 +255,7 @@ export const createOrder = async (dispatch, orderData) => {
     return { status: 201, data: res.data };
   } catch (err) {
     dispatch(orderProcessFailure());
-    return { status: 500, message: err.response?.data?.message || "Error" };
+    return { status: 500, message: err.response?.data?.message || "Error", requiresOverride: err.response?.data?.requiresOverride || false  };
   }
 };
 

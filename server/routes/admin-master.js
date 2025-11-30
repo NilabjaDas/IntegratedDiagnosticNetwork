@@ -626,7 +626,12 @@ router.delete("/institutions/:id", requireSuperAdmin, async (req, res) => {
 // GET /api/admin-master/base-tests
 
 
-router.get("/base-tests",requireSuperAdmin, async (req, res) => {
+/**
+ * @route   GET /api/admin-master/base-tests
+ * @desc    Get Base Tests (Supports Live Regex Search & Pagination)
+ * @access  Super Admin Only
+ */
+router.get("/base-tests", requireSuperAdmin, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
@@ -636,14 +641,23 @@ router.get("/base-tests",requireSuperAdmin, async (req, res) => {
         const skip = (page - 1) * limit;
         let query = {};
 
-        if (search) {
-            query.$text = { $search: search };
+        // 1. Search Logic (Regex for Partial Matches)
+        if (search && search.trim().length > 0) {
+            const regex = { $regex: search, $options: "i" };
+            query.$or = [
+                { name: regex },
+                { code: regex },
+                { alias: regex },
+                { category: regex }
+            ];
         }
 
+        // 2. Filters
         if (department) {
             query.department = department;
         }
 
+        // 3. Query & Count
         const tests = await BaseTest.find(query)
             .sort({ name: 1 })
             .skip(skip)

@@ -34,67 +34,50 @@ const maskNameSmart = (name) => {
 };
 
 // ==========================================
-// 1. SMART SEARCH (Updated)
+// 1. INSTITUTION-SCOPED SEARCH
 // ==========================================
 router.get("/search", authenticateUser, async (req, res) => {
   try {
     const { query } = req.query; 
-    
-    // Allow search with just 4 chars now (matches "populate within 4 chars")
-    if (!query || query.length < 4) {
-        return res.json([]); 
-    }
+    const instId = req.user.institutionId;
 
-    // NORMALIZATION
+    if (!query || query.length < 4) return res.json([]);
+
     const searchStr = query.toLowerCase().trim();
     const isNumber = /^\d+$/.test(searchStr);
 
-    let patients = [];
+    let criteria = {};
 
     if (isNumber) {
-        // --- PARTIAL MOBILE SEARCH ---
-        // Uses the new 'searchableMobile' field
-        patients = await Patient.find({ 
-            searchableMobile: { $regex: searchStr, $options: 'i' } 
-        }).limit(10);
-
-        // MASKING: Since we searched by number, we reveal the number (partially)
-        // but hide the name more aggressively to prevent fishing.
-        patients = patients.map(p => ({
-            _id: p._id,
-            uhid: p.uhid,
-            firstName: maskNameSmart(p.firstName), // Masked Name
-            lastName: maskNameSmart(p.lastName),   // Masked Name
-            mobile: maskMobileSmart(p.mobile),     // Partially Visible Mobile
-            gender: p.gender,
-            age: p.age,
-            isMasked: true
-        }));
-
+        criteria = { searchableMobile: { $regex: searchStr, $options: 'i' } };
     } else {
-        // --- PARTIAL NAME SEARCH ---
-        patients = await Patient.find({ 
+        criteria = { 
             $or: [
                 { searchableName: { $regex: searchStr, $options: 'i' } },
                 { uhid: { $regex: query, $options: 'i' } } 
             ]
-        }).limit(10);
-
-        // MASKING: User searched by Name, so we show Name clearly 
-        // but mask the mobile number heavily.
-        patients = patients.map(p => ({
-            _id: p._id,
-            uhid: p.uhid,
-            firstName: p.firstName, // Show Name
-            lastName: p.lastName,   // Show Name
-            mobile: maskMobileSmart(p.mobile), // Mask Mobile
-            gender: p.gender,
-            age: p.age,
-            isMasked: true
-        }));
+        };
     }
 
-    res.json(patients);
+    // --- CRITICAL PRIVACY FILTER ---
+    // Only return patients who have ALREADY visited this institution.
+    criteria.enrolledInstitutions = instId; 
+
+    let patients = await Patient.find(criteria).limit(10);
+
+    // Map & Mask
+    const response = patients.map(p => ({
+        _id: p._id,
+        uhid: p.uhid,
+        firstName: isNumber ? maskNameSmart(p.firstName) : p.firstName,
+        lastName: isNumber ? maskNameSmart(p.lastName) : p.lastName,
+        mobile: isNumber ? maskMobileSmart(p.mobile) : maskMobileSmart(p.mobile), // Consistent masking
+        gender: p.gender,
+        age: p.age,
+        isMasked: true
+    }));
+
+    res.json(response);
 
   } catch (err) {
     console.error("Search Error:", err);
@@ -103,34 +86,71 @@ router.get("/search", authenticateUser, async (req, res) => {
 });
 
 // ==========================================
-// 2. CREATE PATIENT
+// 2. CREATE / LINK PATIENT (Silent Onboarding)
 // ==========================================
 router.post("/", authenticateUser, async (req, res) => {
   try {
-    const { mobile } = req.body;
+    const { mobile, firstName, lastName, gender, age, address } = req.body;
     const instId = req.user.institutionId;
 
-    // Check for existing (Exact Match)
+    // 1. Check Global Registry for Match (Blind Index)
     const mobileHash = hashData(mobile, DB_SECRET);
-    const existing = await Patient.findOne({ mobileHash });
+    const existingPatient = await Patient.findOne({ mobileHash });
     
-    if (existing) {
-      return res.status(409).json({ message: "Patient with this mobile already exists.", patient: existing });
+    if (existingPatient) {
+        // --- SCENARIO A: MATCH FOUND ---
+        // Patient exists globally but might not be in THIS institution.
+        
+        // Check if already enrolled here (Duplicate Entry Attempt?)
+        if (existingPatient.enrolledInstitutions.includes(instId)) {
+            // If already enrolled here, warn the user.
+            return res.status(409).json({ 
+                message: "Patient already registered in your clinic.", 
+                patient: existingPatient 
+            });
+        }
+
+        // SILENT LINKING:
+        // Add this institution to their history.
+        existingPatient.enrolledInstitutions.push(instId);
+        
+        // Optional: Update missing details if current record is sparse? 
+        // For now, let's trust the master record to be single source of truth.
+        // Or we can update 'latest address' if provided.
+        if(address) existingPatient.address = address;
+
+        await existingPatient.save();
+        
+        return res.status(200).json({
+            message: "Patient profile retrieved & linked successfully.",
+            data: existingPatient
+        });
+
+    } else {
+        // --- SCENARIO B: BRAND NEW PATIENT ---
+        const uhid = `P${Date.now().toString().slice(-6)}`;
+        
+        const newPatient = new Patient({
+            firstName,
+            lastName,
+            mobile, 
+            gender,
+            age,
+            address,
+            institutionId: instId, // Origin
+            enrolledInstitutions: [instId], // Enrolled Here
+            uhid
+        });
+
+        await newPatient.save();
+        return res.status(201).json({
+            message: "New Patient Registered.",
+            data: newPatient
+        });
     }
 
-    const uhid = `P${Date.now().toString().slice(-6)}`;
-
-    // 'searchableMobile' is populated automatically by the pre-save hook
-    const newPatient = new Patient({
-      ...req.body,
-      institutionId: instId,
-      enrolledInstitutions: [instId],
-      uhid: uhid
-    });
-
-    await newPatient.save();
-    res.status(201).json(newPatient);
   } catch (err) {
+    console.error("Patient Create Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
