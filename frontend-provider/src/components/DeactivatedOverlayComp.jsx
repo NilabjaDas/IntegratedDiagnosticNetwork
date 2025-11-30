@@ -50,7 +50,7 @@ const IconWrapper = styled.div`
   font-size: 36px;
   margin: 0 auto 24px;
 `;
-const DeactivatedOverlayComp = ({institutionStatus}) => {
+const DeactivatedOverlayComp = ({institutionDetails}) => {
   return (
         <DeactivatedOverlay>
     <AlertCard>
@@ -63,7 +63,7 @@ const DeactivatedOverlayComp = ({institutionStatus}) => {
       </Title>
       
       <Text style={{ fontSize: '16px', color: '#595959' }}>
-        <b style={{ color: '#ff4d4f' }}>{institutionStatus.institutionName}</b> is currently deactivated.
+        <b style={{ color: '#ff4d4f' }}>{institutionDetails.institutionName}</b> is currently deactivated.
       </Text>
       
       <div style={{ marginTop: 24 }}>

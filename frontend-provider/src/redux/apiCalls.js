@@ -34,7 +34,7 @@ import {
   createOrderSuccess,
 } from "./orderRedux";
 
-import { setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
+import { getInstitutionSuccess, setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
 
 //Get Encryption Key
 export const getKey = async (dispatch) => {
@@ -93,7 +93,7 @@ export const getInstitutionStatus = async (dispatch) => {
   try {
     const response = await publicRequest.get("/institutions/status");
 
-    dispatch(setInstitutionStatus(response.data));
+    dispatch(setInstitutionStatus(response.data.status));
   } catch (error) {
     console.error("Error fetching brand details:", error);
   }
@@ -368,5 +368,48 @@ export const checkPaymentStatus = async (dbOrderId) => {
     return { status: 200, data: res.data };
   } catch (err) {
     return { status: 500, message: "Check failed" };
+  }
+};
+
+export const updateInstitution = async (dispatch, id, updates) => {
+  // dispatch(processStart()); // Optional: if you want global loading
+  try {
+    const res = await userRequest.put(`/institutions/${id}`, updates);
+    
+    // Update the Redux store with the new institution data
+    // This ensures the app reflects changes immediately without a refresh
+    dispatch(getInstitutionSuccess(res.data.institution)); 
+    
+    return { status: 200, data: res.data };
+  } catch (err) {
+    // dispatch(processFailure());
+    return { 
+        status: err.response?.status || 500, 
+        message: err.response?.data?.message || "Update failed" 
+    };
+  }
+};
+
+export const fetchBillPdf = async (orderId) => {
+  try {
+    const res = await userRequest.get(`/pdf/bill/${orderId}`, {
+        responseType: 'blob' // IMPORTANT: Expect binary data
+    });
+    
+    // Create a Blob URL
+    const file = new Blob([res.data], { type: 'application/pdf' });
+    const fileURL = URL.createObjectURL(file);
+    
+    // Open Print Window
+    const pdfWindow = window.open(fileURL);
+    if (pdfWindow) {
+        pdfWindow.addEventListener('load', () => {
+            // pdfWindow.print(); // Optional: Auto-trigger print
+        });
+    }
+    
+    return { status: 200 };
+  } catch (err) {
+    return { status: 500, message: "PDF Generation Failed" };
   }
 };

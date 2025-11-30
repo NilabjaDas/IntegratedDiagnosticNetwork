@@ -9,6 +9,7 @@ import {
   VideoCameraOutlined,
   UploadOutlined,
   ProductOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { setPageLocation } from "../redux/uiRedux";
@@ -110,8 +111,8 @@ const Sidebar = ({ collapsed }) => {
         <Menu.Item key="/orders-management" icon={<ProductOutlined />}>
           <Link to="/orders-management">Orders Management</Link>
         </Menu.Item>
-        <Menu.Item key="/page1" icon={<UserOutlined />}>
-          <Link to="/page1">Page 1</Link>
+        <Menu.Item key="/configuration" icon={<SettingOutlined />}>
+          <Link to="/configuration">Configuration</Link>
         </Menu.Item>
         <Menu.Item key="/page2" icon={<VideoCameraOutlined />}>
           <Link to="/page2">Page 2</Link>

@@ -5,6 +5,10 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt"); // Needed for user creation
 const Institution = require("../models/Institutions");
 const { authorizeRoles } = require("../middleware/auth"); 
+const { verifyToken } = require("../middleware/verifyToken");
+
+
+
 
 // 1. Filter Sensitive Data
 function filterInstitutionForClient(doc) {
@@ -106,6 +110,7 @@ router.get("/details", async (req, res) => {
     }
 });
 
+router.use(verifyToken);
 
 router.get("/:id", async (req, res) => {
     try {
@@ -232,6 +237,18 @@ router.post("/users/:institutionId", authorizeRoles("admin"), async (req, res) =
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: "Failed to create user: " + err.message });
+    }
+});
+
+
+
+// Helper: Get Current Institution (for loading config)
+router.get("/me", async (req, res) => {
+    try {
+        const institution = await Institution.findOne({ institutionId: req.user.institutionId });
+        res.json(institution);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 

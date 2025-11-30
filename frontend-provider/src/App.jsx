@@ -36,6 +36,7 @@ import MainLayout from "./components/MainLayout";
 import DeactivatedOverlayComp from "./components/DeactivatedOverlayComp";
 import TestsPage from "./pages/TestsPage";
 import OrdersPage from "./pages/OrdersPage";
+import ConfigurationPage from "./pages/ConfigurationPage";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -76,6 +77,9 @@ function App() {
   const institutionStatus = useSelector(
     (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].status
   );
+ console.log(useSelector(
+    (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY]
+  ))
   const token = useSelector(
     (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
   );
@@ -232,9 +236,9 @@ function App() {
     setModalResponse(val);
   };
 
-  if (!institutionStatus.status) {
-    handleLogout();
-  }
+  // if (!institutionStatus.status) {
+  //   handleLogout();
+  // }
 
   useEffect(() => {
     if (modalResponse) {
@@ -290,9 +294,9 @@ function App() {
 
       <GlobalStyle />
       <ToastContainer />
-      {!institutionStatus.status &&
-       <DeactivatedOverlayComp institutionStatus = {institutionStatus}/>
-      }
+      {/* {!institutionStatus.status &&
+       <DeactivatedOverlayComp institutionDetails = {institutionDetails}/>
+      } */}
       <Modal
         open={isMaintenanceModalOpen}
         footer={null}
@@ -337,7 +341,7 @@ function App() {
                     <Route path="/" element={<HomePage />} />
                     <Route path="/tests-management" element={<TestsPage />} />
                     <Route path="/orders-management" element={<OrdersPage />} />
-                    <Route path="/page1" element={<Page1 />} />
+                    <Route path="/configuration" element={<ConfigurationPage />} />
                     <Route path="/page2" element={<Page2 />} />
                     <Route path="/page3" element={<Page3 />} />
                     <Route path="*" element={<Navigate to="/" replace />} />

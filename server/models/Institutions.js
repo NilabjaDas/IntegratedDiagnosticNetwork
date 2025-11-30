@@ -1,7 +1,70 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
-// ... (Sub-schemas remain unchanged) ...
+const printTemplateSchema = new mongoose.Schema({
+  templateId: { type: String, default: () => uuidv4() },
+  name: { type: String, required: true }, // e.g. "Standard A4 Bill"
+  type: { type: String, enum: ["BILL", "LAB_REPORT", "PRESCRIPTION"], required: true },
+  isDefault: { type: Boolean, default: false },
+  
+  // Physical Layout
+  pageSize: { type: String, enum: ["A4", "A5", "Letter", "Thermal80mm"], default: "A4" },
+  orientation: { type: String, enum: ["portrait", "landscape"], default: "portrait" },
+  
+  // Margins (in mm)
+  margins: {
+    top: { type: Number, default: 10 },
+    bottom: { type: Number, default: 10 },
+    left: { type: Number, default: 10 },
+    right: { type: Number, default: 10 }
+  },
+
+  // Content Configuration
+  content: {
+    headerHtml: { type: String, default: "" }, // Custom HTML for header
+    footerHtml: { type: String, default: "" }, // Custom HTML for footer
+    
+    // Toggles
+    showLogo: { type: Boolean, default: true },
+    showInstitutionDetails: { type: Boolean, default: true },
+    showQrCode: { type: Boolean, default: true }, // Payment QR on Bill
+    
+    // Branding
+    accentColor: { type: String, default: "#000000" },
+    fontFamily: { type: String, default: "Roboto" },
+    
+    // Specifics for Bills
+    billColumns: {
+        showTax: { type: Boolean, default: true },
+        showDiscount: { type: Boolean, default: true }
+    }
+  }
+}, { _id: false });
+
+
+const commTemplateSchema = new mongoose.Schema({
+    templateId: { type: String, default: () => uuidv4() },
+    name: { type: String, required: true },
+    triggerEvent: { type: String, required: true }, // e.g., "ORDER_CREATED", "REPORT_READY"
+    channels: {
+        sms: {
+            enabled: { type: Boolean, default: false },
+            templateId: String, // DLT Template ID (India specific)
+            content: String     // "Dear {PatientName}, your order #{OrderId} is confirmed."
+        },
+        email: {
+            enabled: { type: Boolean, default: false },
+            subject: String,
+            bodyHtml: String
+        },
+        whatsapp: {
+            enabled: { type: Boolean, default: false },
+            templateId: String
+        }
+    }
+}, { _id: false });
+
+
 const maintenanceSchema = new mongoose.Schema({
   activeStatus: { type: Boolean, default: false },
   startTime: { type: String, default: "" },
@@ -40,7 +103,11 @@ const institutionsSchema = new mongoose.Schema({
     default: "pathologyWithDoc",
     required: true 
   },
+  // 1. Document Templates (PDFs)
+  printTemplates: [printTemplateSchema],
 
+  // 2. Notification Templates
+  communicationTemplates: [commTemplateSchema],
   domains: [{ type: String, lowercase: true, trim: true, required: true }],
   dbName: { type: String, required: true, unique: true, trim: true }, 
   institutionCode: { type: String, required: true, unique: true, uppercase: true, trim: true },
