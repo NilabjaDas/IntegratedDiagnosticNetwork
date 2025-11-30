@@ -135,11 +135,12 @@ const institutionsSchema = new mongoose.Schema({
   paymentGateway: {
     provider: { type: String, default: "razorpay" }, 
     
-    // Explicit keys for Razorpay (Hidden by default, must be explicitly selected if needed)
     razorpayKeyId: { type: String, select: false, trim: true },
     razorpayKeySecret: { type: String, select: false, trim: true },
     
-    // Config for other providers/future use
+    // NEW: Store the Webhook Secret (Tenant sets this in Razorpay Dashboard)
+    razorpayWebhookSecret: { type: String, select: false, trim: true },
+    
     config: { type: mongoose.Schema.Types.Mixed, select: false, default: {} }
   },
 

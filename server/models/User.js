@@ -35,7 +35,10 @@ const userSchema = new mongoose.Schema(
     // For Doctors/Pathologists
     signatureUrl: { type: String }, // URL to image of signature
     registrationNumber: { type: String }, // Medical Council Reg No.
-
+    settings: {
+    maxDiscountPercent: { type: Number, default: 0 }, // 0% by default for safety
+    canDeleteOrders: { type: Boolean, default: false }
+  },
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
   },

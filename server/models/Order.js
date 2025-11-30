@@ -1,21 +1,17 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
-// Sub-schema for individual payments (The Ledger)
+// Transaction Schema (Ledger)
 const transactionSchema = new mongoose.Schema({
-  paymentMode: { type: String, enum: ["Cash", "UPI", "Card"], required: true },
-  amount: { type: Number, required: true }, // Amount paid in this transaction
-  
-  // For Manual/Card/Cash
-  transactionId: { type: String }, // Manual entry or Ref No.
-  notes: { type: String }, // e.g. "Paid by Father", "Advance"
-  
-  // For Razorpay (UPI/Online)
+  paymentMode: { type: String, enum: ["Cash", "Card", "Razorpay"], required: true },
+  amount: { type: Number, required: true },
+  transactionId: { type: String }, 
+  notes: { type: String }, 
   razorpayOrderId: { type: String },
   razorpayPaymentId: { type: String },
   razorpaySignature: { type: String },
-  
-  recordedBy: { type: String }, // User ID of staff who took payment
+  paymentMethod: { type: String }, 
+  recordedBy: { type: String },
   date: { type: Date, default: Date.now }
 });
 
@@ -24,7 +20,7 @@ const orderItemSchema = new mongoose.Schema({
   itemId: { type: String, required: true }, 
   name: { type: String, required: true }, 
   price: { type: Number, required: true }, 
-  status: { type: String, default: "Pending" },
+  status: { type: String, enum: ["Pending", "Completed", "Cancelled"], default: "Pending" },
   results: [mongoose.Schema.Types.Mixed] 
 });
 
@@ -43,45 +39,65 @@ const orderSchema = new mongoose.Schema({
   
   items: [orderItemSchema], 
   
-  // --- UPDATED FINANCIALS (LEDGER) ---
+  // --- FINANCIALS (Updated with Discount Reason) ---
   financials: {
-    totalAmount: { type: Number, required: true }, // Bill Total
+    totalAmount: { type: Number, required: true }, // Sum of Items
+    
     discountAmount: { type: Number, default: 0 },
-    netAmount: { type: Number, required: true }, // Final Payable (Total - Discount)
+    discountReason: { type: String }, // e.g. "Senior Citizen", "Staff"
+    discountAuthorizedBy: { type: String }, // Stores User ID/Name
+    netAmount: { type: Number, required: true }, // Total - Discount
+    paidAmount: { type: Number, default: 0 },
+    dueAmount: { type: Number, default: 0 },
     
-    paidAmount: { type: Number, default: 0 }, // Sum of all transactions
-    dueAmount: { type: Number, default: 0 },  // Net - Paid
-    
-    status: { 
-      type: String, 
-      enum: ["Pending", "PartiallyPaid", "Paid", "Overdue"], 
-      default: "Pending" 
-    }
+    status: { type: String, enum: ["Pending", "PartiallyPaid", "Paid", "Overdue", "Cancelled"], default: "Pending" }
   },
 
-  // History of all payments made for this order
   transactions: [transactionSchema],
   
-  // Flag for Report Delivery
-  isReportDeliveryBlocked: { type: Boolean, default: true } // True if dues exist
+  paymentGatewaySessions: [{
+      type: { type: String, enum: ["RazorpayOrder", "RazorpayLink"] },
+      id: { type: String, required: true }, 
+      amount: Number,
+      status: { type: String, default: "created" },
+      createdAt: { type: Date, default: Date.now }
+  }],
+  
+  notes: { type: String },
+  
+  cancellation: {
+      isCancelled: { type: Boolean, default: false },
+      reason: { type: String },
+      cancelledBy: { type: String }, 
+      date: { type: Date }
+  },
+
+  isReportDeliveryBlocked: { type: Boolean, default: true }
 
 }, { timestamps: true });
 
-// Auto-calculate dues and status before saving
+// Auto-calculate Dues & Status
 orderSchema.pre('save', function(next) {
-  if (this.financials) {
+  if (this.financials && !this.cancellation.isCancelled) {
+    // Ensure Net Amount consistency
+    this.financials.netAmount = this.financials.totalAmount - (this.financials.discountAmount || 0);
+    
+    // Calculate Due
     this.financials.dueAmount = this.financials.netAmount - this.financials.paidAmount;
     
-    if (this.financials.paidAmount >= this.financials.netAmount) {
+    // Determine Status
+    if (this.financials.dueAmount <= 0) {
       this.financials.status = "Paid";
       this.isReportDeliveryBlocked = false;
     } else if (this.financials.paidAmount > 0) {
       this.financials.status = "PartiallyPaid";
-      this.isReportDeliveryBlocked = true; // Block reports if partial (optional business logic)
+      this.isReportDeliveryBlocked = true; 
     } else {
       this.financials.status = "Pending";
       this.isReportDeliveryBlocked = true;
     }
+  } else if (this.cancellation.isCancelled) {
+      this.financials.status = "Cancelled";
   }
   next();
 });

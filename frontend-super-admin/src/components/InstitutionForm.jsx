@@ -530,6 +530,17 @@ const InstitutionForm = ({ open, onClose, onSubmit, initialValues, loading }) =>
                 <Input.Password placeholder="Secret..." autoComplete="new-password" />
               </Form.Item>
             </Col>
+
+            <Col span={24} style={{ marginTop: 10 }}>
+  <Form.Item 
+    name={["paymentGateway", "razorpayWebhookSecret"]} 
+    label="Webhook Secret"
+    tooltip="The secret you set in Razorpay Dashboard > Settings > Webhooks"
+  >
+    <Input.Password placeholder="Secret..." autoComplete="new-password" />
+  </Form.Item>
+</Col>
+
           </Row>
 
           <Divider orientation="left">Cloud & Storage</Divider>

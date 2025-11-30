@@ -228,6 +228,7 @@ export const getTestDetails = async (id) => {
   }
 };
 
+
 // --- ORDERS ---
 export const getOrders = async (dispatch, filters = {}) => {
   dispatch(orderProcessStart());
@@ -256,6 +257,85 @@ export const createOrder = async (dispatch, orderData) => {
   }
 };
 
+export const getOrderDetails = async (id) => {
+  try {
+    const res = await userRequest.get(`/orders/${id}`);
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: 500, message: "Fetch failed" };
+  }
+};
+
+export const cancelOrder = async (id, reason) => {
+  try {
+    const res = await userRequest.put(`/orders/${id}/cancel`, { reason });
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: 500, message: err.response?.data?.message || "Cancellation failed" };
+  }
+};
+
+export const modifyOrderItems = async (id, items) => {
+  try {
+    // items should be array of { _id, type }
+    const res = await userRequest.put(`/orders/${id}/items`, { items });
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: 500, message: err.response?.data?.message || "Modification failed" };
+  }
+};
+
+export const updateOrderNotes = async (id, notes) => {
+  try {
+    const res = await userRequest.put(`/orders/${id}`, { notes });
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: 500, message: "Update failed" };
+  }
+};
+
+// --- PAYMENTS ---
+
+// 1. Record Manual (Cash/Card)
+export const recordManualPayment = async (payload) => {
+  try {
+    const res = await userRequest.post("/payments/record-manual", payload);
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: err.response?.status || 500, message: err.response?.data?.message || "Payment failed" };
+  }
+};
+
+// 2. Initialize Online (Razorpay)
+export const createRazorpayOrder = async (payload) => {
+  try {
+    const res = await userRequest.post("/payments/create-razorpay-order", payload);
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: 500, message: "Gateway error" };
+  }
+};
+
+// 3. Verify Online
+export const verifyOnlinePayment = async (payload) => {
+  try {
+    const res = await userRequest.post("/payments/verify-upi", payload);
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: 500, message: "Verification failed" };
+  }
+};
+
+// 4. Send Payment Link
+export const sendPaymentLink = async (payload) => {
+  try {
+    const res = await userRequest.post("/payments/send-payment-link", payload);
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: 500, message: "Failed to send link" };
+  }
+};
+
 // --- PATIENTS ---
 export const searchPatients = async (dispatch, query) => {
   try {
@@ -277,5 +357,14 @@ export const createGlobalPatient = async (patientData) => {
         status: err.response?.status || 500, 
         message: err.response?.data?.message || "Failed to create patient" 
     };
+  }
+};
+
+export const checkPaymentStatus = async (dbOrderId) => {
+  try {
+    const res = await userRequest.post("/payments/check-status", { dbOrderId });
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { status: 500, message: "Check failed" };
   }
 };
