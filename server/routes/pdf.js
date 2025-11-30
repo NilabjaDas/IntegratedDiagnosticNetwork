@@ -166,10 +166,13 @@ router.get("/", async (req, res) => {
     console.log("--- Starting PDF Test ---");
 
     // 1. Launch Browser (Minimal Config)
-const browserInstance = await getBrowser();
+ const browser = await puppeteer.launch({
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
     console.log("1. Browser Launched");
 
-    const page = await browserInstance.newPage();
+    const page = await browser.newPage();
     console.log("2. Page Created");
 
     // 2. Simple Content
