@@ -9,6 +9,7 @@ import {
   UserOutlined,
   VideoCameraOutlined,
   UploadOutlined,
+  FilePdfOutlined,
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { setPageLocation } from "../redux/uiRedux";
@@ -113,6 +114,9 @@ const Sidebar = ({ collapsed }) => {
         </Menu.Item>
         <Menu.Item key="/tests-directory" icon={<ExperimentOutlined />}>
           <Link to="/tests-directory">Tests Directory</Link>
+        </Menu.Item>
+        <Menu.Item key="/template-library" icon={<FilePdfOutlined />}>
+          <Link to="/template-library">Template Library</Link>
         </Menu.Item>
         <Menu.Item key="/page1" icon={<UserOutlined />}>
           <Link to="/page1">Page 1</Link>

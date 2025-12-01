@@ -34,6 +34,8 @@ import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
 import InstitutionsPage from "./pages/InstitutionsPage";
 import BaseTestsPage from "./pages/BaseTestsPage";
+import TemplateLibraryPage from "./pages/TemplateLibraryPage";
+import TemplateEditorPage from "./pages/TemplateEditorPage";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -304,6 +306,8 @@ function BackWatcher() {
                     <Route path="/" element={<HomePage />} />
                     <Route path="/institutions" element={<InstitutionsPage />} />
                     <Route path="/tests-directory" element={<BaseTestsPage />} />
+                    <Route path="/template-library" element={<TemplateLibraryPage />} />
+                    <Route path="/template-editor/:id" element={<TemplateEditorPage />} />
                     <Route path="/page1" element={<Page1 />} />
                     <Route path="/page2" element={<Page2 />} />
                     <Route path="/page3" element={<Page3 />} />

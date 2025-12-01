@@ -20,6 +20,8 @@ const webhookRoutes = require("./routes/webhooks");
 const pdfRoutes = require("./routes/pdf");
 const queueManagerRoute = require("./routes/queue-manager")
 const ReportRoute = require("./routes/reports")
+const AdminTemplateRoute = require("./routes/admin-templates")
+const TenantTemplateRoute = require("./routes/tenant-templates")
 const ServerRoute = require("./sse")
 const decryptBody = require("./middleware/decryptBody");
 const bodyParser = require("body-parser");
@@ -66,6 +68,8 @@ app.use("/api/webhooks", webhookRoutes);
 app.use("/api/pdf", pdfRoutes);
 app.use("/api/queue-manager", queueManagerRoute);
 app.use("/api/reports", ReportRoute);
+app.use("/api/admin-templates", AdminTemplateRoute);
+app.use("/api/tenant-templates", TenantTemplateRoute);
 app.use("/api/server",ServerRoute)
 
 const port = process.env.PORT || 8080;

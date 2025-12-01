@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Tabs, Layout, Typography, Button, message } from "antd";
-import { FilePdfOutlined, SaveOutlined } from "@ant-design/icons";
+import { FilePdfOutlined, SaveOutlined, CloudDownloadOutlined } from "@ant-design/icons";
 import styled from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
 import { updateInstitution } from "../redux/apiCalls"; 
 import BillingTemplateEditor from "../components/BillingTemplateEditor";
+import TemplateLibrary from "../components/TemplateLibrary";
 
 const { Title } = Typography;
 
@@ -74,8 +75,13 @@ const ConfigurationPage = () => {
       <Tabs defaultActiveKey="1" size="large" items={[
           {
             key: "1",
-            label: <span><FilePdfOutlined /> PDF Templates</span>,
+            label: <span><FilePdfOutlined /> My Templates</span>,
             children: <BillingTemplateEditor templates={templates} onUpdate={updateTemplateList} />,
+          },
+          {
+            key: "2",
+            label: <span><CloudDownloadOutlined /> Template Library</span>,
+            children: <TemplateLibrary />,
           }
       ]} />
     </PageContainer>
