@@ -36,7 +36,6 @@ const BaseTestsPage = () => {
 
   // Redux Data
   const { tests, isFetching, pagination } = useSelector((state) => state[process.env.REACT_APP_BASETESTS_DATA_KEY]);
-
   // Local State
   const [searchText, setSearchText] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");

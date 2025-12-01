@@ -24,6 +24,16 @@ import {
   getTestsFailure,
 } from "./baseTestRedux";
 
+import {
+  getTemplatesStart,
+  getTemplatesSuccess,
+  getTemplateByIdSuccess,
+  getTemplatesFailure,
+  addTemplateSuccess,
+  updateTemplateSuccess,
+  deleteTemplateSuccess,
+} from "./templateRedux";
+
 import { setBrandDetails } from "./brandRedux";
 
 //Get Encryption Key
@@ -241,5 +251,71 @@ export const deleteBaseTest = async (id) => {
       status: error.response?.status || 500, 
       message: error.response?.data?.message || "Deletion failed" 
     };
+  }
+};
+
+export const getAllTemplates = async (dispatch, page = 1, limit = 10, search = "", type = "") => {
+  dispatch(getTemplatesStart());
+  try {
+    let url = `/admin-master/templates?page=${page}&limit=${limit}`; // Verify route prefix in server/index.js
+    if (search) url += `&search=${search}`;
+    if (type) url += `&type=${type}`;
+    
+    const res = await userRequest.get(url);
+    dispatch(getTemplatesSuccess(res.data));
+  } catch (err) {
+    dispatch(getTemplatesFailure());
+  }
+};
+
+export const getTemplateById = async (dispatch, id) => {
+    dispatch(getTemplatesStart());
+    try {
+      // Note: Ensure backend has GET /:id. 
+      // If not, we filter locally for speed if list is loaded, else fetch list? 
+      // Better to fix backend to have GET /:id. 
+      // Assuming you added the GET /:id route I provided.
+      const res = await userRequest.get(`/admin-master/templates/${id}`);
+      dispatch(getTemplateByIdSuccess(res.data.data));
+      return res.data.data;
+    } catch (err) {
+      dispatch(getTemplatesFailure());
+      return null;
+    }
+};
+
+export const createTemplate = async (dispatch, templateData) => {
+  dispatch(getTemplatesStart());
+  try {
+    const res = await userRequest.post("/admin-master/templates", templateData);
+    dispatch(addTemplateSuccess(res.data.data));
+    return { status: 201 };
+  } catch (err) {
+    dispatch(getTemplatesFailure());
+    return { status: 500, message: err.response?.data?.message };
+  }
+};
+
+export const updateTemplate = async (dispatch, id, templateData) => {
+  dispatch(getTemplatesStart());
+  try {
+    const res = await userRequest.put(`/admin-master/templates/${id}`, templateData);
+    dispatch(updateTemplateSuccess(res.data.data));
+    return { status: 200 };
+  } catch (err) {
+    dispatch(getTemplatesFailure());
+    return { status: 500, message: err.response?.data?.message };
+  }
+};
+
+export const deleteTemplate = async (dispatch, id) => {
+  dispatch(getTemplatesStart());
+  try {
+    await userRequest.delete(`/admin-master/templates/${id}`);
+    dispatch(deleteTemplateSuccess(id));
+    return { status: 200 };
+  } catch (err) {
+    dispatch(getTemplatesFailure());
+    return { status: 500, message: err.response?.data?.message };
   }
 };

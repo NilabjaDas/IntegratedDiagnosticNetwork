@@ -1,85 +1,72 @@
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
-import { Table, Button, Modal, Tag, Space, Form, Input, Card, Row, Col } from "antd";
-import { CloudDownloadOutlined, SearchOutlined } from "@ant-design/icons";
-import { userRequest } from "../requestMethods";
+import { Table, Button, Modal, Tag, Form, Input, message, Empty } from "antd";
+import { CloudDownloadOutlined, AppstoreAddOutlined } from "@ant-design/icons";
 import { useSelector, useDispatch } from "react-redux";
-import { toast } from "react-toastify";
-import { getInstitution } from "../redux/apiCalls";
+import { getTemplateLibrary, importTemplate, getInstitutionDetails } from "../redux/apiCalls";
 
 const Container = styled.div`
-  padding: 20px;
+  padding: 0 20px;
 `;
 
 const TemplateLibrary = () => {
-  const [libraryTemplates, setLibraryTemplates] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const dispatch = useDispatch();
+  const [form] = Form.useForm();
 
-  // Import Modal State
+  // Redux State
+  const { libraryTemplates, isFetching } = useSelector((state) => state[process.env.REACT_APP_TEMPLATELIBRARY_DATA_KEY]);
+  // We need institution ID to refresh data after import
+  // Adjust the key selector based on your store setup if needed
+  const { brandDetails } = useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY]); 
+
+  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [variableForm] = Form.useForm();
-
-  const token = useSelector((state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token);
-  const { brandDetails } = useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY]);
-  const dispatch = useDispatch();
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
-    fetchLibrary();
-  }, []);
-
-  const fetchLibrary = async () => {
-    setLoading(true);
-    try {
-      const res = await userRequest(token).get("/tenant-templates/library");
-      setLibraryTemplates(res.data.data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load library");
-    }
-    setLoading(false);
-  };
+    getTemplateLibrary(dispatch);
+  }, [dispatch]);
 
   const handleImportClick = (template) => {
     setSelectedTemplate(template);
-    // Pre-fill form if needed, or clear it
-    variableForm.resetFields();
+    form.resetFields();
 
-    // Set default values from template definition
+    // Pre-fill default values if variables exist
     const initialValues = {};
     if (template.variables) {
         template.variables.forEach(v => {
             if (v.defaultValue) initialValues[v.key] = v.defaultValue;
         });
     }
-    variableForm.setFieldsValue(initialValues);
+    form.setFieldsValue(initialValues);
     setIsModalOpen(true);
   };
 
   const handleImportSubmit = async (values) => {
-    try {
-        await userRequest(token).post("/tenant-templates/import", {
-            baseTemplateId: selectedTemplate._id,
-            variableValues: values
-        });
-        toast.success("Template Imported Successfully!");
+    setImporting(true);
+    const res = await importTemplate({
+        baseTemplateId: selectedTemplate._id,
+        variableValues: values
+    });
+    setImporting(false);
+
+    if (res.status === 200) {
+        message.success("Template Imported Successfully!");
         setIsModalOpen(false);
-
-        // Refresh local data so "My Templates" tab updates
-        // We need to re-fetch the institution details
-        getInstitution(dispatch, brandDetails.institutionId);
-
-    } catch (err) {
-        console.error(err);
-        toast.error("Failed to import template");
+        // Refresh Institution Data to show new template in the main list
+        getInstitutionDetails(dispatch);
+    } else {
+        message.error(res.message);
     }
   };
 
   const columns = [
     {
-      title: "Name",
+      title: "Template Name",
       dataIndex: "name",
       key: "name",
+      render: (text) => <b>{text}</b>
     },
     {
       title: "Category",
@@ -90,7 +77,12 @@ const TemplateLibrary = () => {
       title: "Type",
       dataIndex: "type",
       key: "type",
-      render: (type) => <Tag color="blue">{type}</Tag>,
+      render: (type) => <Tag color="geekblue">{type}</Tag>,
+    },
+    {
+      title: "Size",
+      dataIndex: "pageSize",
+      key: "pageSize",
     },
     {
       title: "Action",
@@ -99,6 +91,7 @@ const TemplateLibrary = () => {
         <Button
             type="primary"
             ghost
+            size="small"
             icon={<CloudDownloadOutlined />}
             onClick={() => handleImportClick(record)}
         >
@@ -110,38 +103,52 @@ const TemplateLibrary = () => {
 
   return (
     <Container>
-      <h3>Global Template Library</h3>
-      <p>Browse and import templates from the master catalog.</p>
+      <div style={{ marginBottom: 16, background: '#f9f9f9', padding: 15, borderRadius: 8 }}>
+        <h4 style={{ margin: 0 }}><AppstoreAddOutlined /> Global Template Library</h4>
+        <p style={{ margin: 0, color: '#666', fontSize: 12 }}>Browse and import pre-designed templates from the master catalog.</p>
+      </div>
 
       <Table
         columns={columns}
         dataSource={libraryTemplates}
         rowKey="_id"
-        loading={loading}
+        loading={isFetching}
+        pagination={{ pageSize: 5 }}
+        size="small"
+        locale={{ emptyText: <Empty description="No global templates available" /> }}
       />
 
       <Modal
         title={`Import: ${selectedTemplate?.name}`}
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
-        onOk={() => variableForm.submit()}
+        onOk={() => form.submit()}
+        confirmLoading={importing}
         okText="Import Template"
+        destroyOnClose
       >
-        <p>This template requires some values to be set before importing.</p>
-        <Form form={variableForm} layout="vertical" onFinish={handleImportSubmit}>
+        <p style={{ marginBottom: 20 }}>
+            This template requires some values to be configured before importing. 
+            These values will replace placeholders like <code>{`{{PHONE}}`}</code> in the design.
+        </p>
+        
+        <Form form={form} layout="vertical" onFinish={handleImportSubmit}>
             {selectedTemplate?.variables?.length > 0 ? (
                 selectedTemplate.variables.map(v => (
                     <Form.Item
                         key={v.key}
                         name={v.key}
                         label={v.label}
-                        rules={[{ required: true, message: 'Required' }]}
+                        rules={[{ required: true, message: 'This variable is required' }]}
+                        tooltip={`Replaces {{${v.key}}}`}
                     >
                         <Input placeholder={v.defaultValue || ""} />
                     </Form.Item>
                 ))
             ) : (
-                <p style={{ color: 'gray', fontStyle: 'italic' }}>No additional variables required.</p>
+                <div style={{ textAlign: 'center', padding: 20, color: '#888', background: '#f5f5f5', borderRadius: 4 }}>
+                    No variables required. Click Import to proceed.
+                </div>
             )}
         </Form>
       </Modal>

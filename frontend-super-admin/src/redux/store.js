@@ -6,6 +6,7 @@ import uiReducer from "./uiRedux";
 import brandReducer from "./brandRedux";
 import institutionReducer from "./institutionRedux";
 import baseTestsReducer from "./baseTestRedux";
+import templateReducer from "./templateRedux";
 import { CLEAR_ALL_REDUCERS } from "./actionTypes";
 
 import CryptoJS from "crypto-js";
@@ -58,6 +59,7 @@ const appReducer = combineReducers({
   [process.env.REACT_APP_BRAND_DETAILS_KEY] : brandReducer,
   [process.env.REACT_APP_INSTITUTIONS_DATA_KEY] : institutionReducer,
   [process.env.REACT_APP_BASETESTS_DATA_KEY] : baseTestsReducer,
+  [process.env.REACT_APP_BASETEMPLATES_DATA_KEY] : templateReducer,
 });
 
 const rootReducer = (state, action) => {

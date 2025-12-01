@@ -34,6 +34,12 @@ import {
   createOrderSuccess,
 } from "./orderRedux";
 
+import {
+  getLibraryStart,
+  getLibrarySuccess,
+  getLibraryFailure,
+} from "./templateLibraryRedux";
+
 import { getInstitutionSuccess, setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
 
 //Get Encryption Key
@@ -411,5 +417,30 @@ export const fetchBillPdf = async (orderId) => {
     return { status: 200 };
   } catch (err) {
     return { status: 500, message: "PDF Generation Failed" };
+  }
+};
+
+
+// Fetch Global Templates
+export const getTemplateLibrary = async (dispatch) => {
+  dispatch(getLibraryStart());
+  try {
+    const res = await userRequest.get("/tenant-templates/library");
+    dispatch(getLibrarySuccess(res.data.data));
+  } catch (err) {
+    dispatch(getLibraryFailure());
+  }
+};
+
+// Import a Template to Institution
+export const importTemplate = async (data) => {
+  try {
+    const res = await userRequest.post("/tenant-templates/import", data);
+    return { status: 200, data: res.data };
+  } catch (err) {
+    return { 
+      status: err.response?.status || 500, 
+      message: err.response?.data?.message || "Import failed" 
+    };
   }
 };

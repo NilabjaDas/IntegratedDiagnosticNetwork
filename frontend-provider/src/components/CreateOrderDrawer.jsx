@@ -26,13 +26,14 @@ import {
   CalculatorOutlined,
   CreditCardOutlined,
   QrcodeOutlined,
-  DollarCircleOutlined
+  DollarCircleOutlined,
+  SearchOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { createOrder, searchPatients } from "../redux/apiCalls";
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
-import DiscountOverrideModal from "./DiscountOverrideModal"; // Ensure this file exists
+import DiscountOverrideModal from "./DiscountOverrideModal"; 
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -50,6 +51,9 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   const [patientId, setPatientId] = useState(null);
   const [loading, setLoading] = useState(false);
   
+  // Search State for Pre-filling
+  const [searchTerm, setSearchTerm] = useState("");
+
   // Billing State
   const [totalAmount, setTotalAmount] = useState(0);
   const [netAmount, setNetAmount] = useState(0);
@@ -57,12 +61,15 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   
   // Modals
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
-  const [createdOrder, setCreatedOrder] = useState(null); // For chaining payment
+  const [createdOrder, setCreatedOrder] = useState(null); 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   
-  // --- NEW: Override State ---
+  // Override State
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [pendingSubmission, setPendingSubmission] = useState(null);
+
+  // Watch Paid Amount to show/hide Payment Mode
+  const paidAmount = Form.useWatch("paidAmount", form);
 
   // --- BILLING CALCULATOR ---
   const handleValuesChange = (changedValues, allValues) => {
@@ -92,19 +99,12 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   // --- HANDLERS ---
 
   const handlePatientSearch = (val) => {
+    setSearchTerm(val); // Store for pre-fill
     if (val.length >= 4) searchPatients(dispatch, val);
   };
 
-  const handlePatientSelect = (val) => {
-    if (val === "NEW_PATIENT") {
-        setPatientId(null);
-        setIsPatientModalOpen(true);
-    } else {
-        setPatientId(val);
-    }
-  };
-
   const handleNewPatientCreated = (newPatient) => {
+    console.log(newPatient)
     setIsPatientModalOpen(false);
     setPatientId(newPatient._id);
     message.success(`Selected ${newPatient.firstName}`);
@@ -112,28 +112,33 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     form.setFieldsValue({ patientId: newPatient._id });
   };
 
-  const handleAddItem = (value) => {
-    if (selectedItems.find(i => i._id === value)) return message.warning("Item already added");
-
-    const testMatch = tests.find(t => t._id === value);
-    if (testMatch) {
-        setSelectedItems([...selectedItems, { ...testMatch, type: 'Test' }]);
-    } else {
-        const pkgMatch = packages.find(p => p._id === value);
-        if (pkgMatch) {
-            setSelectedItems([...selectedItems, { ...pkgMatch, price: pkgMatch.offerPrice, type: 'Package' }]);
-        }
-    }
+  const handleServicesChange = (values) => {
+      // values is array of IDs
+      const newItems = [];
+      values.forEach(val => {
+          const testMatch = tests.find(t => t._id === val);
+          if (testMatch) {
+             newItems.push({ ...testMatch, type: 'Test' });
+          } else {
+             const pkgMatch = packages.find(p => p._id === val);
+             if (pkgMatch) {
+                newItems.push({ ...pkgMatch, price: pkgMatch.offerPrice, type: 'Package' });
+             }
+          }
+      });
+      setSelectedItems(newItems);
   };
 
   const handleRemoveItem = (id) => {
-    setSelectedItems(selectedItems.filter(i => i._id !== id));
+    const newItems = selectedItems.filter(i => i._id !== id);
+    setSelectedItems(newItems);
+    // Sync the Select component value
+    form.setFieldsValue({ serviceSelect: newItems.map(i => i._id) });
   };
 
   // --- SUBMISSION LOGIC ---
 
   const onFinish = async (values) => {
-    // Determine which data to use (Pending/Retry vs Fresh Form)
     const dataToSubmit = pendingSubmission 
         ? { ...pendingSubmission, discountOverrideCode: values.overrideCode }
         : values;
@@ -152,19 +157,21 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         paymentMode, 
         transactionId, 
         notes,
-        discountOverrideCode // From retry
+        discountOverrideCode 
     } = dataToSubmit;
 
     const orderData = {
-        patientId: patientId, // Using state variable (safe since component is mounted)
+        patientId: patientId,
         items: selectedItems.map(i => ({ _id: i._id, type: i.type })),
         discountAmount,
         discountReason,
-        paymentMode,
-        discountOverrideCode, // Send to backend
+        paymentMode, // Store intended mode even if online
+        discountOverrideCode,
         notes
     };
 
+    // Only attach initialPayment for Manual modes here.
+    // For Razorpay, we create the order first, then handle payment in the modal.
     if (paymentMode !== "Razorpay" && paidAmount > 0) {
         orderData.initialPayment = {
             mode: paymentMode,
@@ -178,37 +185,30 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     setLoading(false);
 
     if (res.status === 201) {
-        // Success Path
         message.success("Order Created Successfully!");
         setIsOverrideModalOpen(false);
         setPendingSubmission(null);
         
         if (paymentMode === "Razorpay" && paidAmount > 0) {
-            setCreatedOrder(res.data);
+            // Chain Online Payment
+            // Pass the 'paidAmount' as the amount to collect in the modal
+            setCreatedOrder({ ...res.data, dueAmountForModal: paidAmount }); 
             setIsPaymentModalOpen(true);
-            handleClose(false); // Keep drawer mounted but hidden/reset? 
-            // Actually, keep drawer logic same as before: 
-            // If we close fully, 'createdOrder' state might be lost if this component unmounts.
-            // Assuming CreateOrderDrawer is conditionally rendered by parent (e.g. {visible && <Drawer/>})
-            // If so, we should NOT close until payment is done.
-            // But visually, the Payment Modal should take over.
-            // Let's trust the parent handles unmounting correctly.
+            // Keep drawer open until payment logic handles closure or user cancels
+             handleClose(false); // Close main drawer, show modal
         } else {
             handleClose(true);
         }
 
-    } else if (res.status === 500 && res.requiresOverride) {
-        // Limit Exceeded -> Trigger Override Flow
-        setPendingSubmission(values); // Store form data
-        setIsOverrideModalOpen(true); // Show PIN Modal
+    } else if (res.status === 403 && (res.data?.requiresOverride || res.message?.toLowerCase().includes("limit"))) {
+        setPendingSubmission(values); 
+        setIsOverrideModalOpen(true); 
     } else {
         message.error(res.message || "Creation Failed");
     }
   };
 
-  // Handler for the PIN Modal
   const handleOverrideSubmit = (code) => {
-      // Retry submission with the code
       onFinish({ ...pendingSubmission, overrideCode: code });
   };
 
@@ -221,6 +221,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         setNetAmount(0);
         setDueAmount(0);
         setPendingSubmission(null);
+        setSearchTerm("");
         onClose();
     }
   };
@@ -258,43 +259,51 @@ const CreateOrderDrawer = ({ open, onClose }) => {
             }}
         >
           
-          {/* --- TOP SECTION: PATIENT & ITEMS --- */}
           <Row gutter={24}>
+              {/* Left Col */}
               <Col span={14}>
                   <Card size="small" title="1. Patient" style={{ marginBottom: 16 }}>
-                      <Form.Item name="patientId" noStyle rules={[{ required: true, message: "Select Patient" }]}>
-                          <Select
-                              showSearch
-                              style={{width: '100%'}}
-                              placeholder="Search Mobile / UHID..."
-                              filterOption={false}
-                              onSearch={handlePatientSearch}
-                              onChange={handlePatientSelect}
-                              value={patientId}
-                              notFoundContent={
-                                <div style={{textAlign: 'center', padding: 8}}>
-                                    <Button type="link" icon={<UserAddOutlined />} onClick={() => setIsPatientModalOpen(true)}>
-                                        Register New Patient
-                                    </Button>
-                                </div>
-                              }
-                          >
-                              {searchResults.map(p => (
-                                  <Option key={p._id} value={p._id}>{p.firstName} {p.lastName} ({p.mobile})</Option>
-                              ))}
-                              <Option value="NEW_PATIENT" style={{ color: '#1890ff', borderTop: '1px solid #eee' }}>+ Add New</Option>
-                          </Select>
-                      </Form.Item>
+                      <Row gutter={8}>
+                          <Col span={20}>
+                              <Form.Item name="patientId" noStyle rules={[{ required: true, message: "Select Patient" }]}>
+                                  <Select
+                                      showSearch
+                                      placeholder="Search Name / Mobile / UHID..."
+                                      filterOption={false}
+                                      onSearch={handlePatientSearch}
+                                      onChange={(val) => setPatientId(val)}
+                                      value={patientId}
+                                      suffixIcon={<SearchOutlined />}
+                                  >
+                                      {searchResults.map(p => (
+                                          <Option key={p._id} value={p._id}>{p.firstName} {p.lastName} ({p.mobile})</Option>
+                                      ))}
+                                  </Select>
+                              </Form.Item>
+                          </Col>
+                          <Col span={4}>
+                              <Button 
+                                block 
+                                type="primary" 
+                                icon={<UserAddOutlined />} 
+                                onClick={() => setIsPatientModalOpen(true)}
+                                title="Register New Patient"
+                              />
+                          </Col>
+                      </Row>
                   </Card>
 
                   <Card size="small" title="2. Services">
-                      <Form.Item style={{ marginBottom: 8 }}>
+                      <Form.Item name="serviceSelect" style={{ marginBottom: 8 }}>
                           <Select
+                              mode="multiple"
                               showSearch
                               placeholder="Add Test / Package..."
                               optionFilterProp="children"
-                              onSelect={handleAddItem}
-                              value={null}
+                              onChange={handleServicesChange}
+                              value={selectedItems.map(i => i._id)}
+                              // Hide tags in input, we show list below
+                              tagRender={() => null} 
                           >
                               <Select.OptGroup label="Packages">
                                   {packages?.map(p => <Option key={p._id} value={p._id}>{p.name} (₹{p.offerPrice})</Option>)}
@@ -308,6 +317,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                       <List
                           size="small"
                           dataSource={selectedItems}
+                          locale={{ emptyText: <Empty description="No services selected" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                           renderItem={item => (
                               <List.Item actions={[<DeleteOutlined onClick={() => handleRemoveItem(item._id)} style={{color:'red'}} />]}>
                                   <List.Item.Meta
@@ -321,6 +331,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                   </Card>
               </Col>
 
+              {/* Right Col */}
               <Col span={10}>
                   <Card size="small" title="3. Billing" style={{ height: '100%' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -352,36 +363,40 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                           <Title level={4} type="success">₹{netAmount}</Title>
                       </div>
 
-                      <Form.Item name="paymentMode" label="Payment Mode">
-                          <Select>
-                              <Option value="Cash"><DollarCircleOutlined /> Cash</Option>
-                              <Option value="Razorpay"><QrcodeOutlined /> Online / QR</Option>
-                              <Option value="Card"><CreditCardOutlined /> Card</Option>
-                          </Select>
-                      </Form.Item>
-
                       <Form.Item name="paidAmount" label="Advance / Paid Now">
                           <InputNumber style={{ width: '100%' }} min={0} max={netAmount} prefix="₹" />
                       </Form.Item>
 
-                      <Form.Item 
-                        noStyle 
-                        shouldUpdate={(prev, curr) => prev.paymentMode !== curr.paymentMode}
-                      >
-                        {({ getFieldValue }) => 
-                            getFieldValue("paymentMode") !== "Razorpay" && (
-                                <Form.Item name="transactionId" label="Transaction Ref (Optional)">
-                                    <Input placeholder="Slip No / Ref ID" />
-                                </Form.Item>
-                            )
-                        }
-                      </Form.Item>
+                      {/* CONDITIONAL: Show Payment Mode only if user is paying something */}
+                      {paidAmount > 0 && (
+                        <div style={{ background: '#f9f9f9', padding: 10, borderRadius: 6, marginBottom: 16 }}>
+                            <Form.Item name="paymentMode" label="Payment Mode" style={{ marginBottom: 8 }}>
+                                <Select>
+                                    <Option value="Cash"><DollarCircleOutlined /> Cash</Option>
+                                    <Option value="Razorpay"><QrcodeOutlined /> Online / QR</Option>
+                                    <Option value="Card"><CreditCardOutlined /> Card</Option>
+                                </Select>
+                            </Form.Item>
+
+                            <Form.Item 
+                                noStyle 
+                                shouldUpdate={(prev, curr) => prev.paymentMode !== curr.paymentMode}
+                            >
+                                {({ getFieldValue }) => 
+                                    getFieldValue("paymentMode") !== "Razorpay" && (
+                                        <Form.Item name="transactionId" label="Transaction Ref" style={{ marginBottom: 0 }}>
+                                            <Input placeholder="Slip No / Ref ID" />
+                                        </Form.Item>
+                                    )
+                                }
+                            </Form.Item>
+                        </div>
+                      )}
 
                       <Alert 
                         message={`Balance Due: ₹${dueAmount}`} 
                         type={dueAmount > 0 ? "warning" : "success"} 
                         showIcon 
-                        style={{ marginTop: 16 }}
                       />
                   </Card>
               </Col>
@@ -399,9 +414,9 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         open={isPatientModalOpen} 
         onCancel={() => setIsPatientModalOpen(false)}
         onSuccess={handleNewPatientCreated}
+        initialSearchTerm={searchTerm}
       />
 
-      {/* Override Modal */}
       <DiscountOverrideModal 
         open={isOverrideModalOpen}
         onCancel={() => {
@@ -412,7 +427,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         onSubmit={handleOverrideSubmit}
       />
 
-      {/* Payment Modal */}
+      {/* Payment Modal for Online Advance */}
       {createdOrder && (
           <PaymentModal 
             open={isPaymentModalOpen}
@@ -421,6 +436,8 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                 handleClose(true);
             }}
             order={createdOrder}
+            // Pass the specific advance amount to collect (not the full due)
+            initialAmount={createdOrder.dueAmountForModal} 
             onSuccess={() => {
                 setIsPaymentModalOpen(false);
                 handleClose(true);

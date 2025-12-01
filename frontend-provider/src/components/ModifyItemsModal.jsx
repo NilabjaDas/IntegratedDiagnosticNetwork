@@ -27,19 +27,31 @@ const ModifyItemsModal = ({ open, onCancel, order, onSuccess }) => {
     }
   }, [open, order]);
 
-  const handleAddItem = (value) => {
-    // Check duplicates
-    if (selectedItems.find(i => i._id === value)) return message.warning("Item already added");
+  // Handle Multi-Select Changes
+  const handleServicesChange = (values) => {
+    // values is an array of IDs (strings)
+    const newItems = [];
 
-    const testMatch = tests.find(t => t._id === value);
-    if (testMatch) {
-        setSelectedItems([...selectedItems, { ...testMatch, type: 'Test' }]);
-    } else {
-        const pkgMatch = packages.find(p => p._id === value);
-        if (pkgMatch) {
-            setSelectedItems([...selectedItems, { ...pkgMatch, price: pkgMatch.offerPrice, type: 'Package' }]);
+    values.forEach(val => {
+        // Check if already in our selected object list to preserve data
+        const existing = selectedItems.find(i => i._id === val);
+        if (existing) {
+            newItems.push(existing);
+        } else {
+            // Find in catalog
+            const testMatch = tests.find(t => t._id === val);
+            if (testMatch) {
+               newItems.push({ ...testMatch, type: 'Test' });
+            } else {
+               const pkgMatch = packages.find(p => p._id === val);
+               if (pkgMatch) {
+                  newItems.push({ ...pkgMatch, price: pkgMatch.offerPrice, type: 'Package' });
+               }
+            }
         }
-    }
+    });
+    
+    setSelectedItems(newItems);
   };
 
   const handleRemoveItem = (id) => {
@@ -50,7 +62,6 @@ const ModifyItemsModal = ({ open, onCancel, order, onSuccess }) => {
     if (selectedItems.length === 0) return message.error("Order must have at least one item");
 
     setLoading(true);
-    // Payload: Array of { _id, type }
     const payload = selectedItems.map(i => ({ _id: i._id, type: i.type }));
     
     const res = await modifyOrderItems(order._id, payload);
@@ -74,17 +85,20 @@ const ModifyItemsModal = ({ open, onCancel, order, onSuccess }) => {
       onCancel={onCancel}
       confirmLoading={loading}
       onOk={handleSave}
+      maskClosable = {false}
+      closable = {true}
       okText={`Save Changes (New Total: ₹${newTotal})`}
-      destroyOnClose
     >
       <div style={{ marginBottom: 16 }}>
         <Select
+            mode="multiple"
             showSearch
             style={{ width: '100%' }}
-            placeholder="Add new test or package..."
+            placeholder="Add or remove services..."
             optionFilterProp="children"
-            onSelect={handleAddItem}
-            value={null} // Clear after selection
+            onChange={handleServicesChange}
+            value={selectedItems.map(i => i._id)}
+            tagRender={() => null} // Hide tags in input, show list below instead
         >
             <Select.OptGroup label="Packages">
                 {packages.map(p => (
@@ -98,11 +112,12 @@ const ModifyItemsModal = ({ open, onCancel, order, onSuccess }) => {
             </Select.OptGroup>
         </Select>
       </div>
-
+      <div style={{maxHeight: '50vh', overflow: 'auto'}}>
+      
       <List
         itemLayout="horizontal"
         dataSource={selectedItems}
-        locale={{ emptyText: <Empty description="No items" /> }}
+        locale={{ emptyText: <Empty description="No items selected" /> }}
         renderItem={item => (
             <List.Item
                 actions={[
@@ -118,7 +133,8 @@ const ModifyItemsModal = ({ open, onCancel, order, onSuccess }) => {
             </List.Item>
         )}
       />
-      
+        
+      </div>
       <div style={{ marginTop: 10, color: '#888', fontSize: '12px' }}>
         Note: Modifying items will recalculate the order total. Previous payments will be retained as "Paid Amount", potentially resulting in a Due or Refund status.
       </div>

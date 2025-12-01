@@ -6,7 +6,7 @@ import uiReducer from "./uiRedux";
 import institutionReducer from "./InstitutionRedux";
 import testsReducer from "./testRedux"
 import ordersReducer from "./orderRedux"
-
+import templateLibraryReducer from "./templateLibraryRedux";
 import { CLEAR_ALL_REDUCERS } from "./actionTypes";
 
 import CryptoJS from "crypto-js";
@@ -59,6 +59,7 @@ const appReducer = combineReducers({
   [process.env.REACT_APP_INSTITUTIONS_DATA_KEY] : institutionReducer,
   [process.env.REACT_APP_TESTS_DATA_KEY] : testsReducer,
   [process.env.REACT_APP_ORDERS_DATA_KEY] : ordersReducer,
+  [process.env.REACT_APP_TEMPLATELIBRARY_DATA_KEY] : templateLibraryReducer,
 });
 
 const rootReducer = (state, action) => {

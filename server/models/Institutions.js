@@ -25,26 +25,21 @@ const printTemplateSchema = new mongoose.Schema({
 
   // Content Configuration
   content: {
-    headerHtml: { type: String, default: "" }, // Custom HTML for header
-    footerHtml: { type: String, default: "" }, // Custom HTML for footer
-    
-    // Toggles
+    accentColor: { type: String, default: "#000000" },
+    fontFamily: { type: String, default: "Roboto" },
     showLogo: { type: Boolean, default: true },
     showInstitutionDetails: { type: Boolean, default: true },
     showQrCode: { type: Boolean, default: true }, // Payment QR on Bill
-    
-    // Branding
-    accentColor: { type: String, default: "#000000" },
-    fontFamily: { type: String, default: "Roboto" },
-    
-    // Specifics for Bills
     billColumns: {
         showTax: { type: Boolean, default: true },
         showDiscount: { type: Boolean, default: true }
     },
+    headerHtml: { type: String, default: "" }, // Custom HTML for header
+    footerHtml: { type: String, default: "" }, // Custom HTML for footer
+   
     customElements: [{
         id: String,
-        type: { type: String, enum: ["TEXT", "IMAGE", "VARIABLE"], default: "TEXT" },
+        type: { type: String, enum: ["TEXT", "IMAGE", "VARIABLE", "LINE", "BOX"], default: "TEXT" },
         content: String, // Text content or Image URL
         x: Number, // Position in px or %
         y: Number,
@@ -57,7 +52,9 @@ const printTemplateSchema = new mongoose.Schema({
             textAlign: String
         }
     }],
-  }
+  },
+  variables: {type: [Object]},
+
 }, { _id: false });
 
 

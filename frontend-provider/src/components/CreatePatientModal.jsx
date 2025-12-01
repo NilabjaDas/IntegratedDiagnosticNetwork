@@ -1,13 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Modal, Form, Input, Select, Row, Col, InputNumber, Button, message } from "antd";
 import { createGlobalPatient } from "../redux/apiCalls";
 
 const { Option } = Select;
 
-const CreatePatientModal = ({ open, onCancel, onSuccess }) => {
+const CreatePatientModal = ({ open, onCancel, onSuccess, initialSearchTerm }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-
   const handleFinish = async (values) => {
     setLoading(true);
     const res = await createGlobalPatient(values);
@@ -16,11 +15,36 @@ const CreatePatientModal = ({ open, onCancel, onSuccess }) => {
     if (res.status === 201) {
       message.success("Patient registered successfully!");
       form.resetFields();
-      onSuccess(res.data); // Pass the new patient back to parent
+      onSuccess(res.data.data); // Pass the new patient back to parent
     } else {
       message.error(res.message);
     }
   };
+
+  // Watch for open and initialSearchTerm changes
+  useEffect(() => {
+    if (open) {
+        // 1. Reset form first to clear any previous state
+        form.resetFields();
+
+        // 2. Pre-fill based on search term
+        if (initialSearchTerm) {
+            const isNumber = /^\d+$/.test(initialSearchTerm);
+            if (isNumber) {
+                form.setFieldsValue({ mobile: initialSearchTerm });
+            } else {
+                // Split name logic
+                const parts = initialSearchTerm.trim().split(/\s+/); // Handle multiple spaces
+                if (parts.length > 0) {
+                    form.setFieldsValue({ 
+                        firstName: parts[0], 
+                        lastName: parts.slice(1).join(" ") 
+                    });
+                }
+            }
+        }
+    }
+  }, [open, initialSearchTerm, form]);
 
   return (
     <Modal
@@ -30,8 +54,9 @@ const CreatePatientModal = ({ open, onCancel, onSuccess }) => {
       onOk={form.submit}
       confirmLoading={loading}
       okText="Register & Select"
+      destroyOnClose // Critical: Ensures form unmounts on close
     >
-      <Form layout="vertical" form={form} onFinish={handleFinish}>
+      <Form layout="vertical" form={form} onFinish={handleFinish} preserve={false}>
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item name="firstName" label="First Name" rules={[{ required: true }]}>
