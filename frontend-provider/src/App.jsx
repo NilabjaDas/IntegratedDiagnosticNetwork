@@ -77,9 +77,6 @@ function App() {
   const institutionStatus = useSelector(
     (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].status
   );
- console.log(useSelector(
-    (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY]
-  ))
   const token = useSelector(
     (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
   );

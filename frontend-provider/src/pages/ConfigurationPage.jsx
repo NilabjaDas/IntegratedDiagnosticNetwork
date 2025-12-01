@@ -28,6 +28,7 @@ const ConfigurationPage = () => {
   }, [brandDetails]);
 
   const handleSave = async () => {
+    console.log(templates)
     setLoading(true);
     // Only send the fields we modified to avoid overwriting other stuff accidentally
     const res = await updateInstitution(dispatch, brandDetails.institutionId, { 

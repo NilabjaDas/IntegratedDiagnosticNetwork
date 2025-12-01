@@ -8,7 +8,11 @@ const printTemplateSchema = new mongoose.Schema({
   isDefault: { type: Boolean, default: false },
   
   // Physical Layout
-  pageSize: { type: String, enum: ["A4", "A5", "Letter", "Thermal80mm"], default: "A4" },
+  pageSize: { 
+      type: String, 
+      enum: ["A3", "A4", "A5", "Letter", "Legal", "Tabloid", "B4", "B5", "Thermal80mm"], 
+      default: "A4" 
+  },
   orientation: { type: String, enum: ["portrait", "landscape"], default: "portrait" },
   
   // Margins (in mm)
@@ -37,7 +41,22 @@ const printTemplateSchema = new mongoose.Schema({
     billColumns: {
         showTax: { type: Boolean, default: true },
         showDiscount: { type: Boolean, default: true }
-    }
+    },
+    customElements: [{
+        id: String,
+        type: { type: String, enum: ["TEXT", "IMAGE", "VARIABLE"], default: "TEXT" },
+        content: String, // Text content or Image URL
+        x: Number, // Position in px or %
+        y: Number,
+        width: Number,
+        height: Number,
+        style: {
+            fontSize: Number,
+            fontWeight: String,
+            color: String,
+            textAlign: String
+        }
+    }],
   }
 }, { _id: false });
 
