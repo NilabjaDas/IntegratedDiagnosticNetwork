@@ -1,7 +1,6 @@
 const puppeteer = require("puppeteer");
 const handlebars = require("handlebars");
 const moment = require("moment");
-const fs = require("fs");
 
 // Register Helpers
 handlebars.registerHelper("formatDate", (date) => moment(date).format("DD MMM YYYY, h:mm A"));
@@ -13,26 +12,16 @@ handlebars.registerHelper("eq", function (a, b) {
 let browser = null;
 
 const getBrowser = async () => {
-    if (!browser) {
-        const possiblePaths = [
-            "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-            "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-            "/usr/bin/google-chrome", 
-            "/usr/bin/chromium-browser"
-        ];
-
-        const chromePath = possiblePaths.find(path => fs.existsSync(path));
-
-        if (!chromePath) {
-            console.warn("⚠️ Could not find local Chrome. Trying default Puppeteer bundle...");
-        } else {
-            console.log(`✅ Using Local Chrome at: ${chromePath}`);
-        }
+    // Check if browser instance exists and is actually connected.
+    // If it crashed or closed, we need to launch a new one.
+    if (!browser || !browser.isConnected()) {
+        console.log("🚀 Launching new Puppeteer browser instance...");
 
         browser = await puppeteer.launch({
-            executablePath: chromePath,
+            // 'headless: "new"' is the modern standard for Puppeteer
             headless: "new",
-            args: ["--no-sandbox", "--disable-setuid-sandbox"]
+            // Standard args for running in containerized/server environments
+            args: ["--no-sandbox", "--disable-setuid-sandbox"] 
         });
     }
     return browser;
@@ -44,14 +33,14 @@ const generatePdf = async (templateHtml, data, layoutConfig = {}) => {
         const template = handlebars.compile(templateHtml);
         const finalHtml = template(data);
 
-        // 2. Launch Browser
+        // 2. Get Browser Instance
         const browserInstance = await getBrowser();
         const page = await browserInstance.newPage();
 
         // 3. Set Content
         await page.setContent(finalHtml, { waitUntil: "networkidle0" });
 
-        // 4. Generate PDF (Returns Uint8Array in Puppeteer v24+)
+        // 4. Generate PDF (Returns Uint8Array in Puppeteer v22+)
         const pdfUint8Array = await page.pdf({
             format: layoutConfig.pageSize || "A4",
             landscape: layoutConfig.orientation === "landscape",
@@ -71,6 +60,11 @@ const generatePdf = async (templateHtml, data, layoutConfig = {}) => {
 
     } catch (err) {
         console.error("PDF Gen Error:", err);
+        // If the browser crashed, nullify it so it restarts next time
+        if (browser) {
+            try { await browser.close(); } catch (e) {}
+            browser = null;
+        }
         throw new Error("Failed to generate PDF");
     }
 };

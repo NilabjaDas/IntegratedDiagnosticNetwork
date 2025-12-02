@@ -817,12 +817,7 @@ router.post("/seed-base", requireSuperAdmin, async (req, res) => {
     }
 });
 
-
-/**
- * @route   GET /api/admin-templates
- * @desc    Get All Base Templates (Search & Pagination)
- * @access  Super Admin Only
- */
+// --- 1. GET ALL TEMPLATES ---
 router.get("/templates", requireSuperAdmin, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -834,12 +829,12 @@ router.get("/templates", requireSuperAdmin, async (req, res) => {
         let query = {};
 
         if (search) {
-            query.$text = { $search: search };
+            query.$or = [
+                { name: { $regex: search, $options: "i" } },
+                { category: { $regex: search, $options: "i" } }
+            ];
         }
-
-        if (type) {
-            query.type = type;
-        }
+        if (type && type !== "ALL") query.type = type;
 
         const templates = await BaseTemplate.find(query)
             .sort({ createdAt: -1 })
@@ -858,40 +853,31 @@ router.get("/templates", requireSuperAdmin, async (req, res) => {
             }
         });
     } catch (err) {
-        console.error("Get Templates Error:", err);
-        res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({ message: err.message });
     }
 });
 
-/**
- * @route   GET /api/admin-templates/:id
- * @desc    Get Single Template
- */
+// --- 2. GET SINGLE TEMPLATE ---
 router.get("/templates/:id", requireSuperAdmin, async (req, res) => {
     try {
         const template = await BaseTemplate.findById(req.params.id);
         if (!template) return res.status(404).json({ message: "Template not found" });
         res.json({ data: template });
     } catch (err) {
-        res.status(500).json({ message: "Error fetching template" });
+        res.status(500).json({ message: err.message });
     }
 });
 
-/**
- * @route   POST /api/admin-templates
- * @desc    Create a new Base Template
- */
-router.post("/templates", async (req, res) => {
+// --- 3. CREATE TEMPLATE ---
+router.post("/templates", requireSuperAdmin, async (req, res) => {
     try {
-        const {
-            name, description, category, type,
-            pageSize, orientation, margins,
-            content, variables, previewImage
+        const { 
+            name, description, category, type, 
+            pageSize, orientation, margins, 
+            content, variables, previewImage 
         } = req.body;
 
-        if (!name || !type) {
-            return res.status(400).json({ message: "Name and Type are required." });
-        }
+        if (!name || !type) return res.status(400).json({ message: "Name and Type are required" });
 
         const newTemplate = new BaseTemplate({
             name,
@@ -904,64 +890,43 @@ router.post("/templates", async (req, res) => {
             content,
             variables,
             previewImage,
-            createdBy: req.user?.username
+            createdBy: req.user?.username || "Admin"
         });
 
         await newTemplate.save();
         res.status(201).json({ message: "Template created successfully", data: newTemplate });
-
     } catch (err) {
         console.error("Create Template Error:", err);
-        res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({ message: err.message });
     }
 });
 
-/**
- * @route   PUT /api/admin-templates/:id
- * @desc    Update a Base Template
- */
+// --- 4. UPDATE TEMPLATE ---
 router.put("/templates/:id", requireSuperAdmin, async (req, res) => {
     try {
-        const { id } = req.params;
-        const updates = req.body;
-
-        const updatedTemplate = await BaseTemplate.findByIdAndUpdate(
-            id,
-            { $set: updates },
+        const updated = await BaseTemplate.findByIdAndUpdate(
+            req.params.id,
+            { $set: req.body },
             { new: true, runValidators: true }
         );
-
-        if (!updatedTemplate) {
-            return res.status(404).json({ message: "Template not found." });
-        }
-
-        res.json({ message: "Template updated successfully", data: updatedTemplate });
-
+        if (!updated) return res.status(404).json({ message: "Template not found" });
+        res.json({ message: "Template updated successfully", data: updated });
     } catch (err) {
         console.error("Update Template Error:", err);
-        res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({ message: err.message });
     }
 });
 
-/**
- * @route   DELETE /api/admin-templates/:id
- * @desc    Delete a Base Template
- */
+// --- 5. DELETE TEMPLATE ---
 router.delete("/templates/:id", requireSuperAdmin, async (req, res) => {
     try {
-        const { id } = req.params;
-        const deleted = await BaseTemplate.findByIdAndDelete(id);
-
-        if (!deleted) {
-            return res.status(404).json({ message: "Template not found." });
-        }
-
+        const deleted = await BaseTemplate.findByIdAndDelete(req.params.id);
+        if (!deleted) return res.status(404).json({ message: "Template not found" });
         res.json({ message: "Template deleted successfully" });
-
     } catch (err) {
-        console.error("Delete Template Error:", err);
-        res.status(500).json({ message: "Internal Server Error" });
+        res.status(500).json({ message: err.message });
     }
 });
+
 
 module.exports = router;

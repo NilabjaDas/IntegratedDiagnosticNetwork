@@ -53,31 +53,11 @@ router.get("/bill/:orderId", async (req, res) => {
 
     // 4. Construct HTML
     const { content } = billTemplate;
-    const { customElements } = content;
 
-    const elementsHtml =
-      customElements
-        ?.map(
-          (el) => `
-    <div style="position: absolute; top: ${el.y}px; left: ${el.x}px; width: ${
-            el.width
-          }px; height: ${el.height}px; font-size: ${
-            el.style.fontSize
-          }px; color: ${el.style.color}; z-index: 10;">
-        ${
-          el.type === "IMAGE"
-            ? `<img src="${el.content}" width="100%" height="100%" />`
-            : el.content
-        }
-    </div>
-`
-        )
-        .join("") || "";
 
     const fullHtml = `
     <html>
     <body style="position: relative;">
-        ${elementsHtml}
 
         <div class="page-content" style="position: relative; z-index: 1;">
            </div>

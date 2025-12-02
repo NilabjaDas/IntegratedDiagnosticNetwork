@@ -4,6 +4,8 @@ const templateLibrarySlice = createSlice({
   name: "templateLibrary",
   initialState: {
     libraryTemplates: [],
+    printTemplates: [],
+    commTemplates: [],
     isFetching: false,
     error: false,
   },
@@ -20,6 +22,12 @@ const templateLibrarySlice = createSlice({
       state.isFetching = false;
       state.error = true;
     },
+     getPrintTemplates: (state, action) => {
+      state.printTemplates = action.payload;
+    },
+     getCommTemplates: (state, action) => {
+      state.commTemplates = action.payload;
+    },
   },
 });
 
@@ -27,6 +35,8 @@ export const {
   getLibraryStart,
   getLibrarySuccess,
   getLibraryFailure,
+  getPrintTemplates,
+  getCommTemplates
 } = templateLibrarySlice.actions;
 
 export default templateLibrarySlice.reducer;

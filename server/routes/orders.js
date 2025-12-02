@@ -14,6 +14,9 @@ const PackageSchema = require("../models/Package");
 const UserSchema = require("../models/User");
 const getModel = require("../middleware/getModelsHandler");
 const { verifyToken } = require("../middleware/verifyToken");
+const { generateInvoicePayload, buildDynamicTableHtml } = require("../handlers/invoiceHelpers");
+const TemplateSchema = require("../models/Template");
+const { generatePdf } = require("../handlers/pdfHandler");
 
 // --- HELPER: Merge Patient Info ---
 const mergePatientsWithOrders = async (orders) => {
@@ -89,6 +92,7 @@ const getTenantContext = async (req, res, next) => {
     req.TenantOrder = getModel(tenantDb, "Order", OrderSchema);
     req.TenantTest = getModel(tenantDb, "Test", TestSchema);
     req.TenantPackage = getModel(tenantDb, "Package", PackageSchema);
+    req.TenantTemplate = getModel(tenantDb, "Template", TemplateSchema);
     req.TenantUser = getModel(tenantDb, "User", UserSchema);
     next();
   } catch (err) {
@@ -372,5 +376,145 @@ router.put("/:id", async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
+
+
+// ---------------------------------------------------------
+// ROUTE: PRINT BILL PDF
+// ---------------------------------------------------------
+router.get("/print-bill/:orderId", async (req, res) => {
+    try {
+
+        // 1. Fetch Order (Tenant Context is already set by middleware)
+        const order = await req.TenantOrder.findById(req.params.orderId);
+        if (!order) return res.status(404).json({ message: "Order not found" });
+
+        // 2. Fetch Patient 
+        // Note: Check if your Patient is in Tenant DB or Global DB. 
+        // If Global: Use Patient.findById. If Tenant: Use req.TenantPatient.findById
+        const patient = await Patient.findById(order.patientId);
+        if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+        // 3. Fetch Template (Find the Default Bill)
+        // We use req.TenantTemplate which was set up in previous steps
+        let template = await req.TenantTemplate.findOne({
+            institutionId: req.user.institutionId,
+            category: "PRINT",
+            "printDetails.type": "BILL",
+            isDefault: true
+        });
+
+        // Fallback: If no default, pick the first BILL template
+        if (!template) {
+            template = await req.TenantTemplate.findOne({
+                institutionId: req.user.institutionId,
+                category: "PRINT",
+                "printDetails.type": "BILL"
+            });
+        }
+
+        if (!template) {
+            return res.status(400).json({ message: "No Billing Template found. Please configure one in Settings." });
+        }
+
+        const pd = template.printDetails; // Shortcut
+        const config = pd.content;
+        // 4. Prepare Data Payload
+        const { variables, tableRows } = generateInvoicePayload(order, patient, req.institution);
+
+        // 5. Build Dynamic HTML Parts
+        
+        // A. The Data Table
+        const dynamicTableHtml = buildDynamicTableHtml(config.tableStructure, tableRows, config.accentColor);
+
+        // B. The Financial Summary Block (Right Aligned)
+        const summaryHtml = `
+            <div style="page-break-inside: avoid; margin-top: 20px; display: flex; justify-content: flex-end;">
+                <div style="width: 250px; font-size: 12px; font-family: ${config.fontFamily};">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span>Sub Total:</span> <span>₹${variables.financials.subTotal}</span>
+                    </div>
+                    ${config.tableStructure.summarySettings.showDiscount && Number(variables.financials.discount) > 0 ? `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: red;">
+                        <span>Discount:</span> <span>- ₹${variables.financials.discount}</span>
+                    </div>` : ''}
+                    
+                    <div style="border-top: 1px solid #ddd; margin: 5px 0;"></div>
+                    
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold;">
+                        <span>Net Amount:</span> <span>₹${variables.financials.netAmount}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span>Paid:</span> <span>₹${variables.financials.paidAmount}</span>
+                    </div>
+                     ${config.tableStructure.summarySettings.showDues ? `
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; color: ${Number(variables.financials.dueAmount) > 0 ? 'red' : 'green'};">
+                        <span>Balance Due:</span> <span>₹${variables.financials.dueAmount}</span>
+                    </div>` : ''}
+
+                     ${config.tableStructure.summarySettings.wordsAmount ? `
+                    <div style="margin-top: 10px; font-size: 10px; font-style: italic; color: #666; text-align: right;">
+                        (${variables.financials.amountInWords})
+                    </div>` : ''}
+                </div>
+            </div>
+        `;
+
+        // 6. Assemble Final HTML
+        // We inject the 3 parts: Header -> Table -> Summary -> Footer
+        // We wrap it in a container that handles Font Family and basic layout
+        const finalHtml = `
+            <html>
+            <head>
+                <style>
+                    body { font-family: '${config.fontFamily}', sans-serif; -webkit-print-color-adjust: exact; }
+                    .page-content { padding: 0px; }
+                </style>
+                <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+                <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+            </head>
+            <body>
+                <div class="page-content">
+                    
+                    <div style="margin-bottom: 20px;">
+                        ${config.headerHtml} 
+                    </div>
+
+                    ${dynamicTableHtml}
+
+                    ${summaryHtml}
+
+                    <div style="margin-top: 30px; position: relative;">
+                        ${config.footerHtml}
+                    </div>
+
+                </div>
+            </body>
+            </html>
+        `;
+
+        // 7. Send to PDF Generator
+        // Note: we pass 'variables' as the data object so Handlebars can replace {{patient.name}} in the Header/Footer
+        const rawPdf = await generatePdf(finalHtml, variables, {
+            pageSize: pd.pageSize,
+            orientation: pd.orientation,
+            margins: pd.margins
+        });
+
+        const finalBuffer = Buffer.from(rawPdf);
+
+        res.set({
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `inline; filename="Bill-${order.displayId}.pdf"`,
+            "Content-Length": finalBuffer.length,
+        });
+
+        res.send(finalBuffer);
+
+    } catch (err) {
+        console.error("Print Bill Error:", err);
+        res.status(500).json({ message: "Failed to generate Bill PDF", error: err.message });
+    }
+});
+
 
 module.exports = router;

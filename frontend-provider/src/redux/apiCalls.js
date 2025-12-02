@@ -38,7 +38,11 @@ import {
   getLibraryStart,
   getLibrarySuccess,
   getLibraryFailure,
+  getPrintTemplates,
+  getCommTemplates,
 } from "./templateLibraryRedux";
+
+
 
 import { getInstitutionSuccess, setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
 
@@ -398,35 +402,60 @@ export const updateInstitution = async (dispatch, id, updates) => {
 
 export const fetchBillPdf = async (orderId) => {
   try {
-    const res = await userRequest.get(`/pdf/bill/${orderId}`, {
-        responseType: 'blob' // IMPORTANT: Expect binary data
+    // UPDATED ROUTE: Assuming 'routes/orders.js' is mounted at '/orders'
+    const res = await userRequest.get(`/orders/print-bill/${orderId}`, {
+        responseType: 'blob' // CRITICAL: Tells Axios to treat response as binary
     });
     
-    // Create a Blob URL
+    // Create a Blob object from the binary response
     const file = new Blob([res.data], { type: 'application/pdf' });
+    
+    // Create a temporary URL for the Blob
     const fileURL = URL.createObjectURL(file);
     
-    // Open Print Window
+    // Open the PDF in a new browser tab/window
     const pdfWindow = window.open(fileURL);
+    
+    // Optional: Clean up URL object after window loads to free memory
     if (pdfWindow) {
-        pdfWindow.addEventListener('load', () => {
-            // pdfWindow.print(); // Optional: Auto-trigger print
-        });
+        pdfWindow.onload = () => {
+            // pdfWindow.print(); // Uncomment if you want to auto-open print dialog
+            // URL.revokeObjectURL(fileURL); 
+        };
     }
     
     return { status: 200 };
   } catch (err) {
-    return { status: 500, message: "PDF Generation Failed" };
+    console.error("PDF Generation Error:", err);
+    return { 
+        status: err.response?.status || 500, 
+        message: "PDF Generation Failed" 
+    };
   }
 };
-
 
 // Fetch Global Templates
 export const getTemplateLibrary = async (dispatch) => {
   dispatch(getLibraryStart());
   try {
-    const res = await userRequest.get("/tenant-templates/library");
-    dispatch(getLibrarySuccess(res.data.data));
+    const res = await userRequest.get("/templates/master-catalog");
+    dispatch(getLibrarySuccess(res.data));
+  } catch (err) {
+    dispatch(getLibraryFailure());
+  }
+};
+
+
+export const getTenentTemplateLibrary = async (dispatch,category) => {
+  dispatch(getLibraryStart());
+  try {
+    const res = await userRequest.get(`/templates?category=${category}`);
+    if(category === "PRINT"){
+       dispatch(getPrintTemplates(res.data));
+    }else if (category === "COMMUNICATION"){
+      dispatch(getCommTemplates(res.data));
+    }
+   
   } catch (err) {
     dispatch(getLibraryFailure());
   }
@@ -435,7 +464,7 @@ export const getTemplateLibrary = async (dispatch) => {
 // Import a Template to Institution
 export const importTemplate = async (data) => {
   try {
-    const res = await userRequest.post("/tenant-templates/import", data);
+    const res = await userRequest.post("/templates/import", data);
     return { status: 200, data: res.data };
   } catch (err) {
     return { 
@@ -443,4 +472,47 @@ export const importTemplate = async (data) => {
       message: err.response?.data?.message || "Import failed" 
     };
   }
+};
+
+// 1. CREATE Template
+export const createTemplate = async (dispatch, templateData) => {
+    try {
+        // Use /templates/custom for blank templates or /templates for imports
+        const res = await userRequest.post("/templates/custom", templateData);
+        // We re-fetch or manually append to redux state. 
+        // Re-fetching is safer to ensure ID consistency.
+        await getTenentTemplateLibrary(dispatch, "PRINT");
+        return res.data;
+    } catch (err) {
+        console.error(err);
+        throw err;
+    }
+};
+
+// 2. UPDATE Template
+export const updateTemplate = async (dispatch, id, templateData) => {
+    try {
+        const res = await userRequest.put(`/templates/${id}`, templateData);
+        // Optimistic update or re-fetch
+        await getTenentTemplateLibrary(dispatch, "PRINT");
+        return res.data;
+    } catch (err) {
+        console.error(err);
+        throw err;
+    }
+};
+
+// 3. DELETE Template
+export const deleteTemplate = async (dispatch, id) => {
+    try {
+        // ERROR WAS HERE: You were passing 'id' (string), but it needs to be an object
+        // CORRECT: { id: id } or simply { id }
+        await userRequest.post("/templates/delete", { id }); 
+        
+        // Remove from UI
+        await getTenentTemplateLibrary(dispatch, "PRINT");
+    } catch (err) {
+        console.error(err);
+        throw err;
+    }
 };
