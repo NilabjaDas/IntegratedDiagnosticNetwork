@@ -516,3 +516,14 @@ export const deleteTemplate = async (dispatch, id) => {
         throw err;
     }
 };
+
+// Get Template Configuration (Variables & Table Keys)
+export const getTemplateConfig = async (type = "BILL") => {
+    try {
+        const res = await userRequest.get(`/templates/config/variables?type=${type}`);
+        return res.data; 
+    } catch (err) {
+        console.error("Failed to fetch template config", err);
+        return { variables: [], tableKeys: [] };
+    }
+};

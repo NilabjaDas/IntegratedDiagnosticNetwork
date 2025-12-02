@@ -3,7 +3,7 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const moment = require("moment");
 const { v4: uuidv4 } = require("uuid");
-
+const handlebars = require("handlebars");
 const Institution = require("../models/Institutions");
 const Patient = require("../models/Patient"); 
 
@@ -383,19 +383,14 @@ router.put("/:id", async (req, res) => {
 // ---------------------------------------------------------
 router.get("/print-bill/:orderId", async (req, res) => {
     try {
-
-        // 1. Fetch Order (Tenant Context is already set by middleware)
+        // 1. Fetch Data
         const order = await req.TenantOrder.findById(req.params.orderId);
         if (!order) return res.status(404).json({ message: "Order not found" });
 
-        // 2. Fetch Patient 
-        // Note: Check if your Patient is in Tenant DB or Global DB. 
-        // If Global: Use Patient.findById. If Tenant: Use req.TenantPatient.findById
         const patient = await Patient.findById(order.patientId);
         if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-        // 3. Fetch Template (Find the Default Bill)
-        // We use req.TenantTemplate which was set up in previous steps
+        // 2. Fetch Template
         let template = await req.TenantTemplate.findOne({
             institutionId: req.user.institutionId,
             category: "PRINT",
@@ -403,7 +398,6 @@ router.get("/print-bill/:orderId", async (req, res) => {
             isDefault: true
         });
 
-        // Fallback: If no default, pick the first BILL template
         if (!template) {
             template = await req.TenantTemplate.findOne({
                 institutionId: req.user.institutionId,
@@ -412,24 +406,29 @@ router.get("/print-bill/:orderId", async (req, res) => {
             });
         }
 
-        if (!template) {
-            return res.status(400).json({ message: "No Billing Template found. Please configure one in Settings." });
-        }
+        if (!template) return res.status(400).json({ message: "No Billing Template found." });
 
-        const pd = template.printDetails; // Shortcut
+        const pd = template.printDetails;
         const config = pd.content;
-        // 4. Prepare Data Payload
+
+        // 3. Prepare Payload
         const { variables, tableRows } = generateInvoicePayload(order, patient, req.institution);
 
-        // 5. Build Dynamic HTML Parts
-        
-        // A. The Data Table
+        // --- CRITICAL: THE PAGE NUMBER VARIABLE ---
+        // This HTML string is what Puppeteer looks for inside the Header/Footer templates.
+        // It will replace this span with the actual numbers.
+        variables.page_info = `<span style="font-size: inherit;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>`;
+
+        // 4. Compile Content Strings
+        const compiledHeader = handlebars.compile(config.headerHtml)(variables);
+        const compiledFooter = handlebars.compile(config.footerHtml)(variables);
+
+        // 5. Build Body Content (Table Only)
         const dynamicTableHtml = buildDynamicTableHtml(config.tableStructure, tableRows, config.accentColor);
 
-        // B. The Financial Summary Block (Right Aligned)
         const summaryHtml = `
-            <div style="page-break-inside: avoid; margin-top: 20px; display: flex; justify-content: flex-end;">
-                <div style="width: 250px; font-size: 12px; font-family: ${config.fontFamily};">
+            <div style="page-break-inside: avoid; margin-top: 10px; display: flex; justify-content: flex-end;">
+                <div style="width: 250px; font-size: 12px; font-family: '${config.fontFamily}', sans-serif;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                         <span>Sub Total:</span> <span>₹${variables.financials.subTotal}</span>
                     </div>
@@ -437,9 +436,7 @@ router.get("/print-bill/:orderId", async (req, res) => {
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: red;">
                         <span>Discount:</span> <span>- ₹${variables.financials.discount}</span>
                     </div>` : ''}
-                    
                     <div style="border-top: 1px solid #ddd; margin: 5px 0;"></div>
-                    
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold;">
                         <span>Net Amount:</span> <span>₹${variables.financials.netAmount}</span>
                     </div>
@@ -450,7 +447,6 @@ router.get("/print-bill/:orderId", async (req, res) => {
                     <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; color: ${Number(variables.financials.dueAmount) > 0 ? 'red' : 'green'};">
                         <span>Balance Due:</span> <span>₹${variables.financials.dueAmount}</span>
                     </div>` : ''}
-
                      ${config.tableStructure.summarySettings.wordsAmount ? `
                     <div style="margin-top: 10px; font-size: 10px; font-style: italic; color: #666; text-align: right;">
                         (${variables.financials.amountInWords})
@@ -459,45 +455,54 @@ router.get("/print-bill/:orderId", async (req, res) => {
             </div>
         `;
 
-        // 6. Assemble Final HTML
-        // We inject the 3 parts: Header -> Table -> Summary -> Footer
-        // We wrap it in a container that handles Font Family and basic layout
-        const finalHtml = `
+        // 6. Common CSS (Injected into Header, Footer, and Body separately)
+        const cssStyles = `
+            <style>
+                html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; width: 100%; }
+                body { font-family: '${config.fontFamily}', sans-serif; font-size: 12px; color: #000; }
+                
+                .ql-align-center { text-align: center !important; }
+                .ql-align-right { text-align: right !important; }
+                .ql-align-justify { text-align: justify !important; }
+                
+                p { margin: 0; padding: 1px 0; line-height: 1.2; white-space: pre-wrap; }
+                
+                table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+                th, td { padding: 5px; border-bottom: 1px solid #eee; text-align: left; }
+                
+                /* Ensure Page Numbers take font settings from editor */
+                .pageNumber, .totalPages { font-weight: bold; }
+            </style>
+        `;
+
+        // 7. Assemble Body HTML (NO Header/Footer)
+        // We only put the table here. Header/Footer are handled via options.
+        const bodyHtml = `
             <html>
-            <head>
-                <style>
-                    body { font-family: '${config.fontFamily}', sans-serif; -webkit-print-color-adjust: exact; }
-                    .page-content { padding: 0px; }
-                </style>
-                <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-                <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
-            </head>
+            <head>${cssStyles}</head>
             <body>
-                <div class="page-content">
-                    
-                    <div style="margin-bottom: 20px;">
-                        ${config.headerHtml} 
-                    </div>
-
+                <div class="page-content" style="padding: 0;">
                     ${dynamicTableHtml}
-
                     ${summaryHtml}
-
-                    <div style="margin-top: 30px; position: relative;">
-                        ${config.footerHtml}
-                    </div>
-
                 </div>
             </body>
             </html>
         `;
 
-        // 7. Send to PDF Generator
-        // Note: we pass 'variables' as the data object so Handlebars can replace {{patient.name}} in the Header/Footer
-        const rawPdf = await generatePdf(finalHtml, variables, {
+        // 8. Generate PDF
+        // We pass the compiled header/footer as raw HTML strings. 
+        // The handler will measure them and inject them into the PDF engine.
+        const rawPdf = await generatePdf(bodyHtml, variables, {
             pageSize: pd.pageSize,
             orientation: pd.orientation,
-            margins: pd.margins
+            margins: pd.margins, // User's desired edge margins (left/right)
+            
+            // Pass the CONTENT for measurement and rendering
+            headerHtml: compiledHeader, 
+            footerHtml: compiledFooter,
+            
+            // Pass the styles so the measurement is accurate
+            headerStyles: cssStyles 
         });
 
         const finalBuffer = Buffer.from(rawPdf);
@@ -515,6 +520,4 @@ router.get("/print-bill/:orderId", async (req, res) => {
         res.status(500).json({ message: "Failed to generate Bill PDF", error: err.message });
     }
 });
-
-
 module.exports = router;

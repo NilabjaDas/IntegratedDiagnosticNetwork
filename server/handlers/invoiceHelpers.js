@@ -15,11 +15,12 @@ const generateInvoicePayload = (order, patient, institution) => {
     // A. Flatten Variables for Header/Footer (e.g., {{patient.name}})
     const variables = {
         patient: {
-            name: patient.name,
-            age: patient.age || "N/A",
+            name: patient.firstName || "" + " " + patient.lastName || "",
+            age: patient.age + " " + patient.ageUnit || "N/A",
             gender: patient.gender || "",
             displayId: patient.displayId || patient.uhid || "",
-            phone: patient.phone || ""
+            phone: patient.mobile || "",
+            email : patient.email || ""
         },
         order: {
             displayId: order.displayId,
@@ -46,7 +47,8 @@ const generateInvoicePayload = (order, patient, institution) => {
             dueAmount: financials.dueAmount.toFixed(2),
             status: financials.status,
             amountInWords: toWords.convert(financials.netAmount)
-        }
+        },
+        page_info: `Page <span class="pageNumber"></span> of <span class="totalPages"></span>`,
     };
 
     // B. Flatten Table Rows
@@ -69,48 +71,65 @@ const generateInvoicePayload = (order, patient, institution) => {
  * 2. HTML Table Builder: Converts Rows + Config -> HTML String
  */
 const buildDynamicTableHtml = (tableStructure, rows, accentColor) => {
-    const { columns, showHead, striped, density } = tableStructure;
+    // Destructure new config properties (with defaults for safety)
+    const { 
+        columns, 
+        showHead = true, 
+        striped = false, 
+        density = "normal",
+        // Allow passing explicit style overrides from the Template Config
+        fontSize = "12px",
+        rowPadding = null, // If null, calculate from density
+        borderColor = "#ddd"
+    } = tableStructure;
     
-    // Density Styles
-    let padding = "10px";
-    if (density === "compact") padding = "5px";
-    if (density === "spacious") padding = "15px";
+    // 1. Calculate Padding (Vertical Spacing)
+    let paddingVal = "10px"; // Default
+    if (rowPadding) {
+        paddingVal = rowPadding; // Use exact value if provided (e.g. "2mm")
+    } else {
+        // Fallback to density presets
+        if (density === "compact") paddingVal = "5px";
+        if (density === "spacious") paddingVal = "15px";
+    }
 
-    // 1. Build Header
+    // 2. Build Header
     let thead = "";
     if (showHead) {
         let ths = "";
         columns.forEach(col => {
             if (col.visible) {
-                ths += `<th style="text-align: ${col.align}; width: ${col.width}; padding: ${padding}; border-bottom: 2px solid #ddd;">${col.label}</th>`;
+                ths += `<th style="text-align: ${col.align}; width: ${col.width}; padding: ${paddingVal} 5px; border-bottom: 2px solid ${borderColor}; vertical-align: bottom; font-weight: bold;">${col.label}</th>`;
             }
         });
-        thead = `<thead style="color: ${accentColor};"><tr>${ths}</tr></thead>`;
+        thead = `<thead style="color: ${accentColor}; display: table-header-group;">
+                    <tr style="page-break-inside: avoid;">${ths}</tr>
+                 </thead>`;
     }
 
-    // 2. Build Body
+    // 3. Build Body
     let tbodyRows = "";
     rows.forEach((row, i) => {
-        // Stripe Logic
         const bg = striped && i % 2 !== 0 ? "#f9f9f9" : "transparent";
-        // Cancelled Logic
         const style = row.status === "Cancelled" ? "text-decoration: line-through; color: #ff4d4f;" : "";
 
         let tds = "";
         columns.forEach(col => {
             if (col.visible) {
-                // Access data using the key from config (e.g. "price", "name")
                 const val = row[col.dataKey] || "-";
-                tds += `<td style="text-align: ${col.align}; padding: ${padding}; ${style}">${val}</td>`;
+                tds += `<td style="text-align: ${col.align}; padding: ${paddingVal} 5px; border-bottom: 1px solid ${borderColor}; vertical-align: top; ${style}">${val}</td>`;
             }
         });
-        tbodyRows += `<tr style="background-color: ${bg}; border-bottom: 1px solid #eee;">${tds}</tr>`;
+        tbodyRows += `<tr style="background-color: ${bg}; page-break-inside: avoid;">${tds}</tr>`;
     });
 
-    return `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px;">
+    // 4. Return Table 
+    // UPDATED: margin: 0 0 10px 0 (Top 0, Right 0, Bottom 10px, Left 0)
+    return `<table style="width: 100%; border-collapse: collapse; font-size: ${fontSize}; margin: 0 0 10px 0; padding: 0;">
         ${thead}
         <tbody>${tbodyRows}</tbody>
     </table>`;
 };
+
 
 module.exports = { generateInvoicePayload, buildDynamicTableHtml };

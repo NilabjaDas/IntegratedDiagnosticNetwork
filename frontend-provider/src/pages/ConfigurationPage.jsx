@@ -15,7 +15,6 @@ import TemplateLibrary from "../components/TemplateLibrary";
 const { Title } = Typography;
 
 const PageContainer = styled.div`
-  padding: 24px;
   background: #fff;
   min-height: 100vh;
 `;
@@ -46,6 +45,7 @@ const ConfigurationPage = () => {
 
   const handleUpdate = async (id, data) => {
       try {
+        console.log(data)
           await updateTemplate(dispatch, id, data);
           message.success("Template saved successfully");
       } catch (error) {

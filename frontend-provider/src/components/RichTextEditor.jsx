@@ -1,80 +1,104 @@
 import React, { useRef } from "react";
-import ReactQuill from "react-quill-new"; 
+import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { Select, Typography, Space } from "antd";
+import "react-quill-new/dist/quill.snow.css";
 
 const { Option } = Select;
 const { Text } = Typography;
 
-// Standard variables available for injection
-const VARIABLES = [
-  { label: "Institution Name", value: "{{institution.institutionName}}" },
-  { label: "Institution Address", value: "{{institution.address.line1}}, {{institution.address.city}}" },
-  { label: "Institution Phone", value: "{{institution.contact.phone}}" },
-  { label: "Patient Name", value: "{{patient.firstName}} {{patient.lastName}}" },
-  { label: "Patient Age/Sex", value: "{{patient.age}} / {{patient.gender}}" },
-  { label: "Patient Mobile", value: "{{patient.mobile}}" },
-  { label: "Patient UHID", value: "{{patient.uhid}}" },
-  { label: "Order ID", value: "{{displayId}}" },
-  { label: "Report Date", value: "{{formatDate createdAt}}" },
-];
-
-const RichTextEditor = ({ value, onChange, placeholder }) => {
+const RichTextEditor = ({
+  value,
+  onChange,
+  placeholder,
+  availableVariables = [],
+}) => {
   const quillRef = useRef(null);
 
   const handleInsertVariable = (variable) => {
     if (!variable) return;
-    
     const quill = quillRef.current.getEditor();
-    // Get current selection or put at end
     const range = quill.getSelection(true);
-    
     if (range) {
-        quill.insertText(range.index, variable, "bold", true);
-        quill.setSelection(range.index + variable.length);
+      quill.insertText(range.index, variable, "bold", true);
+      quill.setSelection(range.index + variable.length);
     }
   };
 
   const modules = {
     toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'color': [] }, { 'background': [] }],
-      [{ 'align': [] }],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      ['link', 'clean']
+      [{ header: [1, 2, 3, 4, 5, 6, false] }],
+      [{ font: [] }],
+      ["bold", "italic", "underline", "strike"],
+      [{ align: [] }, { color: [] }, { background: [] }],
+      ["blockquote"],
+      [{ list: "ordered" }, { list: "bullet" }, { list: "check" }],
+      ["image"],
     ],
   };
 
   return (
-    <div className="rich-editor-container">
-      <div style={{ marginBottom: 8, padding: "8px 12px", background: "#fafafa", border: "1px solid #d9d9d9", borderBottom: "none", borderRadius: "4px 4px 0 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Text strong style={{ fontSize: 12 }}>Design Area</Text>
+    <div
+      className="rich-editor-container"
+      style={{
+        // Visual cue that this is an editable zone
+        border: "1px dashed #d9d9d9",
+        background: "rgba(255,255,255,0.8)",
+
+        // Critical: Do NOT set height: 100%. Let it be auto.
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          padding: "8px 12px",
+          background: "#f5f5f5",
+          borderBottom: "1px solid #d9d9d9",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <Text strong style={{ fontSize: 12 }}>
+          {placeholder || "Editor"}
+        </Text>
         <Space>
-            <Text type="secondary" style={{ fontSize: 12 }}>Insert Data:</Text>
-            <Select 
-                size="small" 
-                placeholder="Select Variable" 
-                style={{ width: 160 }} 
-                onChange={handleInsertVariable}
-                value={null} 
-                dropdownMatchSelectWidth={false}
-            >
-                {VARIABLES.map(v => (
-                    <Option key={v.value} value={v.value}>{v.label}</Option>
-                ))}
-            </Select>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Insert Variable:
+          </Text>
+          <Select
+            size="small"
+            placeholder="Select Data..."
+            style={{ width: 180 }}
+            onChange={handleInsertVariable}
+            value={null}
+            dropdownMatchSelectWidth={250}
+          >
+            {availableVariables.map((v, i) => (
+              <Option key={i} value={v.value}>
+                <span style={{ color: "#1890ff" }}>
+                  {v.group ? `[${v.group}] ` : ""}
+                </span>
+                {v.label}
+              </Option>
+            ))}
+          </Select>
         </Space>
       </div>
-      
+
       <ReactQuill
         ref={quillRef}
         theme="snow"
         value={value || ""}
         onChange={onChange}
-        placeholder={placeholder}
         modules={modules}
-        style={{ height: 200, marginBottom: 50, background: "white" }}
+        style={{
+          // Allow it to grow, but give a small click area
+          minHeight: "80px",
+          background: "transparent",
+        }}
       />
     </div>
   );
