@@ -10,7 +10,12 @@ import {
 } from "@ant-design/icons";
 import RichTextEditor from "./RichTextEditor";
 import { getTemplateConfig } from "../redux/apiCalls";
-
+import { 
+  ZoomInOutlined, 
+  ZoomOutOutlined, 
+  ReloadOutlined, 
+  CompressOutlined 
+} from "@ant-design/icons";
 const { Option } = Select;
 const { confirm } = Modal;
 
@@ -23,98 +28,146 @@ const PAPER_SIZES = {
   Thermal80mm: { width: 80, height: 297 }, // Thermal usually has infinite height, but we set a display height
 };
 
+
+
+// ... keep PAPER_SIZES constant ...
+
 const PaperWrapper = ({ children, form, label }) => {
-  // 1. Watch form values in real-time
   const pageSize = Form.useWatch("pageSize", form) || "A4";
   const orientation = Form.useWatch("orientation", form) || "portrait";
   const margins = Form.useWatch("margins", form) || { top: 10, right: 10, bottom: 10, left: 10 };
 
-  // 2. Calculate Dimensions
+  // -- NEW: Zoom State --
+  const [scale, setScale] = useState(0.75); // Default to 75% so it fits most screens initially
+
   const baseDim = PAPER_SIZES[pageSize] || PAPER_SIZES["A4"];
   const isLandscape = orientation === "landscape" && pageSize !== "Thermal80mm";
-
+  
   const paperWidth = isLandscape ? baseDim.height : baseDim.width;
   const paperHeight = isLandscape ? baseDim.width : baseDim.height;
-
-  // 3. Determine Alignment (Header = Top, Footer = Bottom)
+  
   const isFooter = label?.toLowerCase().includes("footer");
 
-  // 4. Styles
+  // --- STYLES ---
   const containerStyle = {
-    background: "#525659", 
+    background: "#525659",
     padding: "40px",
-    overflow: "auto", 
-    display: "flex",
-    justifyContent: "center",
+    height: "100%",
+    minHeight: "500px",
+    overflow: "auto",      
+    display: "flex",       
+    alignItems: "flex-start", 
+    justifyContent: "center", // Center the scaled paper horizontally
     borderRadius: "4px",
-    marginBottom: "16px",
     border: "1px solid #d9d9d9",
-    // maxHeight: "600px" 
+    position: "relative"
+  };
+
+  const wrapperInnerStyle = {
+    position: "relative",
+    // SCALE APPLIED HERE
+    transform: `scale(${scale})`,
+    transformOrigin: "top center", // Scales from top-center so it doesn't jump around
+    transition: "transform 0.2s ease", // Smooth zooming
+    
+    // Key fix: layout still calculates space based on original size.
+    // We add margin-bottom to compensate for the "ghost" height if we scale down, 
+    // or let it grow if we scale up.
+    marginBottom: scale < 1 ? `-${(paperHeight * (1 - scale))}mm` : 0, 
+    flexShrink: 0 
   };
 
   const paperStyle = {
-    // --- EXACT DIMENSIONS ---
     width: `${paperWidth}mm`,
-    height: `${paperHeight}mm`, 
-    
+    height: `${paperHeight}mm`,
     background: "white",
     boxShadow: "0 0 10px rgba(0,0,0,0.5)",
     position: "relative",
-    
-    // --- MARGIN SIMULATION ---
     paddingTop: `${margins.top || 0}mm`,
     paddingBottom: `${margins.bottom || 0}mm`,
     paddingLeft: `${margins.left || 0}mm`,
     paddingRight: `${margins.right || 0}mm`,
-    
-    boxSizing: "border-box", 
+    boxSizing: "border-box",
     overflow: "hidden" 
   };
 
-  // --- NEW: Inner Container to handle vertical alignment ---
-  const innerContentStyle = {
-      position: 'relative', 
-      zIndex: 1, 
-      height: '100%', 
-      display: 'flex',
-      flexDirection: 'column',
-      // If it's a footer, push content to the bottom
-      justifyContent: isFooter ? 'flex-end' : 'flex-start' 
+  const toolbarStyle = {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+    background: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(4px)',
+    borderRadius: '20px',
+    padding: '4px 8px',
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center'
   };
 
-  const labelStyle = {
-    position: "absolute",
-    top: -25,
-    left: 0,
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: 500,
+  const btnStyle = {
+    color: '#fff',
+    border: 'none',
+    background: 'transparent',
+    cursor: 'pointer',
+    fontSize: '16px'
+  };
+
+  const innerContentStyle = {
+    position: 'relative',
+    zIndex: 1,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: isFooter ? 'flex-end' : 'flex-start'
   };
 
   const watermarkStyle = {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%) rotate(-45deg)',
-    fontSize: '40px',
-    color: 'rgba(0,0,0,0.05)',
-    pointerEvents: 'none',
-    whiteSpace: 'nowrap',
-    fontWeight: 'bold',
-    zIndex: 0
+    position: 'absolute', top: '50%', left: '50%', 
+    transform: 'translate(-50%, -50%) rotate(-45deg)', 
+    fontSize: '40px', color: 'rgba(0,0,0,0.05)', 
+    pointerEvents: 'none', zIndex: 0, whiteSpace: 'nowrap'
   };
 
+  const labelBadgeStyle = {
+    position: "absolute", 
+    top: -25, 
+    left: 0, 
+    color: "#fff", 
+    fontSize: "12px", 
+    whiteSpace: "nowrap"
+  };
+
+  // Zoom Handlers
+  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.1, 2.0));
+  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.1, 0.3));
+  const handleReset = () => setScale(1);
+  const handleFit = () => setScale(0.65); // A nice "view all" size
+
   return (
-    <div style={containerStyle}>
-      <div style={{ position: "relative" }}>
-        <div style={labelStyle}>
+    <div style={containerStyle} className="paper-scroll-container">
+      
+      {/* ZOOM TOOLBAR */}
+      <div style={toolbarStyle}>
+         <Button type="text" size="small" icon={<CompressOutlined />} style={btnStyle} onClick={handleFit} title="Fit to View" />
+         <Button type="text" size="small" icon={<ZoomOutOutlined />} style={btnStyle} onClick={handleZoomOut} />
+         <span style={{ color: '#fff', fontSize: '12px', minWidth: '35px', textAlign: 'center' }}>
+            {Math.round(scale * 100)}%
+         </span>
+         <Button type="text" size="small" icon={<ZoomInOutlined />} style={btnStyle} onClick={handleZoomIn} />
+         <Button type="text" size="small" icon={<ReloadOutlined />} style={btnStyle} onClick={handleReset} title="Reset 100%" />
+      </div>
+
+      <div style={wrapperInnerStyle}>
+        
+        {/* Label above the paper */}
+        <div style={labelBadgeStyle}>
           {label} — {pageSize} ({paperWidth}mm x {paperHeight}mm)
         </div>
-        
-        <div style={paperStyle} className="print-simulation">
+
+        {/* The Paper Itself */}
+        <div style={paperStyle}>
            <div style={watermarkStyle}>{label} Area</div>
-           
-           {/* Apply Flexbox Alignment here */}
            <div style={innerContentStyle}>
               {children}
            </div>
@@ -123,7 +176,7 @@ const PaperWrapper = ({ children, form, label }) => {
     </div>
   );
 };
-const BillingTemplateEditor = ({ templates, onCreate, onUpdate, onDelete }) => {
+const TemplateEditor = ({ templates, onCreate, onUpdate, onDelete }) => {
   const [editingId, setEditingId] = useState(null);
   const [filterType, setFilterType] = useState("ALL");
   const [loading, setLoading] = useState(false);
@@ -377,7 +430,12 @@ const BillingTemplateEditor = ({ templates, onCreate, onUpdate, onDelete }) => {
                   label: <span><FileWordOutlined /> Design Editor</span>,
                   children: (
                     <div style={{ height: "65vh", overflowY: "auto" }}>
-                      <Card size="small" title="Header Design" style={{ marginBottom: 16 }}>
+                      <Row gutter={16}>
+                        <Col span={8}><Form.Item name={["content", "accentColor"]} label="Brand Color"><ColorPicker showText /></Form.Item></Col>
+                        <Col span={8}><Form.Item name={["content", "fontFamily"]} label="Font"><Select><Option value="Roboto">Roboto</Option><Option value="Open Sans">Open Sans</Option></Select></Form.Item></Col>
+                        <Col span={8}><div style={{ paddingTop: 30, display: "flex", gap: 10, flexWrap: "wrap" }}><Form.Item name={["content", "showLogo"]} valuePropName="checked" noStyle><Switch checkedChildren="Logo" unCheckedChildren="No Logo" /></Form.Item><Form.Item name={["content", "showQrCode"]} valuePropName="checked" noStyle><Switch checkedChildren="QR" unCheckedChildren="No QR" /></Form.Item><Form.Item name={["content", "showInstitutionDetails"]} valuePropName="checked" noStyle><Switch checkedChildren="Inst. Info" unCheckedChildren="No Inst. Info" /></Form.Item></div></Col>
+                      </Row>
+                     <Card size="small" title="Header Design" style={{ marginTop: 16 }}>
                         <PaperWrapper form={form} label="Header">
                           <Form.Item name={["content", "headerHtml"]} noStyle>
                             <RichTextEditor placeholder="Design your header..." availableVariables={config.variables} />
@@ -385,20 +443,16 @@ const BillingTemplateEditor = ({ templates, onCreate, onUpdate, onDelete }) => {
                         </PaperWrapper>
                       </Card>
 
-                      <Card size="small" title="Footer Design" style={{ marginBottom: 16 }}>
+                      <Card size="small" title="Footer Design" style={{ marginTop: 16 }}>
                         <PaperWrapper form={form} label="Footer">
                           <Form.Item name={["content", "footerHtml"]} noStyle>
                             <RichTextEditor placeholder="Design your footer..." availableVariables={config.variables} />
                           </Form.Item>
                         </PaperWrapper>
                       </Card>
+                     
 
-                      <Divider>Visual Settings</Divider>
-                      <Row gutter={16}>
-                        <Col span={8}><Form.Item name={["content", "accentColor"]} label="Brand Color"><ColorPicker showText /></Form.Item></Col>
-                        <Col span={8}><Form.Item name={["content", "fontFamily"]} label="Font"><Select><Option value="Roboto">Roboto</Option><Option value="Open Sans">Open Sans</Option></Select></Form.Item></Col>
-                        <Col span={8}><div style={{ paddingTop: 30, display: "flex", gap: 10, flexWrap: "wrap" }}><Form.Item name={["content", "showLogo"]} valuePropName="checked" noStyle><Switch checkedChildren="Logo" unCheckedChildren="No Logo" /></Form.Item><Form.Item name={["content", "showQrCode"]} valuePropName="checked" noStyle><Switch checkedChildren="QR" unCheckedChildren="No QR" /></Form.Item><Form.Item name={["content", "showInstitutionDetails"]} valuePropName="checked" noStyle><Switch checkedChildren="Inst. Info" unCheckedChildren="No Inst. Info" /></Form.Item></div></Col>
-                      </Row>
+                     
                     </div>
                   ),
                 },
@@ -472,4 +526,4 @@ const BillingTemplateEditor = ({ templates, onCreate, onUpdate, onDelete }) => {
   );
 };
 
-export default BillingTemplateEditor;
+export default TemplateEditor;

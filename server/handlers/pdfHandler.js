@@ -114,7 +114,7 @@ const generatePdf = async (bodyHtml, data, options = {}) => {
             finalTopMargin = 20; finalBottomMargin = 20;
         }
         //adjust finalTopMargin by 10%
-        finalTopMargin = finalTopMargin - (finalTopMargin * 0.1)
+        finalTopMargin = finalTopMargin + (finalTopMargin * 0.1)
 
         //adjust finalBottomMargin by 10%
         finalBottomMargin = finalBottomMargin + (finalBottomMargin * 0.1)

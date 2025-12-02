@@ -319,3 +319,14 @@ export const deleteTemplate = async (dispatch, id) => {
     return { status: 500, message: err.response?.data?.message };
   }
 };
+
+// Get Template Configuration (Variables & Table Keys)
+export const getTemplateConfig = async (type = "BILL") => {
+    try {
+        const res = await userRequest.get(`/admin-master/config/variables?type=${type}`);
+        return res.data; 
+    } catch (err) {
+        console.error("Failed to fetch template config", err);
+        return { variables: [], tableKeys: [] };
+    }
+};

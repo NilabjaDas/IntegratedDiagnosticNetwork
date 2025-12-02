@@ -9,7 +9,7 @@ import {
     updateTemplate, 
     deleteTemplate 
 } from "../redux/apiCalls"; 
-import BillingTemplateEditor from "../components/BillingTemplateEditor";
+import TemplateEditor from "../components/TemplateEditor";
 import TemplateLibrary from "../components/TemplateLibrary";
 
 const { Title } = Typography;
@@ -73,7 +73,7 @@ const ConfigurationPage = () => {
             key: "1",
             label: <span><FilePdfOutlined /> My Templates</span>,
             children: (
-                <BillingTemplateEditor 
+                <TemplateEditor 
                     templates={printTemplates || []} 
                     onCreate={handleCreate}
                     onUpdate={handleUpdate} 

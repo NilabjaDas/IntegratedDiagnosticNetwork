@@ -817,6 +817,101 @@ router.post("/seed-base", requireSuperAdmin, async (req, res) => {
     }
 });
 
+router.get("/config/variables", (req, res) => {
+    const { type } = req.query; // "BILL", "LAB_REPORT", "PRESCRIPTION"
+
+    // --- 1. SHARED VARIABLES (Common to all) ---
+    const commonVariables = [
+        { group: "Institution", label: "Institution Name", value: "{{institution.name}}" },
+        { group: "Institution", label: "Address", value: "{{institution.address.line1}}, {{institution.address.city}}" },
+        { group: "Institution", label: "Phone", value: "{{institution.contact.phone}}" },
+        { group: "Institution", label: "Email", value: "{{institution.contact.email}}" }, // Public contact email is fine
+        
+        { group: "Patient", label: "Full Name", value: "{{patient.name}}" }, // Backend combines First+Last
+        { group: "Patient", label: "First Name", value: "{{patient.firstName}}" }, 
+        { group: "Patient", label: "Last Name", value: "{{patient.lastName}}" },
+        { group: "Patient", label: "Age / Gender", value: "{{patient.age}} / {{patient.gender}}" },
+        { group: "Patient", label: "UHID", value: "{{patient.displayId}}" },
+        { group: "Patient", label: "Mobile", value: "{{patient.phone}}" },
+        { group: "Patient", label: "Email", value: "{{patient.email}}" },
+        { group: "Patient", label: "Address", value: "{{patient.address}}" },
+
+        // --- NEW: PAGE NUMBER VARIABLE ---
+        // We use triple braces {{{ }}} so the HTML span tags inside aren't escaped
+        { group: "Document", label: "Page Number (1 of N)", value: "{{{page_info}}}" },
+    ];
+
+    let specificVariables = [];
+    let tableKeys = [];
+
+    // --- 2. BILLING CONFIGURATION ---
+    if (type === "BILL") {
+        specificVariables = [
+            { group: "Order", label: "Order ID", value: "{{order.displayId}}" },
+            { group: "Order", label: "Order Date", value: "{{order.date}}" },
+            { group: "Order", label: "Order Time", value: "{{order.time}}" },
+            { group: "Financials", label: "Total Amount", value: "{{financials.totalAmount}}" },
+            { group: "Financials", label: "Due Amount", value: "{{financials.dueAmount}}" },
+        ];
+
+        tableKeys = [
+            { label: "Serial Number (1, 2...)", value: "index" },
+            { label: "Item Name", value: "name" },
+            { label: "Item Type (Test/Pkg)", value: "type" },
+            { label: "Quantity", value: "qty" },
+            { label: "Unit Price", value: "price" },
+            { label: "Total", value: "total" }
+        ];
+    } 
+    
+    // --- 3. LAB REPORT CONFIGURATION (Dummy Data) ---
+    else if (type === "LAB_REPORT") {
+        specificVariables = [
+            { group: "Report", label: "Sample ID", value: "{{sample.barcode}}" },
+            { group: "Report", label: "Collection Date", value: "{{sample.collectionDate}}" },
+            { group: "Report", label: "Reported Date", value: "{{report.date}}" },
+            { group: "Doctor", label: "Referred By", value: "{{doctor.name}}" },
+            { group: "Tech", label: "Technician Name", value: "{{technician.name}}" },
+            { group: "Tech", label: "Pathologist Name", value: "{{pathologist.name}}" },
+        ];
+
+        tableKeys = [
+            { label: "Test Parameter Name", value: "paramName" },
+            { label: "Result Value", value: "resultValue" },
+            { label: "Unit (mg/dL)", value: "unit" },
+            { label: "Reference Range", value: "refRange" },
+            { label: "Method", value: "method" },
+            { label: "Flag (High/Low)", value: "flag" }
+        ];
+    } 
+    
+    // --- 4. PRESCRIPTION CONFIGURATION (Dummy Data) ---
+    else if (type === "PRESCRIPTION") {
+        specificVariables = [
+            { group: "Doctor", label: "Doctor Name", value: "{{doctor.name}}" },
+            { group: "Doctor", label: "Specialization", value: "{{doctor.specialization}}" },
+            { group: "Doctor", label: "Reg. Number", value: "{{doctor.regNumber}}" },
+            { group: "Vitals", label: "BP", value: "{{vitals.bp}}" },
+            { group: "Vitals", label: "Weight", value: "{{vitals.weight}}" },
+            { group: "Vitals", label: "Temperature", value: "{{vitals.temp}}" },
+            { group: "Diagnosis", label: "Diagnosis", value: "{{diagnosis}}" },
+        ];
+
+        tableKeys = [
+            { label: "Medicine Name", value: "medicine" },
+            { label: "Dosage (e.g. 500mg)", value: "dosage" },
+            { label: "Frequency (1-0-1)", value: "frequency" },
+            { label: "Duration (5 Days)", value: "duration" },
+            { label: "Instruction (After Food)", value: "instruction" }
+        ];
+    }
+
+    res.json({ 
+        variables: [...commonVariables, ...specificVariables], 
+        tableKeys 
+    });
+});
+
 // --- 1. GET ALL TEMPLATES ---
 router.get("/templates", requireSuperAdmin, async (req, res) => {
     try {
