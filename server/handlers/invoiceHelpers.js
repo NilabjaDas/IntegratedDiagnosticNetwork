@@ -12,11 +12,14 @@ const toWords = new ToWords({
 const generateInvoicePayload = (order, patient, institution) => {
     const financials = order.financials;
 
-    // A. Flatten Variables for Header/Footer (e.g., {{patient.name}})
+    // A. Flatten Variables for Header/Footer
     const variables = {
         patient: {
-            name: patient.firstName || "" + " " + patient.lastName || "",
-            age: patient.age + " " + patient.ageUnit || "N/A",
+            firstName : patient.firstName || "",
+            lastName : patient.lastName || "",
+            // FIX: Use template literals to ensure both variables are captured
+            name: `${patient.firstName || ""} ${patient.lastName || ""}`.trim(),
+            age: `${patient.age} ${patient.ageUnit || "N/A"}`, // Cleaner syntax here too
             gender: patient.gender || "",
             displayId: patient.displayId || patient.uhid || "",
             phone: patient.mobile || "",
@@ -46,21 +49,18 @@ const generateInvoicePayload = (order, patient, institution) => {
             paidAmount: financials.paidAmount.toFixed(2),
             dueAmount: financials.dueAmount.toFixed(2),
             status: financials.status,
-            amountInWords: toWords.convert(financials.netAmount)
+            amountInWords: toWords.convert(financials.dueAmount)
         },
-        page_info: `Page <span class="pageNumber"></span> of <span class="totalPages"></span>`,
     };
 
     // B. Flatten Table Rows
-    // We add an index and ensure numbers are formatted
     const tableRows = order.items.map((item, index) => ({
         index: index + 1,
         name: item.name,
-        type: item.itemType, // Test/Package
+        type: item.itemType,
         price: item.price.toFixed(2),
         qty: 1, 
-        total: item.price.toFixed(2), // Assuming Qty 1 for Labs
-        // CSS Helper for cancelled items
+        total: item.price.toFixed(2),
         status: item.status
     }));
 

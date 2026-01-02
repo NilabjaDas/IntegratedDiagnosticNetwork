@@ -414,14 +414,51 @@ router.get("/print-bill/:orderId", async (req, res) => {
         // 3. Prepare Payload
         const { variables, tableRows } = generateInvoicePayload(order, patient, req.institution);
 
-        // --- CRITICAL: THE PAGE NUMBER VARIABLE ---
-        // This HTML string is what Puppeteer looks for inside the Header/Footer templates.
-        // It will replace this span with the actual numbers.
-        variables.page_info = `<span style="font-size: inherit;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>`;
+        // --- RESILIENT COMPILER HELPER ---
+        const getNestedValue = (obj, path) => {
+            // Helper to safely access deep properties
+            return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+        };
 
+        const resilientCompile = (templateString, data) => {
+            if (!templateString) return "";
+
+            // STEP 1: PRE-PROCESSING (The Fix)
+            // Scan for tags that resolve to Objects (e.g., {{patient}}) and replace them with ""
+            // This prevents Handlebars from printing "[object Object]" later.
+            // Note: The regex excludes tags starting with #, /, or ^ (blocks/helpers).
+            const sanitizedTemplate = templateString.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, variablePath) => {
+                const value = getNestedValue(data, variablePath);
+                
+                // If the value is an Object (and not null), wipe the tag out.
+                if (typeof value === 'object' && value !== null) {
+                    return ""; 
+                }
+                
+                // Otherwise, keep the tag intact for Handlebars to process
+                return match;
+            });
+
+            // STEP 2: COMPILE
+            try {
+                // STRATEGY A: Standard Handlebars
+                // Now safe because objects are already removed from the string.
+                return handlebars.compile(sanitizedTemplate)(data);
+
+            } catch (err) {
+                console.warn("[Template Warning] Syntax error detected. Switching to Manual Replacement mode.");
+                
+                // STRATEGY B: Manual Regex Replacement (Fallback for broken syntax)
+                return sanitizedTemplate.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (match, variablePath) => {
+                    const value = getNestedValue(data, variablePath);
+                    // Return valid values, else return original text
+                    return (value !== undefined && value !== null) ? value : match; 
+                });
+            }
+        };
         // 4. Compile Content Strings
-        const compiledHeader = handlebars.compile(config.headerHtml)(variables);
-        const compiledFooter = handlebars.compile(config.footerHtml)(variables);
+        const compiledHeader = resilientCompile(config.headerHtml, variables);
+        const compiledFooter = resilientCompile(config.footerHtml, variables);
 
         // 5. Build Body Content (Table Only)
         const dynamicTableHtml = buildDynamicTableHtml(config.tableStructure, tableRows, config.accentColor);
@@ -456,25 +493,44 @@ router.get("/print-bill/:orderId", async (req, res) => {
         `;
 
         // 6. Common CSS (Injected into Header, Footer, and Body separately)
-        const cssStyles = `
-            <style>
-                html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; width: 100%; }
-                body { font-family: '${config.fontFamily}', sans-serif; font-size: 12px; color: #000; }
-                
-                .ql-align-center { text-align: center !important; }
-                .ql-align-right { text-align: right !important; }
-                .ql-align-justify { text-align: justify !important; }
-                
-                p { margin: 0; padding: 1px 0; line-height: 1.2; white-space: pre-wrap; }
-                
-                table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-                th, td { padding: 5px; border-bottom: 1px solid #eee; text-align: left; }
-                
-                /* Ensure Page Numbers take font settings from editor */
-                .pageNumber, .totalPages { font-weight: bold; }
-            </style>
-        `;
+       // 6. Common CSS (Injected into Header, Footer, and Body separately)
+const cssStyles = `
+    <style>
+        /* 1. IMPORT FONTS: Must be the very first line in <style> */
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Merriweather:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap');
 
+        /* 2. BASE STYLES */
+        html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; width: 100%; }
+        
+        /* Apply the dynamic font family (Roboto) */
+        body { 
+            font-family: '${config.fontFamily}', sans-serif; 
+            font-size: 12px; 
+            color: #000; 
+        }
+        
+        /* 3. QUILL EDITOR SPECIFIC CLASS MAPPINGS */
+        /* These are required because the HTML stores the style as a class name */
+        .ql-font-serif { 
+            font-family: 'Merriweather', 'Georgia', serif; 
+        }
+        
+        .ql-font-monospace { 
+            font-family: 'Roboto Mono', 'Courier New', monospace; 
+        }
+
+        /* 4. QUILL ALIGNMENT HELPERS */
+        .ql-align-center { text-align: center; }
+        .ql-align-right { text-align: right; }
+        .ql-align-justify { text-align: justify; }
+        
+        /* 5. GENERAL TAGS */
+        p { margin: 0; padding: 1px 0; line-height: 1.2; white-space: pre-wrap; }
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        th, td { padding: 5px; border-bottom: 1px solid #eee; text-align: left; }
+    </style>
+`;
         // 7. Assemble Body HTML (NO Header/Footer)
         // We only put the table here. Header/Footer are handled via options.
         const bodyHtml = `

@@ -419,7 +419,7 @@ export const fetchBillPdf = async (orderId) => {
     // Optional: Clean up URL object after window loads to free memory
     if (pdfWindow) {
         pdfWindow.onload = () => {
-            // pdfWindow.print(); // Uncomment if you want to auto-open print dialog
+            pdfWindow.print(); // Uncomment if you want to auto-open print dialog
             // URL.revokeObjectURL(fileURL); 
         };
     }

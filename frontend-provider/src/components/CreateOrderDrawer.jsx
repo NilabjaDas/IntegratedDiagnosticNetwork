@@ -200,7 +200,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
             handleClose(true);
         }
 
-    } else if (res.status === 403 && (res.data?.requiresOverride || res.message?.toLowerCase().includes("limit"))) {
+    } else if (res.status === 403 && res.data?.requiresOverride) {
         setPendingSubmission(values); 
         setIsOverrideModalOpen(true); 
     } else {
