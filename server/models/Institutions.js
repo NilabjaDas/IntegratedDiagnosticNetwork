@@ -130,7 +130,26 @@ const institutionsSchema = new mongoose.Schema({
     hl7: {
       enabled: { type: Boolean, default: false },
       listenerUrl: { type: String, default: "" }
-    }
+    },
+    whatsapp: {
+      enabled: { type: Boolean, default: false },
+      provider: { type: String, default: "meta", enum: ["meta", "3rd_party"] },
+      
+      // 1. The ID of the specific phone number sending the message
+      // Found in Meta App Dashboard -> WhatsApp -> API Setup
+      phoneNumberId: { type: String, trim: true },
+
+      // 2. The WhatsApp Business Account ID (WABA ID)
+      // Required if you want to sync templates programmatically later
+      wabaId: { type: String, trim: true },
+
+      // 3. The Permanent Access Token (System User Token)
+      // CRITICAL: Set select: false so it never leaks to the frontend
+      accessToken: { type: String, select: false, trim: true },
+      
+      // 4. (Optional) Verify token if you set up webhooks for them
+      webhookVerifyToken: { type: String, select: false }
+    },
   },
 
   // --- PAYMENT GATEWAY ---

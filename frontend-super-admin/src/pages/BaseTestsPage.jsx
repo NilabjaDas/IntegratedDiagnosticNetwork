@@ -57,7 +57,7 @@ const BaseTestsPage = () => {
   useEffect(() => {
     // Fetch when: Component Mounts OR Search Term Changes OR Department Filter Changes
     // We pass Page 1 to reset to the first page on new search filters
-    getAllBaseTests(dispatch, 1, pagination.limit || 20, debouncedTerm, departmentFilter);
+    getAllBaseTests(dispatch, 1, pagination?.limit || 20, debouncedTerm, departmentFilter);
     
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedTerm, departmentFilter]);

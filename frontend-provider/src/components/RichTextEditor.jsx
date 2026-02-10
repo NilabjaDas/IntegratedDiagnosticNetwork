@@ -701,7 +701,7 @@ const RichTextEditor = ({ value, onChange, placeholder, availableVariables = [] 
 
       <MenuBar editor={editor} />
 
-      <div style={{ padding: "12px", minHeight: "200px", maxHeight: "500px", overflowY: "auto" }}>
+      <div style={{ padding: "12px",  overflowY: "auto" }}>
         <EditorContent editor={editor} />
       </div>
 

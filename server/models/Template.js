@@ -34,11 +34,6 @@ const printConfigSchema = new mongoose.Schema({
 
   // Content Configuration
   content: {
-    accentColor: { type: String, default: "#000000" },
-    fontFamily: { type: String, default: "Roboto" },
-    showLogo: { type: Boolean, default: true },
-    showInstitutionDetails: { type: Boolean, default: true },
-    showQrCode: { type: Boolean, default: true },
     billColumns: {
         showTax: { type: Boolean, default: true },
         showDiscount: { type: Boolean, default: true }
@@ -91,7 +86,13 @@ const commConfigSchema = new mongoose.Schema({
         },
         whatsapp: {
             enabled: { type: Boolean, default: false },
-            templateId: String
+            templateName: { type: String },
+           headerType: { 
+                type: String, 
+                enum: ["NONE", "IMAGE", "DOCUMENT"], 
+                default: "NONE" 
+            },
+            bodyVariables: { type: [String], default: [] }
         }
     }
 }, { _id: false });

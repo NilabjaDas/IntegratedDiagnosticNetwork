@@ -434,6 +434,30 @@ export const fetchBillPdf = async (orderId) => {
   }
 };
 
+export const testPrintTemplate = async (templateData) => {
+  try {
+    // Assuming a POST endpoint that takes the JSON payload and returns a PDF blob
+    // Adjust the URL '/templates/test-print' to match your actual backend route
+    const res = await userRequest.post(`/templates/test-print`, templateData, {
+      responseType: 'blob'
+    });
+
+    const file = new Blob([res.data], { type: 'application/pdf' });
+    const fileURL = URL.createObjectURL(file);
+    const pdfWindow = window.open(fileURL);
+    
+    if (pdfWindow) {
+      pdfWindow.onload = () => {
+        // Optional: pdfWindow.print();
+      };
+    }
+    return true;
+  } catch (error) {
+    console.error("Test Print Error:", error);
+    return false;
+  }
+};
+
 // Fetch Global Templates
 export const getTemplateLibrary = async (dispatch) => {
   dispatch(getLibraryStart());

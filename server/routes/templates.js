@@ -364,9 +364,6 @@ router.get("/config/variables", (req, res) => {
         { group: "Patient", label: "Email", value: "{{patient.email}}" },
         { group: "Patient", label: "Address", value: "{{patient.address}}" },
 
-        // --- NEW: PAGE NUMBER VARIABLE ---
-        // We use triple braces {{{ }}} so the HTML span tags inside aren't escaped
-        { group: "Document", label: "Page Number (1 of N)", value: "{{{page_info}}}" },
     ];
 
     let specificVariables = [];
