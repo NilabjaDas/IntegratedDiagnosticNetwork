@@ -2,157 +2,194 @@ const express = require("express");
 const router = express.Router();
 const Patient = require("../models/Patient");
 const { authenticateUser } = require("../middleware/auth");
-const encryptPlugin = require("../models/plugins/encryptPlugin"); 
+const crypto = require("crypto");
 
-const hashData = encryptPlugin.hashValue;
-const DB_SECRET = process.env.DB_SECRET || process.env.AES_SEC || "dev-secret-key-123";
+// --- CONFIGURATION ---
+const HASH_SECRET = process.env.AES_SEC;
 
-// --- SMART MASKING HELPERS ---
+// Helper: Generate Blind Index Hash
+const hashData = (text) => {
+    if (!text) return null;
+    return crypto.createHmac('sha256', HASH_SECRET).update(text).digest('hex');
+};
 
-// Mobile: Show first 5 digits (Carrier+Region) and last 3 digits. Mask middle.
-// Ex: 7872278998 -> "78722-xx998"
+// Helper: Smart Masking
 const maskMobileSmart = (mobile) => {
     if (!mobile || mobile.length < 5) return mobile;
-    const first5 = mobile.substring(0, 5);
-    const last3 = mobile.substring(mobile.length - 3);
-    return `${first5}-xx${last3}`;
-};
-
-// Name: Show First 2 and Last 1 chars. Middle replaced by "..".
-// Ex: "Nilabja" -> "Ni..a" | "Das" -> "Da..s"
-// This is distinctive enough to verify but hides the full spelling.
-const maskNameSmart = (name) => {
-    if (!name) return "";
-    const parts = name.split(" ");
-    
-    return parts.map(part => {
-        if (part.length <= 3) return part; // Short names like "Roy" shown fully
-        const start = part.substring(0, 2);
-        const end = part.substring(part.length - 1);
-        return `${start}..${end}`;
-    }).join(" ");
+    return `${mobile.substring(0, 5)}-xx${mobile.substring(mobile.length - 3)}`;
 };
 
 // ==========================================
-// 1. INSTITUTION-SCOPED SEARCH
+// 1. SEARCH PATIENTS
 // ==========================================
 router.get("/search", authenticateUser, async (req, res) => {
-  try {
-    const { query } = req.query; 
-    const instId = req.user.institutionId;
+    try {
+        const { query } = req.query;
+        const instId = req.user.institutionId;
 
-    if (!query || query.length < 4) return res.json([]);
+        if (!query || query.length < 3) return res.json([]);
 
-    const searchStr = query.toLowerCase().trim();
-    const isNumber = /^\d+$/.test(searchStr);
+        let criteria = { enrolledInstitutions: instId };
+        const searchStr = query.trim();
+        
+        if (/^\d{10}$/.test(searchStr)) {
+            // Search by Hash
+            criteria.mobileHash = hashData(searchStr);
+        } else {
+            // Search by Text
+            criteria.$or = [
+                { searchableName: { $regex: searchStr.toLowerCase(), $options: 'i' } },
+                { uhid: { $regex: searchStr, $options: 'i' } }
+            ];
+        }
 
-    let criteria = {};
+        const patients = await Patient.find(criteria).limit(10);
 
-    if (isNumber) {
-        criteria = { searchableMobile: { $regex: searchStr, $options: 'i' } };
-    } else {
-        criteria = { 
-            $or: [
-                { searchableName: { $regex: searchStr, $options: 'i' } },
-                { uhid: { $regex: query, $options: 'i' } } 
-            ]
-        };
+        const response = patients.map(p => {
+            // Decrypt logic
+            const decrypted = p.getDecrypted ? p.getDecrypted() : p.toObject();
+            return {
+                _id: decrypted._id,
+                uhid: decrypted.uhid,
+                firstName: decrypted.firstName,
+                lastName: decrypted.lastName,
+                mobile: maskMobileSmart(decrypted.mobile), 
+                gender: decrypted.gender,
+                age: decrypted.age
+            };
+        });
+
+        res.json(response);
+
+    } catch (err) {
+        console.error("Search Error:", err);
+        res.status(500).json({ message: err.message });
     }
-
-    // --- CRITICAL PRIVACY FILTER ---
-    // Only return patients who have ALREADY visited this institution.
-    criteria.enrolledInstitutions = instId; 
-
-    let patients = await Patient.find(criteria).limit(10);
-
-    // Map & Mask
-    const response = patients.map(p => ({
-        _id: p._id,
-        uhid: p.uhid,
-        firstName: isNumber ? maskNameSmart(p.firstName) : p.firstName,
-        lastName: isNumber ? maskNameSmart(p.lastName) : p.lastName,
-        mobile: isNumber ? maskMobileSmart(p.mobile) : maskMobileSmart(p.mobile), // Consistent masking
-        gender: p.gender,
-        age: p.age,
-        isMasked: true
-    }));
-
-    res.json(response);
-
-  } catch (err) {
-    console.error("Search Error:", err);
-    res.status(500).json({ error: err.message });
-  }
 });
 
 // ==========================================
-// 2. CREATE / LINK PATIENT (Silent Onboarding)
+// 2. CREATE / LINK PATIENT
 // ==========================================
 router.post("/", authenticateUser, async (req, res) => {
-  try {
-    const { mobile, firstName, lastName, gender, age, address } = req.body;
-    const instId = req.user.institutionId;
+    try {
+        const { mobile, firstName, lastName, gender, age, address, email } = req.body;
+        const instId = req.user.institutionId;
 
-    // 1. Check Global Registry for Match (Blind Index)
-    const mobileHash = hashData(mobile, DB_SECRET);
-    const existingPatient = await Patient.findOne({ mobileHash });
-    
-    if (existingPatient) {
-        // --- SCENARIO A: MATCH FOUND ---
-        // Patient exists globally but might not be in THIS institution.
+        if (!mobile || !firstName || !gender) {
+            return res.status(400).json({ message: "Missing required fields" });
+        }
+
+        const targetHash = hashData(mobile);
         
-        // Check if already enrolled here (Duplicate Entry Attempt?)
-        if (existingPatient.enrolledInstitutions.includes(instId)) {
-            // If already enrolled here, warn the user.
-            return res.status(409).json({ 
-                message: "Patient already registered in your clinic.", 
-                patient: existingPatient 
+        // Find existing family members using hash
+        const existingFamilyMembers = await Patient.find({ mobileHash: targetHash });
+
+        let matchedPatient = null;
+
+        // Decrypt and Compare Names
+        for (let member of existingFamilyMembers) {
+            const decryptedMember = member.getDecrypted ? member.getDecrypted() : member.toObject();
+            
+            const dbName = `${decryptedMember.firstName} ${decryptedMember.lastName || ''}`.toLowerCase().trim();
+            const inputName = `${firstName} ${lastName || ''}`.toLowerCase().trim();
+
+            if (dbName === inputName) {
+                matchedPatient = member;
+                break;
+            }
+        }
+
+        if (matchedPatient) {
+            // Link Existing
+            let wasUpdated = false;
+            if (!matchedPatient.enrolledInstitutions.includes(instId)) {
+                matchedPatient.enrolledInstitutions.push(instId);
+                wasUpdated = true;
+            }
+            if (wasUpdated) await matchedPatient.save();
+
+            const decryptedMatch = matchedPatient.getDecrypted ? matchedPatient.getDecrypted() : matchedPatient.toObject();
+            return res.status(200).json({
+                message: "Existing patient linked successfully.",
+                data: decryptedMatch 
+            });
+
+        } else {
+            // Create New
+            const uhid = `P${Date.now().toString().slice(-6)}`; 
+
+            const newPatient = new Patient({
+                firstName,
+                lastName,
+                mobile, 
+                // Hash is now handled by Model's pre('validate') hook automatically
+                // But passing it explicitly is also fine and safe
+                mobileHash: targetHash, 
+                gender,
+                age,
+                address,
+                email,
+                institutionId: instId,
+                enrolledInstitutions: [instId],
+                uhid
+            });
+
+            await newPatient.save();
+            
+            const decryptedNew = newPatient.getDecrypted ? newPatient.getDecrypted() : newPatient.toObject();
+            return res.status(201).json({
+                message: "New patient registered.",
+                data: decryptedNew
             });
         }
 
-        // SILENT LINKING:
-        // Add this institution to their history.
-        existingPatient.enrolledInstitutions.push(instId);
-        
-        // Optional: Update missing details if current record is sparse? 
-        // For now, let's trust the master record to be single source of truth.
-        // Or we can update 'latest address' if provided.
-        if(address) existingPatient.address = address;
-
-        await existingPatient.save();
-        
-        return res.status(200).json({
-            message: "Patient profile retrieved & linked successfully.",
-            data: existingPatient
-        });
-
-    } else {
-        // --- SCENARIO B: BRAND NEW PATIENT ---
-        const uhid = `P${Date.now().toString().slice(-6)}`;
-        
-        const newPatient = new Patient({
-            firstName,
-            lastName,
-            mobile, 
-            gender,
-            age,
-            address,
-            institutionId: instId, // Origin
-            enrolledInstitutions: [instId], // Enrolled Here
-            uhid
-        });
-
-        await newPatient.save();
-        return res.status(201).json({
-            message: "New Patient Registered.",
-            data: newPatient
-        });
+    } catch (err) {
+        console.error("Create Patient Error:", err);
+        res.status(500).json({ message: err.message });
     }
+});
 
-  } catch (err) {
-    console.error("Patient Create Error:", err);
-    res.status(500).json({ error: err.message });
-  }
+// ==========================================
+// 3. GET SINGLE PATIENT
+// ==========================================
+router.get("/:id", authenticateUser, async (req, res) => {
+    try {
+        const patient = await Patient.findById(req.params.id);
+        if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+        const decryptedData = patient.getDecrypted ? patient.getDecrypted() : patient.toObject();
+        res.json(decryptedData);
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ==========================================
+// 4. UPDATE PATIENT
+// ==========================================
+router.put("/:id", authenticateUser, async (req, res) => {
+    try {
+        const { firstName, lastName, age, gender, address, email } = req.body;
+        
+        const patient = await Patient.findById(req.params.id);
+        if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+        if (firstName) patient.firstName = firstName;
+        if (lastName) patient.lastName = lastName;
+        if (age) patient.age = age;
+        if (gender) patient.gender = gender;
+        if (address) patient.address = address;
+        if (email) patient.email = email;
+
+        await patient.save();
+
+        const decryptedData = patient.getDecrypted ? patient.getDecrypted() : patient.toObject();
+        res.json(decryptedData);
+
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
 });
 
 module.exports = router;

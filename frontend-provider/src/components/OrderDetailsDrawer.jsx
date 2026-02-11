@@ -117,7 +117,6 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
   const isCancelled = order?.financials?.status === "Cancelled";
 
   if (!open) return null;
-
   return (
     <>
       <Drawer
@@ -137,6 +136,7 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                     Cancel Order
                 </Button>
              )}
+             {!isCancelled && (
            <Button 
               icon={<PrinterOutlined />} 
               loading={printing} 
@@ -144,6 +144,7 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
             >
               Print Bill
           </Button>
+          )}
           </Space>
         }
       >
@@ -172,10 +173,10 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                     {/* Patient Info */}
                     <Card size="small" title="Patient Information">
                       <Descriptions column={2} size="small">
-                        <Descriptions.Item label="Name">{order.patientId?.firstName} {order.patientId?.lastName}</Descriptions.Item>
-                        <Descriptions.Item label="Mobile">{order.patientId?.mobile}</Descriptions.Item>
-                        <Descriptions.Item label="Age/Gender">{order.patientId?.age} Y / {order.patientId?.gender}</Descriptions.Item>
-                        <Descriptions.Item label="UHID">{order.patientId?.uhid || "-"}</Descriptions.Item>
+                        <Descriptions.Item label="Name">{order.patientDetails?.name}</Descriptions.Item>
+                        <Descriptions.Item label="Mobile">{order.patientDetails?.mobile}</Descriptions.Item>
+                        <Descriptions.Item label="Age/Gender">{order.patientDetails?.age} Y / {order.patientDetails?.gender}</Descriptions.Item>
+                        {!order?.patient?.isWalkIn &&<Descriptions.Item label="UHID">{order.patient?.uhid || "-"}</Descriptions.Item>}
                       </Descriptions>
                     </Card>
 

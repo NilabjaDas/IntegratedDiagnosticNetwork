@@ -1,26 +1,36 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 const encryptPlugin = require("./plugins/encryptPlugin");
+const crypto = require("crypto");
+
+// --- CONFIGURATION ---
+// Ensure this matches your .env exactly
+const HASH_SECRET = process.env.AES_SEC || "dev-secret-key-123";
+
+// Shared Hash Function
+const hashData = (text) => {
+    if (!text) return undefined;
+    return crypto.createHmac('sha256', HASH_SECRET).update(text).digest('hex');
+};
 
 const patientSchema = new mongoose.Schema({
   patientId: { type: String, default: () => uuidv4(), unique: true },
   
-  // Searchable fields (Plaintext, Indexed for performance)
+  // Searchable fields (Plaintext)
   uhid: { type: String, index: true, uppercase: true, trim: true },
   searchableName: { type: String, index: true }, 
-  searchableMobile: { type: String, index: true }, // NEW: Allows partial search (e.g. "9876%")
+  searchableMobile: { type: String, index: true }, 
 
-  // Encrypted fields (Stored as ciphertext)
+  // Encrypted fields
   firstName: { type: String, required: true, trim: true },
   lastName: { type: String, trim: true },
-  mobile: { type: String, required: true }, // Encrypted Source of Truth
+  mobile: { type: String, required: true }, 
   email: { type: String, lowercase: true, trim: true },
   
-  // Blind Indexes (Still useful for exact match speed)
-  mobileHash: { type: String, index: true },
+  // Blind Indexes (Manual Hashing)
+  mobileHash: { type: String, index: true, required: true },
   emailHash: { type: String, index: true },
 
-  // ... (Rest of schema remains same: otp, dob, age, address, etc.)
   otp: { type: String, select: false },
   otpExpires: { type: Date },
   isVerified: { type: Boolean, default: false },
@@ -34,18 +44,25 @@ const patientSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-// --- HOOK: Populate Searchable Fields ---
-// This runs BEFORE the encryption plugin, so 'this.mobile' is still plaintext
+// --- HOOK 1: PRE-VALIDATE (Generates Hashes) ---
+// Runs BEFORE validation, fixing the "mobileHash required" error
+patientSchema.pre('validate', function(next) {
+    if (this.isModified('mobile') && this.mobile) {
+        this.mobileHash = hashData(this.mobile);
+        this.searchableMobile = this.mobile; // Plaintext copy for partial search (optional)
+    }
+    if (this.isModified('email') && this.email) {
+        this.emailHash = hashData(this.email);
+    }
+    next();
+});
+
+// --- HOOK 2: PRE-SAVE (Generates Searchable Name) ---
+// Runs BEFORE encryption
 patientSchema.pre('save', function(next) {
-    // 1. Prepare Name for Search (Lowercase)
     if (this.isModified('firstName') || this.isModified('lastName')) {
         const full = `${this.firstName} ${this.lastName || ''}`;
         this.searchableName = full.toLowerCase().replace(/\s+/g, ' ').trim();
-    }
-    
-    // 2. Prepare Mobile for Search (Plaintext)
-    if (this.isModified('mobile')) {
-        this.searchableMobile = this.mobile;
     }
     next();
 });
@@ -55,12 +72,14 @@ const DB_SECRET = process.env.DB_SECRET || process.env.AES_SEC || "dev-secret-ke
 
 patientSchema.plugin(encryptPlugin, {
   fields: ["firstName", "lastName", "mobile", "email", "address.line", "medicalHistory"],
-  blindIndexFields: ["mobile", "email"], // Keep blind index for fast exact lookups
+  // *** CRITICAL CHANGE: REMOVED blindIndexFields ***
+  // We are handling mobileHash manually above to ensure it matches the Route's logic.
   secret: DB_SECRET
 });
 
-// Composite index for text searching
-patientSchema.index({ searchableMobile: 1 });
+// Indexes
+patientSchema.index({ mobileHash: 1 });
 patientSchema.index({ searchableName: 1 });
+patientSchema.index({ enrolledInstitutions: 1 });
 
 module.exports = mongoose.model("Patient", patientSchema);

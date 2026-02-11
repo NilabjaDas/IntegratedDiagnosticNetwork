@@ -29,7 +29,21 @@ const orderSchema = new mongoose.Schema({
   orderId: { type: String, default: () => uuidv4(), unique: true, index: true },
   displayId: { type: String }, 
   
-  patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
+  // --- UPDATED PATIENT LOGIC ---
+  // 1. Made optional so we don't need a DB record for walk-ins
+  patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
+  
+  // 2. Flags and Snapshot Data for Walk-ins
+  isWalkIn: { type: Boolean, default: false },
+  
+  // This stores the Name/Age/Gender for Walk-ins 
+  // (OR acts as a snapshot for registered patients if needed)
+  patientDetails: {
+      name: { type: String },
+      age: { type: Number },
+      gender: { type: String },
+      mobile: { type: String }
+  },
   
   appointment: {
     doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
@@ -39,14 +53,14 @@ const orderSchema = new mongoose.Schema({
   
   items: [orderItemSchema], 
   
-  // --- FINANCIALS (Updated with Discount Reason) ---
+  // --- FINANCIALS ---
   financials: {
-    totalAmount: { type: Number, required: true }, // Sum of Items
+    totalAmount: { type: Number, required: true }, 
     discountOverriden: {type: Boolean, default: false},
     discountAmount: { type: Number, default: 0 },
-    discountReason: { type: String }, // e.g. "Senior Citizen", "Staff"
-    discountAuthorizedBy: { type: String }, // Stores User ID/Name
-    netAmount: { type: Number, required: true }, // Total - Discount
+    discountReason: { type: String }, 
+    discountAuthorizedBy: { type: String }, 
+    netAmount: { type: Number, required: true }, 
     paidAmount: { type: Number, default: 0 },
     dueAmount: { type: Number, default: 0 },
     
@@ -79,13 +93,9 @@ const orderSchema = new mongoose.Schema({
 // Auto-calculate Dues & Status
 orderSchema.pre('save', function(next) {
   if (this.financials && !this.cancellation.isCancelled) {
-    // Ensure Net Amount consistency
     this.financials.netAmount = this.financials.totalAmount - (this.financials.discountAmount || 0);
-    
-    // Calculate Due
     this.financials.dueAmount = this.financials.netAmount - this.financials.paidAmount;
     
-    // Determine Status
     if (this.financials.dueAmount <= 0) {
       this.financials.status = "Paid";
       this.isReportDeliveryBlocked = false;

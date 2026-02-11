@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Drawer,
   Form,
@@ -17,7 +17,7 @@ import {
   Divider,
   Statistic,
   Alert,
-  Modal
+  Checkbox
 } from "antd";
 import { 
   UserAddOutlined, 
@@ -27,13 +27,15 @@ import {
   CreditCardOutlined,
   QrcodeOutlined,
   DollarCircleOutlined,
-  SearchOutlined
+  SearchOutlined,
+  CloseCircleOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { createOrder, searchPatients } from "../redux/apiCalls";
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
 import DiscountOverrideModal from "./DiscountOverrideModal"; 
+import { patientSearchSuccess } from "../redux/orderRedux";
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -48,11 +50,19 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   
   // Local State
   const [selectedItems, setSelectedItems] = useState([]);
-  const [patientId, setPatientId] = useState(null);
   const [loading, setLoading] = useState(false);
-  
-  // Search State for Pre-filling
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // --- PATIENT STATE ---
+  const [patientId, setPatientId] = useState(null);
+  const [selectedPatientOriginal, setSelectedPatientOriginal] = useState(null); 
+  
+  // Unified Form: Used for Walk-in Entry OR Editing Registered Patient (Age/Gender)
+  const [patientForm, setPatientForm] = useState({
+      name: "",
+      age: "",
+      gender: "Male"
+  });
 
   // Billing State
   const [totalAmount, setTotalAmount] = useState(0);
@@ -63,57 +73,86 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [createdOrder, setCreatedOrder] = useState(null); 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  
-  // Override State
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [pendingSubmission, setPendingSubmission] = useState(null);
 
-  // Watch Paid Amount to show/hide Payment Mode
   const paidAmount = Form.useWatch("paidAmount", form);
 
   // --- BILLING CALCULATOR ---
   const handleValuesChange = (changedValues, allValues) => {
     const discount = allValues.discountAmount || 0;
     const paid = allValues.paidAmount || 0;
-    
     const newNet = Math.max(0, totalAmount - discount);
-    const newDue = Math.max(0, newNet - paid);
-    
     setNetAmount(newNet);
-    setDueAmount(newDue);
+    setDueAmount(Math.max(0, newNet - paid));
   };
 
   useEffect(() => {
     const sum = selectedItems.reduce((acc, item) => acc + (item.price || 0), 0);
     setTotalAmount(sum);
-    
     const currentDiscount = form.getFieldValue("discountAmount") || 0;
     const currentPaid = form.getFieldValue("paidAmount") || 0;
-    
     const newNet = Math.max(0, sum - currentDiscount);
     setNetAmount(newNet);
     setDueAmount(Math.max(0, newNet - currentPaid));
   }, [selectedItems, form]);
 
 
-  // --- HANDLERS ---
+  // --- HANDLERS: PATIENT ---
 
   const handlePatientSearch = (val) => {
-    setSearchTerm(val); // Store for pre-fill
-    if (val.length >= 4) searchPatients(dispatch, val);
+    setSearchTerm(val); 
+    if (val.length >= 2) searchPatients(dispatch, val);
+  };
+
+  // 1. Registered Patient Selected
+  const handleSelectRegistered = (val) => {
+      setPatientId(val);
+      setSearchTerm(""); // Clear search text
+      
+      const selected = searchResults?.find(p => p._id === val);
+      if (selected) {
+          setSelectedPatientOriginal(selected);
+          // Populate form to allow Age/Gender editing
+          setPatientForm({
+              name: `${selected.firstName} ${selected.lastName}`,
+              age: selected.age,
+              gender: selected.gender
+          });
+      }
+  };
+
+  // 2. Clear Selection (Reset to Walk-in Mode)
+  const handleClearSelection = () => {
+      setPatientId(null);
+        dispatch(patientSearchSuccess(null));
+      setSelectedPatientOriginal(null);
+      setSearchTerm(""); // Clear search input
+      setPatientForm({ name: "", age: "", gender: "Male" }); 
+  };
+
+  // 3. Handle Form Changes
+  const handlePatientFormChange = (field, value) => {
+      setPatientForm(prev => ({ ...prev, [field]: value }));
   };
 
   const handleNewPatientCreated = (newPatient) => {
-    console.log(newPatient)
     setIsPatientModalOpen(false);
     setPatientId(newPatient._id);
+    setSelectedPatientOriginal(newPatient);
+    setPatientForm({
+        name: `${newPatient.firstName} ${newPatient.lastName}`,
+        age: newPatient.age,
+        gender: newPatient.gender
+    });
     message.success(`Selected ${newPatient.firstName}`);
     searchPatients(dispatch, newPatient.mobile);
     form.setFieldsValue({ patientId: newPatient._id });
   };
 
+  // --- HANDLERS: SERVICES ---
+
   const handleServicesChange = (values) => {
-      // values is array of IDs
       const newItems = [];
       values.forEach(val => {
           const testMatch = tests.find(t => t._id === val);
@@ -132,11 +171,10 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   const handleRemoveItem = (id) => {
     const newItems = selectedItems.filter(i => i._id !== id);
     setSelectedItems(newItems);
-    // Sync the Select component value
     form.setFieldsValue({ serviceSelect: newItems.map(i => i._id) });
   };
 
-  // --- SUBMISSION LOGIC ---
+  // --- SUBMISSION ---
 
   const onFinish = async (values) => {
     const dataToSubmit = pendingSubmission 
@@ -144,7 +182,9 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         : values;
 
     if (!pendingSubmission) {
-        if (!patientId) return message.error("Please select a patient");
+        if (!patientId && !patientForm.name) {
+            return message.error("Please select a Patient OR enter Walk-in Name");
+        }
         if (selectedItems.length === 0) return message.error("Please select services");
     }
 
@@ -161,17 +201,42 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     } = dataToSubmit;
 
     const orderData = {
-        patientId: patientId,
         items: selectedItems.map(i => ({ _id: i._id, type: i.type })),
         discountAmount,
         discountReason,
-        paymentMode, // Store intended mode even if online
+        paymentMode, 
         discountOverrideCode,
-        notes
+        notes: notes || ""
     };
 
-    // Only attach initialPayment for Manual modes here.
-    // For Razorpay, we create the order first, then handle payment in the modal.
+    // --- PATIENT LOGIC ---
+    if (patientId) {
+        // SCENARIO A: Registered Patient
+        orderData.patientId = patientId;
+        orderData.walkin = false;
+
+        // Check for updates to Age/Gender
+        if (selectedPatientOriginal) {
+            const hasChanged = 
+                String(patientForm.age) !== String(selectedPatientOriginal.age) || 
+                patientForm.gender !== selectedPatientOriginal.gender;
+            
+            if (hasChanged) {
+                orderData.updatedPatientData = true; // Flag for backend
+                orderData.age = patientForm.age;
+                orderData.gender = patientForm.gender;
+            }
+        }
+    } else {
+        // SCENARIO B: Walk-in Patient
+        orderData.walkin = true;
+        orderData.patientName = patientForm.name;
+        orderData.age = patientForm.age;
+        orderData.gender = patientForm.gender;
+        orderData.mobile = ""; 
+    }
+
+    // Advance Payment
     if (paymentMode !== "Razorpay" && paidAmount > 0) {
         orderData.initialPayment = {
             mode: paymentMode,
@@ -180,6 +245,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
             notes: notes || "Advance Payment"
         };
     }
+console.log(orderData)
 
     const res = await createOrder(dispatch, orderData);
     setLoading(false);
@@ -190,17 +256,14 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         setPendingSubmission(null);
         
         if (paymentMode === "Razorpay" && paidAmount > 0) {
-            // Chain Online Payment
-            // Pass the 'paidAmount' as the amount to collect in the modal
             setCreatedOrder({ ...res.data, dueAmountForModal: paidAmount }); 
             setIsPaymentModalOpen(true);
-            // Keep drawer open until payment logic handles closure or user cancels
-             handleClose(false); // Close main drawer, show modal
+             handleClose(false); 
         } else {
             handleClose(true);
         }
 
-    } else if (res.status === 403 && res.data?.requiresOverride) {
+    } else if (res.requiresOverride) { 
         setPendingSubmission(values); 
         setIsOverrideModalOpen(true); 
     } else {
@@ -216,7 +279,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     if (fullyClose) {
         form.resetFields();
         setSelectedItems([]);
-        setPatientId(null);
+        handleClearSelection();
         setTotalAmount(0);
         setNetAmount(0);
         setDueAmount(0);
@@ -226,6 +289,14 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     }
   };
 
+  // --- FILTER: Name + Alias + Substring ---
+  const filterServices = (input, option) => {
+      if (!input) return true;
+      const text = input.toLowerCase();
+      const name = option.children ? String(option.children).toLowerCase() : '';
+      const alias = option.alias ? String(option.alias).toLowerCase() : '';
+      return name.includes(text) || alias.includes(text);
+  };
   return (
     <>
       <Drawer
@@ -260,23 +331,32 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         >
           
           <Row gutter={24}>
-              {/* Left Col */}
+              {/* Left Col: Patient & Services */}
               <Col span={14}>
-                  <Card size="small" title="1. Patient" style={{ marginBottom: 16 }}>
-                      <Row gutter={8}>
+                  <Card size="small" title="1. Patient Selection" style={{ marginBottom: 16 }}>
+                      
+                      {/* SECTION A: SEARCH BAR */}
+                      <Row gutter={8} align="middle">
                           <Col span={20}>
-                              <Form.Item name="patientId" noStyle rules={[{ required: true, message: "Select Patient" }]}>
+                              <Form.Item name="patientId" noStyle>
                                   <Select
                                       showSearch
-                                      placeholder="Search Name / Mobile / UHID..."
+                                      placeholder="Search Registered Patient (Name / Mobile)"
                                       filterOption={false}
                                       onSearch={handlePatientSearch}
-                                      onChange={(val) => setPatientId(val)}
+                                      onChange={handleSelectRegistered}
                                       value={patientId}
+                                      searchValue={searchTerm} 
                                       suffixIcon={<SearchOutlined />}
+                                      allowClear
+                                      autoClearSearchValue = {true}
+                                      onClear={handleClearSelection}
                                   >
-                                      {searchResults.map(p => (
-                                          <Option key={p._id} value={p._id}>{p.firstName} {p.lastName} ({p.mobile})</Option>
+                                      {searchResults?.map(p => (
+                                          <Option key={p._id} value={p._id}>
+                                              {/* Simple Display: Name (Mobile) */}
+                                              {p.firstName} {p.lastName} ({p.mobile})
+                                          </Option>
                                       ))}
                                   </Select>
                               </Form.Item>
@@ -284,13 +364,93 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                           <Col span={4}>
                               <Button 
                                 block 
-                                type="primary" 
                                 icon={<UserAddOutlined />} 
                                 onClick={() => setIsPatientModalOpen(true)}
                                 title="Register New Patient"
                               />
                           </Col>
                       </Row>
+                      {/* SECTION B: DYNAMIC UI */}
+                      {!patientId ? (
+                          // MODE 1: WALK-IN (Inputs Active)
+                          <>
+                              <Divider style={{ margin: '12px 0', fontSize: 12, color: '#999' }}>OR Walk-In / Guest</Divider>
+                              <div style={{ background: '#f6ffed', padding: 12, borderRadius: 6, border: '1px solid #b7eb8f' }}>
+                                  <Row gutter={8}>
+                                      <Col span={12}>
+                                          <Text type="secondary" style={{fontSize: 11}}>Guest Name</Text>
+                                          <Input 
+                                              value={patientForm.name} 
+                                              onChange={e => handlePatientFormChange('name', e.target.value)}
+                                              placeholder="Patient Name"
+                                          />
+                                      </Col>
+                                      <Col span={6}>
+                                          <Text type="secondary" style={{fontSize: 11}}>Age</Text>
+                                          <InputNumber 
+                                              style={{width: '100%'}} 
+                                              placeholder="Yrs"
+                                              value={patientForm.age}
+                                              onChange={v => handlePatientFormChange('age', v)}
+                                          />
+                                      </Col>
+                                      <Col span={6}>
+                                          <Text type="secondary" style={{fontSize: 11}}>Gender</Text>
+                                          <Select 
+                                              value={patientForm.gender} 
+                                              onChange={v => handlePatientFormChange('gender', v)}
+                                              style={{width: '100%'}}
+                                          >
+                                              <Option value="Male">Male</Option>
+                                              <Option value="Female">Female</Option>
+                                          </Select>
+                                      </Col>
+                                  </Row>
+                              </div>
+                          </>
+                      ) : (
+                          // MODE 2: REGISTERED PATIENT (Details View + Editing)
+                          <div style={{ marginTop: 12, background: '#f0f5ff', padding: 12, borderRadius: 6, border: '1px solid #adc6ff' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                                  <Text strong style={{color: '#1d39c4'}}>
+                                      <UserAddOutlined /> {patientForm.name} 
+                                      <span style={{fontWeight: 'normal', color: '#666', fontSize: 12, marginLeft: 8}}>
+                                          ({selectedPatientOriginal?.uhid})
+                                      </span>
+                                  </Text>
+                                  <Button size="small" type="text" danger icon={<CloseCircleOutlined />} onClick={handleClearSelection}>
+                                      Clear Selection
+                                  </Button>
+                              </div>
+                              <Row gutter={8}>
+                                  <Col span={12}>
+                                       <Text type="secondary" style={{fontSize: 11}}>Mobile</Text>
+                                       <div style={{ fontWeight: 500 }}>{selectedPatientOriginal?.mobile}</div>
+                                  </Col>
+                                  <Col span={6}>
+                                      <Text type="secondary" style={{fontSize: 11}}>Age (Edit)</Text>
+                                      <InputNumber 
+                                          style={{width: '100%'}} 
+                                          value={patientForm.age}
+                                          onChange={v => handlePatientFormChange('age', v)}
+                                          status={patientForm.age !== selectedPatientOriginal?.age ? "warning" : ""}
+                                      />
+                                  </Col>
+                                  <Col span={6}>
+                                      <Text type="secondary" style={{fontSize: 11}}>Gender (Edit)</Text>
+                                      <Select 
+                                          value={patientForm.gender} 
+                                          onChange={v => handlePatientFormChange('gender', v)}
+                                          style={{width: '100%'}}
+                                          status={patientForm.gender !== selectedPatientOriginal?.gender ? "warning" : ""}
+                                      >
+                                          <Option value="Male">Male</Option>
+                                          <Option value="Female">Female</Option>
+                                      </Select>
+                                  </Col>
+                              </Row>
+                          </div>
+                      )}
                   </Card>
 
                   <Card size="small" title="2. Services">
@@ -298,18 +458,25 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                           <Select
                               mode="multiple"
                               showSearch
-                              placeholder="Add Test / Package..."
-                              optionFilterProp="children"
+                              placeholder="Search Test / Package (Name or Alias)..."
+                              filterOption={filterServices}
                               onChange={handleServicesChange}
                               value={selectedItems.map(i => i._id)}
-                              // Hide tags in input, we show list below
                               tagRender={() => null} 
                           >
                               <Select.OptGroup label="Packages">
-                                  {packages?.map(p => <Option key={p._id} value={p._id}>{p.name} (₹{p.offerPrice})</Option>)}
+                                  {packages?.map(p => (
+                                      <Option key={p._id} value={p._id} alias={p.alias}>
+                                          {p.name} (₹{p.offerPrice})
+                                      </Option>
+                                  ))}
                               </Select.OptGroup>
                               <Select.OptGroup label="Tests">
-                                  {tests?.map(t => <Option key={t._id} value={t._id}>{t.name} (₹{t.price})</Option>)}
+                                  {tests?.map(t => (
+                                      <Option key={t._id} value={t._id} alias={t.alias}>
+                                          {t.name} (₹{t.price})
+                                      </Option>
+                                  ))}
                               </Select.OptGroup>
                           </Select>
                       </Form.Item>
@@ -331,7 +498,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                   </Card>
               </Col>
 
-              {/* Right Col */}
               <Col span={10}>
                   <Card size="small" title="3. Billing" style={{ height: '100%' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -363,11 +529,20 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                           <Title level={4} type="success">₹{netAmount}</Title>
                       </div>
 
-                      <Form.Item name="paidAmount" label="Advance / Paid Now">
+                      <Form.Item 
+                        name="paidAmount" 
+                        label={
+                            <div style={{display:'flex', justifyContent:'space-between', width:'100%', alignItems:'center'}}>
+                                <span>Advance / Paid Now</span>
+                                <Checkbox style={{marginLeft: '10px'}} onChange={(e) => {
+                                    if(e.target.checked) form.setFieldsValue({ paidAmount: netAmount });
+                                }}>Pay Full</Checkbox>
+                            </div>
+                        }
+                      >
                           <InputNumber style={{ width: '100%' }} min={0} max={netAmount} prefix="₹" />
                       </Form.Item>
 
-                      {/* CONDITIONAL: Show Payment Mode only if user is paying something */}
                       {paidAmount > 0 && (
                         <div style={{ background: '#f9f9f9', padding: 10, borderRadius: 6, marginBottom: 16 }}>
                             <Form.Item name="paymentMode" label="Payment Mode" style={{ marginBottom: 8 }}>
@@ -409,7 +584,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         </Form>
       </Drawer>
 
-      {/* Modals */}
       <CreatePatientModal 
         open={isPatientModalOpen} 
         onCancel={() => setIsPatientModalOpen(false)}
@@ -427,7 +601,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         onSubmit={handleOverrideSubmit}
       />
 
-      {/* Payment Modal for Online Advance */}
       {createdOrder && (
           <PaymentModal 
             open={isPaymentModalOpen}
@@ -436,7 +609,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                 handleClose(true);
             }}
             order={createdOrder}
-            // Pass the specific advance amount to collect (not the full due)
             initialAmount={createdOrder.dueAmountForModal} 
             onSuccess={() => {
                 setIsPaymentModalOpen(false);

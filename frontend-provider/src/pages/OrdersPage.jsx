@@ -1,39 +1,59 @@
 import React, { useEffect, useState } from "react";
 import { Table, Button, Input, Tag, Space, DatePicker, Card, Row, Col, Badge } from "antd";
-import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { getOrders } from "../redux/apiCalls";
 import CreateOrderDrawer from "../components/CreateOrderDrawer";
-import OrderDetailsDrawer from "../components/OrderDetailsDrawer"; // New Import
+import OrderDetailsDrawer from "../components/OrderDetailsDrawer"; 
 import styled from "styled-components";
 import moment from "moment";
 
 const { RangePicker } = DatePicker;
 
+// Updated Styles for Strikethrough
 const PageContainer = styled.div`
   padding: 24px;
   background: #f0f2f5;
   min-height: 100vh;
+
+  /* Strikethrough style for cancelled rows */
+  .cancelled-row {
+    text-decoration: line-through;
+    color: #999;
+    background-color: #fafafa;
+  }
+  
+  .cancelled-row .ant-tag {
+    text-decoration: none; /* Keep tags readable */
+    opacity: 0.7;
+  }
 `;
 
 const OrdersPage = () => {
   const dispatch = useDispatch();
-  // Ensure we use the correct environment key
   const { orders, isFetching } = useSelector((state) => state[process.env.REACT_APP_ORDERS_DATA_KEY]); 
   const [createDrawerVisible, setCreateDrawerVisible] = useState(false);
-  const [detailsDrawerId, setDetailsDrawerId] = useState(null); // Tracks ID for View/Edit
+  const [detailsDrawerId, setDetailsDrawerId] = useState(null);
   
   const [searchText, setSearchText] = useState("");
 
+  // 1. Initial Load & Debounced Search Effect
   useEffect(() => {
-    getOrders(dispatch);
-  }, [dispatch]);
+    const delayDebounceFn = setTimeout(() => {
+      getOrders(dispatch, { search: searchText });
+    }, 600); // 600ms delay for better typing experience
 
-  const handleSearch = (val) => {
-    getOrders(dispatch, { search: val });
-  };
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchText, dispatch]);
 
   const columns = [
+    // 2. Added Serial Number Column
+    {
+      title: "Sl No",
+      key: "index",
+      width: 70,
+      render: (text, record, index) => <span style={{color: '#888'}}>{index + 1}</span>,
+    },
     {
       title: "Order ID",
       dataIndex: "displayId",
@@ -42,12 +62,12 @@ const OrdersPage = () => {
     },
     {
       title: "Patient",
-      dataIndex: "patientId",
-      key: "patient",
+      dataIndex: "patientDetails",
+      key: "patientDetails",
       render: (p) => p ? (
         <div>
-          <div style={{fontWeight: 500}}>{p.firstName} {p.lastName}</div>
-          <small style={{color: '#888'}}>{p.mobile}</small>
+          <div style={{fontWeight: 500}}>{p.name}</div>
+          <small style={{color: '#888'}}>{p.mobile || "N/A"}</small>
         </div>
       ) : <Tag color="red">Unknown</Tag>,
     },
@@ -55,11 +75,21 @@ const OrdersPage = () => {
       title: "Date",
       dataIndex: "createdAt",
       key: "date",
+      // 3. Added Sorting
+      sorter: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
       render: (date) => moment(date).format("DD MMM, h:mm A"),
     },
     {
       title: "Financials",
       key: "financials",
+      // 3. Added Filtering
+      filters: [
+        { text: 'Paid', value: 'Paid' },
+        { text: 'Pending', value: 'Pending' },
+        { text: 'Partially Paid', value: 'PartiallyPaid' },
+        { text: 'Cancelled', value: 'Cancelled' },
+      ],
+      onFilter: (value, record) => record.financials?.status === value,
       render: (_, record) => (
         <Space direction="vertical" size={0}>
             <Space>
@@ -69,7 +99,10 @@ const OrdersPage = () => {
                 )}
             </Space>
             <Badge 
-                status={record.financials?.status === 'Paid' ? 'success' : 'processing'} 
+                status={
+                    record.financials?.status === 'Paid' ? 'success' : 
+                    record.financials?.status === 'Cancelled' ? 'default' : 'processing'
+                } 
                 text={record.financials?.status} 
                 style={{ fontSize: 12 }}
             />
@@ -78,10 +111,25 @@ const OrdersPage = () => {
     },
     {
       title: "Work Status",
-      dataIndex: "items",
-      key: "status",
-      render: (items) => {
-        const isPending = items.some(i => i.status === "Pending");
+      dataIndex: "appointment",
+      key: "appointment",
+      filters: [
+        { text: 'Scheduled', value: 'Scheduled' },
+        { text: 'Completed', value: 'Completed' },
+        { text: 'Cancelled', value: 'Cancelled' },
+      ],
+      onFilter: (value, record) => {
+          // If the order is cancelled financially, treat work status as cancelled too
+          if (record.financials?.status === 'Cancelled') return value === 'Cancelled';
+          return record.appointment?.status === value;
+      },
+      render: (appointment, record) => {
+        // 4. Handle Cancelled Logic
+        if (record.financials?.status === "Cancelled" || record.cancellation?.isCancelled) {
+            return <Tag color="default" style={{textDecoration: 'none'}}>Cancelled</Tag>;
+        }
+        
+        const isPending = appointment?.status !== "Completed";
         return isPending ? <Tag color="orange">In Progress</Tag> : <Tag color="green">Completed</Tag>;
       }
     }
@@ -99,11 +147,13 @@ const OrdersPage = () => {
       <Card bordered={false}>
         <Row gutter={16} style={{ marginBottom: 16 }}>
           <Col span={8}>
-            <Input.Search 
-                placeholder="Search Order ID..." 
-                onSearch={handleSearch} 
+            {/* 1. Search on Key Press (onChange) */}
+            <Input 
+                placeholder="Search Order ID or Patient Name..." 
+                prefix={<SearchOutlined style={{color: '#bfbfbf'}}/>}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)} 
                 allowClear
-                enterButton
             />
           </Col>
           <Col span={8}>
@@ -119,30 +169,30 @@ const OrdersPage = () => {
             dataSource={orders} 
             rowKey="_id" 
             loading={isFetching}
-            pagination={{ pageSize: 10 }}
+            pagination={{ pageSize: 10, showSizeChanger: true }}
+            // 2. Apply Strikethrough Class
+            rowClassName={(record) => record.financials?.status === 'Cancelled' ? 'cancelled-row' : ''}
             onRow={(record) => ({
-                onClick: () => setDetailsDrawerId(record._id), // Click row to open details
+                onClick: () => setDetailsDrawerId(record._id), 
                 style: { cursor: 'pointer' }
             })}
         />
       </Card>
 
-      {/* Drawer for Creating New Order */}
       <CreateOrderDrawer 
         open={createDrawerVisible} 
         onClose={() => {
             setCreateDrawerVisible(false);
-            getOrders(dispatch); // Refresh list after create
+            getOrders(dispatch); 
         }} 
       />
 
-      {/* Drawer for Viewing/Editing Existing Order */}
       <OrderDetailsDrawer
         open={!!detailsDrawerId}
         orderId={detailsDrawerId}
         onClose={() => {
             setDetailsDrawerId(null);
-            getOrders(dispatch); // Refresh list after edit (payment update)
+            getOrders(dispatch); 
         }}
       />
     </PageContainer>

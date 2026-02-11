@@ -127,23 +127,76 @@ const validateDiscount = async (userModel, userId, totalAmount, discountAmount) 
 router.post("/", async (req, res) => {
   try {
     const { 
-        patientId, 
+        // Common Fields
         items, 
         paymentMode, 
         discountAmount = 0, 
         discountReason, 
-        discountOverrideCode, // NEW: Input from Frontend Modal
+        discountOverrideCode, 
         initialPayment, 
-        notes 
+        notes,
+
+        // Patient Selection Logic
+        walkin,      // Boolean flag
+        patientId,   // For Registered
+        patientName, // For Walk-in
+        age,         // For Walk-in OR Edit Registered
+        gender,      // For Walk-in OR Edit Registered
+        updatedPatientData // NEW FLAG: True if user edited registered patient details
     } = req.body;
     
     const instId = req.user.institutionId;
+    let finalPatientId = null;
+    let finalPatientDetails = {};
 
-    // A. Verify Patient
-    const patient = await Patient.findById(patientId);
-    if (!patient) return res.status(404).json({ message: "Patient not found." });
+    // --- A. PATIENT RESOLUTION ---
+    if (walkin) {
+        // CASE 1: WALK-IN PATIENT
+        if (!patientName || !age || !gender) {
+            return res.status(400).json({ message: "Name, Age, and Gender are required for Walk-ins." });
+        }
+        
+        finalPatientId = null; // No DB Link
+        finalPatientDetails = {
+            name: patientName,
+            age: Number(age),
+            gender: gender,
+            mobile: "" 
+        };
 
-    // B. Calculate Items
+    } else {
+        // CASE 2: REGISTERED PATIENT
+        if (!patientId) return res.status(400).json({ message: "Patient ID is required." });
+
+        const patient = await Patient.findById(patientId);
+        if (!patient) return res.status(404).json({ message: "Patient not found." });
+
+        // --- UPDATE PATIENT LOGIC (NEW) ---
+        // If user edited details on frontend, update the Master DB record now.
+        if (updatedPatientData) {
+            if (age) patient.age = Number(age);
+            if (gender) patient.gender = gender;
+            await patient.save(); // Persist changes to Patient Collection
+        }
+
+        finalPatientId = patient._id;
+        
+        // Snapshot relevant details (Using the freshest data from patient object)
+        finalPatientDetails = {
+            name: `${patient.firstName} ${patient.lastName || ''}`.trim(),
+            age: patient.age, 
+            gender: patient.gender,
+            mobile: patient.mobile
+        };
+
+        // Link Patient to Institution if not already linked
+        if(!patient.enrolledInstitutions.includes(instId)){
+            patient.enrolledInstitutions.push(instId);
+            await patient.save();
+        }
+    }
+
+    // --- B. CALCULATE ITEMS ---
     const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
     if (orderItems.length === 0) return res.status(400).json({ message: "No valid items." });
 
@@ -153,15 +206,10 @@ router.post("/", async (req, res) => {
 
     if (discountAmount > 0) {
         try {
-            // 1. Try User Limit Validation
             authorizerName = await validateDiscount(req.TenantUser, req.user.userId, calculatedTotal, discountAmount);
-        
         } catch (limitError) {
-            // 2. Limit Exceeded? Check for Override Code
             if (discountOverrideCode) {
-                // Fetch Institution settings (hidden field)
                 const institution = await Institution.findOne({ institutionId: instId }).select("+settings.discountOverrideCode");
-                
                 if (institution.settings?.discountOverrideCode === discountOverrideCode) {
                     isOverridden = true;
                     authorizerName = `System Override (by ${req.user.username})`;
@@ -169,36 +217,33 @@ router.post("/", async (req, res) => {
                     return res.status(403).json({ message: "Invalid Override Code" });
                 }
             } else {
-                // 3. No code provided? Tell frontend to ask for it.
                 return res.status(403).json({ 
                     message: limitError.message, 
-                    requiresOverride: true // Signal to UI: "Open PIN Modal"
+                    requiresOverride: true 
                 });
             }
         }
     }
 
-    // D. Generate ID
+    // --- D. GENERATE DISPLAY ID ---
     const startOfDay = moment().startOf('day').toDate();
     const count = await req.TenantOrder.countDocuments({ createdAt: { $gte: startOfDay } });
     const displayId = `${moment().format("YYMMDD")}-${String(count + 1).padStart(3, '0')}`;
 
-    // E. Financials
+    // --- E. FINANCIALS ---
     let financials = {
         totalAmount: calculatedTotal,
-        
         discountAmount,
         discountReason, 
         discountAuthorizedBy: authorizerName ? `${authorizerName}` : null,
-        discountOverriden: isOverridden, // Save the flag
-        
+        discountOverriden: isOverridden,
         netAmount: calculatedTotal - discountAmount,
         paidAmount: 0,
         dueAmount: calculatedTotal - discountAmount,
         status: "Pending"
     };
 
-    // F. Initial Payment
+    // --- F. INITIAL PAYMENT ---
     let transactions = [];
     if (initialPayment && initialPayment.amount > 0) {
         transactions.push({
@@ -214,12 +259,16 @@ router.post("/", async (req, res) => {
         financials.status = financials.dueAmount <= 0 ? "Paid" : "PartiallyPaid";
     }
 
-    // G. Save
+    // --- G. CREATE ORDER ---
     const newOrder = new req.TenantOrder({
       institutionId: instId,
       orderId: uuidv4(),
       displayId,
-      patientId: patient._id, 
+      
+      patientId: finalPatientId, // Null for Walk-ins
+      isWalkIn: !!walkin,        // True/False
+      patientDetails: finalPatientDetails, // The snapshot (contains updated age/gender)
+      
       items: orderItems,
       financials,
       transactions,
@@ -227,12 +276,6 @@ router.post("/", async (req, res) => {
     });
 
     await newOrder.save();
-    
-    if(!patient.enrolledInstitutions.includes(instId)){
-        patient.enrolledInstitutions.push(instId);
-        await patient.save();
-    }
-
     res.status(201).json(newOrder);
 
   } catch (err) {
@@ -247,21 +290,90 @@ router.get("/", async (req, res) => {
     const { search, startDate, endDate } = req.query;
     let query = {};
 
+    // 1. Date Filtering
     if (startDate && endDate) {
         query.createdAt = {
             $gte: moment(startDate).startOf('day').toDate(),
             $lte: moment(endDate).endOf('day').toDate()
         };
     }
+
+    // 2. Search Logic (Upgraded)
     if (search) {
-        query.displayId = { $regex: search, $options: 'i' };
+        query.$or = [
+            { displayId: { $regex: search, $options: 'i' } },
+            // Walk-in Name Search (Mobile search removed as per requirement)
+            { "patientDetails.name": { $regex: search, $options: 'i' } }
+        ];
     }
 
-    const orders = await req.TenantOrder.find(query).sort({ createdAt: -1 }).limit(50);
-    const mergedOrders = await mergePatientsWithOrders(orders);
+    // 3. Fetch Orders (Tenant Specific)
+    const orders = await req.TenantOrder.find(query)
+                                        .sort({ createdAt: -1 })
+                                        .limit(50);
+
+    // 4. Resolve Patient Data (Hybrid Approach)
+    
+    // A. Collect IDs for "Registered" patients only
+    const registeredPatientIds = orders
+        .filter(o => !o.isWalkIn && o.patientId)
+        .map(o => o.patientId);
+
+    // B. Fetch Registered Patients from Global DB
+    const registeredPatients = await Patient.find({ _id: { $in: registeredPatientIds } });
+    
+    // Create Lookup Map
+    const patientMap = {};
+    registeredPatients.forEach(p => {
+        patientMap[p._id.toString()] = p;
+    });
+
+    // C. Merge Logic
+    const mergedOrders = orders.map(order => {
+        const orderObj = order.toObject();
+
+        if (order.isWalkIn) {
+            // --- SCENARIO 1: WALK-IN (Use Snapshot Data) ---
+            orderObj.patient = {
+                _id: "WALK-IN",
+                firstName: order.patientDetails?.name || "Walk-in Patient",
+                lastName: "", 
+                age: order.patientDetails?.age,
+                gender: order.patientDetails?.gender,
+                mobile: "N/A", // Fixed for Walk-in
+                isWalkIn: true
+            };
+        } else {
+            // --- SCENARIO 2: REGISTERED (Use Linked DB Record) ---
+            const p = patientMap[order.patientId?.toString()];
+            
+            if (p) {
+                orderObj.patient = {
+                    _id: p._id,
+                    firstName: p.firstName,
+                    lastName: p.lastName,
+                    age: p.age,
+                    gender: p.gender,
+                    mobile: p.mobile,
+                    uhid: p.uhid,
+                    isWalkIn: false
+                };
+            } else {
+                // Fallback for deleted/missing patients
+                orderObj.patient = {
+                    firstName: "Unknown",
+                    lastName: "Patient",
+                    mobile: "N/A",
+                    isUnknown: true
+                };
+            }
+        }
+        return orderObj;
+    });
 
     res.json(mergedOrders);
   } catch (err) {
+    console.error("Fetch Orders Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -271,9 +383,55 @@ router.get("/:id", async (req, res) => {
   try {
     const order = await req.TenantOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ message: "Order not found" });
-    const mergedOrder = await mergePatientsWithOrders(order);
-    res.json(mergedOrder);
+
+    // Convert Mongoose document to plain object so we can attach 'patient'
+    const orderObj = order.toObject();
+
+    if (order.isWalkIn) {
+        // --- SCENARIO 1: WALK-IN (Use Snapshot Data) ---
+        orderObj.patient = {
+            _id: "WALK-IN",
+            firstName: order.patientDetails?.name || "Walk-in Patient",
+            lastName: "", 
+            age: order.patientDetails?.age,
+            gender: order.patientDetails?.gender,
+            mobile: "N/A", // Fixed for Walk-in
+            isWalkIn: true
+        };
+    } else {
+        // --- SCENARIO 2: REGISTERED (Fetch Linked DB Record) ---
+        if (order.patientId) {
+            const p = await Patient.findById(order.patientId);
+            
+            if (p) {
+                orderObj.patient = {
+                    _id: p._id,
+                    firstName: p.firstName,
+                    lastName: p.lastName,
+                    age: p.age,
+                    gender: p.gender,
+                    mobile: p.mobile,
+                    uhid: p.uhid,
+                    isWalkIn: false
+                };
+            } else {
+                // Handle case where patient was deleted
+                orderObj.patient = {
+                    firstName: "Unknown",
+                    lastName: "Patient",
+                    mobile: "N/A",
+                    isUnknown: true
+                };
+            }
+        } else {
+             // Fallback for legacy data without ID or Walkin flag
+             orderObj.patient = { firstName: "Unknown", lastName: "Patient" };
+        }
+    }
+
+    res.json(orderObj);
   } catch (err) {
+    console.error("Get Order Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -339,7 +497,7 @@ router.put("/:id/cancel", async (req, res) => {
         if (!order) return res.status(404).json({ message: "Order not found" });
         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Order is already cancelled." });
 
-        // Set Cancellation Details
+        // 1. Set Cancellation Details
         order.cancellation = {
             isCancelled: true,
             reason: reason || "No reason provided",
@@ -347,15 +505,25 @@ router.put("/:id/cancel", async (req, res) => {
             date: new Date()
         };
 
+        // 2. Update Financials
         order.financials.status = "Cancelled";
         order.isReportDeliveryBlocked = true;
 
-        // Mark all items as cancelled
-        order.items.forEach(item => item.status = "Cancelled");
+        // 3. Mark all items as cancelled
+        if (order.items && order.items.length > 0) {
+            order.items.forEach(item => item.status = "Cancelled");
+        }
+
+        // 4. --- UPDATE: Cancel the Appointment ---
+        if (order.appointment) {
+            order.appointment.status = "Cancelled";
+        }
 
         await order.save();
         res.json(order);
+
     } catch(err) {
+        console.error("Cancellation Error:", err);
         res.status(500).json({ message: err.message });
     }
 });
