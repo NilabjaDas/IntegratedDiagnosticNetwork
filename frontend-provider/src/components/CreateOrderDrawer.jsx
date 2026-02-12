@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Drawer,
   Form,
@@ -17,7 +17,10 @@ import {
   Divider,
   Statistic,
   Alert,
-  Checkbox
+  Checkbox,
+  Modal,
+  Tag,
+  Tooltip
 } from "antd";
 import { 
   UserAddOutlined, 
@@ -28,22 +31,44 @@ import {
   QrcodeOutlined,
   DollarCircleOutlined,
   SearchOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  ThunderboltFilled,
+  HomeOutlined,
+  WarningOutlined,
+  ClearOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-import { createOrder, searchPatients } from "../redux/apiCalls";
+import { createOrder, searchPatients, getOrders } from "../redux/apiCalls"; 
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
 import DiscountOverrideModal from "./DiscountOverrideModal"; 
 import { patientSearchSuccess } from "../redux/orderRedux";
+import RapidOrderLayout from "./RapidOrderLayout"; 
 
 const { Option } = Select;
 const { Title, Text } = Typography;
+
+// Helper for Department Colors
+const getDeptColor = (dept) => {
+    const colors = ['blue', 'cyan', 'geekblue', 'purple', 'magenta', 'green', 'volcano', 'orange'];
+    let hash = 0;
+    if (!dept) return 'default';
+    for (let i = 0; i < dept.length; i++) {
+        hash = dept.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+};
 
 const CreateOrderDrawer = ({ open, onClose }) => {
   const dispatch = useDispatch();
   const [form] = Form.useForm();
   
+  // Refs
+  const patientSearchRef = useRef(null);
+
+  // --- NEW STATE FOR MODE TOGGLE ---
+  const [isRapidMode, setIsRapidMode] = useState(false);
+
   // Redux Data
   const { tests, packages } = useSelector((state) => state[process.env.REACT_APP_TESTS_DATA_KEY] || state.test);
   const { searchResults } = useSelector((state) => state[process.env.REACT_APP_ORDERS_DATA_KEY] || state.order); 
@@ -52,12 +77,12 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   const [selectedItems, setSelectedItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isHomeCollection, setIsHomeCollection] = useState(false);
   
   // --- PATIENT STATE ---
   const [patientId, setPatientId] = useState(null);
   const [selectedPatientOriginal, setSelectedPatientOriginal] = useState(null); 
   
-  // Unified Form: Used for Walk-in Entry OR Editing Registered Patient (Age/Gender)
   const [patientForm, setPatientForm] = useState({
       name: "",
       age: "",
@@ -78,13 +103,38 @@ const CreateOrderDrawer = ({ open, onClose }) => {
 
   const paidAmount = Form.useWatch("paidAmount", form);
 
+  // --- INITIALIZATION ---
+  useEffect(() => {
+    if (open && !isRapidMode) {
+       // Focus patient search on open
+       setTimeout(() => {
+           if (patientSearchRef.current) patientSearchRef.current.focus();
+       }, 100);
+    }
+  }, [open, isRapidMode]);
+
+  // --- GROUPING LOGIC ---
+  const groupedItems = useMemo(() => {
+      const groups = {};
+      selectedItems.forEach(item => {
+          const dept = item.department || "General / Other";
+          if (!groups[dept]) groups[dept] = [];
+          groups[dept].push(item);
+      });
+      return Object.keys(groups).sort().map(dept => ({
+          dept,
+          items: groups[dept],
+          color: getDeptColor(dept)
+      }));
+  }, [selectedItems]);
+
   // --- BILLING CALCULATOR ---
   const handleValuesChange = (changedValues, allValues) => {
     const discount = allValues.discountAmount || 0;
     const paid = allValues.paidAmount || 0;
-    const newNet = Math.max(0, totalAmount - discount);
-    setNetAmount(newNet);
-    setDueAmount(Math.max(0, newNet - paid));
+    
+    // We rely on effects to sync netAmount, but can pre-calculate here for responsiveness
+    // logic is inside useEffect below
   };
 
   useEffect(() => {
@@ -95,7 +145,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     const newNet = Math.max(0, sum - currentDiscount);
     setNetAmount(newNet);
     setDueAmount(Math.max(0, newNet - currentPaid));
-  }, [selectedItems, form]);
+  }, [selectedItems, form, Form.useWatch("discountAmount", form), Form.useWatch("paidAmount", form)]);
 
 
   // --- HANDLERS: PATIENT ---
@@ -105,15 +155,13 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     if (val.length >= 2) searchPatients(dispatch, val);
   };
 
-  // 1. Registered Patient Selected
   const handleSelectRegistered = (val) => {
       setPatientId(val);
-      setSearchTerm(""); // Clear search text
+      setSearchTerm(""); 
       
       const selected = searchResults?.find(p => p._id === val);
       if (selected) {
           setSelectedPatientOriginal(selected);
-          // Populate form to allow Age/Gender editing
           setPatientForm({
               name: `${selected.firstName} ${selected.lastName}`,
               age: selected.age,
@@ -122,16 +170,15 @@ const CreateOrderDrawer = ({ open, onClose }) => {
       }
   };
 
-  // 2. Clear Selection (Reset to Walk-in Mode)
   const handleClearSelection = () => {
       setPatientId(null);
-        dispatch(patientSearchSuccess(null));
+      dispatch(patientSearchSuccess(null));
       setSelectedPatientOriginal(null);
-      setSearchTerm(""); // Clear search input
+      setSearchTerm(""); 
       setPatientForm({ name: "", age: "", gender: "Male" }); 
+      setTimeout(() => patientSearchRef.current?.focus(), 50);
   };
 
-  // 3. Handle Form Changes
   const handlePatientFormChange = (field, value) => {
       setPatientForm(prev => ({ ...prev, [field]: value }));
   };
@@ -174,6 +221,56 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     form.setFieldsValue({ serviceSelect: newItems.map(i => i._id) });
   };
 
+  const handleHomeCollectionChange = (e) => {
+      const checked = e.target.checked;
+      if (checked) {
+          const invalidTests = selectedItems.filter(t => t.homeCollectionAvailable === false);
+          if (invalidTests.length > 0) {
+              Modal.confirm({
+                  title: <><WarningOutlined style={{color: 'orange'}}/> Home Collection Warning</>,
+                  content: (
+                      <div>
+                          <p>The following tests are marked as <b>Not Available</b> for Home Collection:</p>
+                          <ul>{invalidTests.map(t => <li key={t._id}>{t.name}</li>)}</ul>
+                          <p>Do you still want to mark this as Home Collection?</p>
+                      </div>
+                  ),
+                  onOk: () => {
+                      setIsHomeCollection(true);
+                      form.setFieldsValue({ isHomeCollection: true }); // Sync with form if needed field
+                  },
+                  onCancel: () => {} // Do nothing, checkbox stays unchecked
+              });
+              return;
+          }
+      }
+      setIsHomeCollection(checked);
+  };
+
+  const resetForm = () => {
+      form.resetFields();
+      setSelectedItems([]);
+      handleClearSelection();
+      setTotalAmount(0);
+      setNetAmount(0);
+      setDueAmount(0);
+      setPendingSubmission(null);
+      setSearchTerm("");
+      setIsHomeCollection(false);
+      form.setFieldsValue({
+          paymentMode: "Cash",
+          discountAmount: 0,
+          paidAmount: 0
+      });
+  };
+
+  const handleClose = (fullyClose = true) => {
+    if (fullyClose) {
+        resetForm();
+        onClose();
+    }
+  };
+
   // --- SUBMISSION ---
 
   const onFinish = async (values) => {
@@ -206,29 +303,25 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         discountReason,
         paymentMode, 
         discountOverrideCode,
-        notes: notes || ""
+        notes: notes || "",
+        isHomeCollection: isHomeCollection
     };
 
-    // --- PATIENT LOGIC ---
     if (patientId) {
-        // SCENARIO A: Registered Patient
         orderData.patientId = patientId;
         orderData.walkin = false;
-
-        // Check for updates to Age/Gender
         if (selectedPatientOriginal) {
             const hasChanged = 
                 String(patientForm.age) !== String(selectedPatientOriginal.age) || 
                 patientForm.gender !== selectedPatientOriginal.gender;
             
             if (hasChanged) {
-                orderData.updatedPatientData = true; // Flag for backend
+                orderData.updatedPatientData = true;
                 orderData.age = patientForm.age;
                 orderData.gender = patientForm.gender;
             }
         }
     } else {
-        // SCENARIO B: Walk-in Patient
         orderData.walkin = true;
         orderData.patientName = patientForm.name;
         orderData.age = patientForm.age;
@@ -236,7 +329,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         orderData.mobile = ""; 
     }
 
-    // Advance Payment
     if (paymentMode !== "Razorpay" && paidAmount > 0) {
         orderData.initialPayment = {
             mode: paymentMode,
@@ -245,7 +337,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
             notes: notes || "Advance Payment"
         };
     }
-console.log(orderData)
 
     const res = await createOrder(dispatch, orderData);
     setLoading(false);
@@ -262,6 +353,7 @@ console.log(orderData)
         } else {
             handleClose(true);
         }
+        getOrders(dispatch); // Refresh orders list
 
     } else if (res.requiresOverride) { 
         setPendingSubmission(values); 
@@ -275,21 +367,6 @@ console.log(orderData)
       onFinish({ ...pendingSubmission, overrideCode: code });
   };
 
-  const handleClose = (fullyClose = true) => {
-    if (fullyClose) {
-        form.resetFields();
-        setSelectedItems([]);
-        handleClearSelection();
-        setTotalAmount(0);
-        setNetAmount(0);
-        setDueAmount(0);
-        setPendingSubmission(null);
-        setSearchTerm("");
-        onClose();
-    }
-  };
-
-  // --- FILTER: Name + Alias + Substring ---
   const filterServices = (input, option) => {
       if (!input) return true;
       const text = input.toLowerCase();
@@ -297,26 +374,57 @@ console.log(orderData)
       const alias = option.alias ? String(option.alias).toLowerCase() : '';
       return name.includes(text) || alias.includes(text);
   };
+
   return (
     <>
       <Drawer
-        title="Create New Order"
-        width={800}
+        title={
+             isRapidMode ? (
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                   <span><ThunderboltFilled style={{color: '#faad14', marginRight: 8}}/> Rapid Order Mode</span>
+                   <Button onClick={() => setIsRapidMode(false)} size="small">Switch to Normal</Button>
+                </div>
+             ) : "Create New Order"
+        }
+        width={isRapidMode ? "100%" : 800}
         onClose={() => handleClose(true)}
         open={open}
         destroyOnClose
+        bodyStyle={isRapidMode ? { padding: 0 } : {}}
         extra={
-             <Statistic title="Net Payable" value={netAmount} prefix="₹" valueStyle={{ fontSize: 16, color: '#1890ff' }} />
+            !isRapidMode && (
+                <div style={{display:'flex', gap: 10, alignItems:'center'}}>
+                    <Button 
+                        type="dashed" 
+                        danger 
+                        icon={<ThunderboltFilled />} 
+                        onClick={() => setIsRapidMode(true)}
+                    >
+                        Rapid Mode
+                    </Button>
+                </div>
+            )
         }
         footer={
-          <div style={{ textAlign: "right" }}>
-            <Button onClick={() => handleClose(true)} style={{ marginRight: 8 }}>Cancel</Button>
-            <Button type="primary" onClick={form.submit} loading={loading} icon={<CalculatorOutlined />}>
-               Confirm & Book
-            </Button>
-          </div>
+           !isRapidMode && (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Button danger type="text" icon={<ClearOutlined />} onClick={resetForm}>Reset Form</Button>
+                <div>
+                    <Button onClick={() => handleClose(true)} style={{ marginRight: 8 }}>Cancel</Button>
+                    <Button type="primary" onClick={form.submit} loading={loading} icon={<CalculatorOutlined />}>
+                       Confirm & Book
+                    </Button>
+                </div>
+            </div>
+           )
         }
       >
+        {isRapidMode ? (
+            <RapidOrderLayout 
+                onClose={() => handleClose(true)} 
+                onSwitchToNormal={() => setIsRapidMode(false)} 
+            />
+        ) : (
         <Form 
             layout="vertical" 
             form={form} 
@@ -324,21 +432,20 @@ console.log(orderData)
             onValuesChange={handleValuesChange}
             initialValues={{ 
                 paymentMode: "Cash", 
-                discountAmount: 0,
+                discountAmount: 0, 
                 paidAmount: 0
             }}
         >
-          
           <Row gutter={24}>
               {/* Left Col: Patient & Services */}
               <Col span={14}>
                   <Card size="small" title="1. Patient Selection" style={{ marginBottom: 16 }}>
                       
-                      {/* SECTION A: SEARCH BAR */}
                       <Row gutter={8} align="middle">
                           <Col span={20}>
                               <Form.Item name="patientId" noStyle>
                                   <Select
+                                      ref={patientSearchRef}
                                       showSearch
                                       placeholder="Search Registered Patient (Name / Mobile)"
                                       filterOption={false}
@@ -353,7 +460,6 @@ console.log(orderData)
                                   >
                                       {searchResults?.map(p => (
                                           <Option key={p._id} value={p._id}>
-                                              {/* Simple Display: Name (Mobile) */}
                                               {p.firstName} {p.lastName} ({p.mobile})
                                           </Option>
                                       ))}
@@ -369,9 +475,8 @@ console.log(orderData)
                               />
                           </Col>
                       </Row>
-                      {/* SECTION B: DYNAMIC UI */}
+                      
                       {!patientId ? (
-                          // MODE 1: WALK-IN (Inputs Active)
                           <>
                               <Divider style={{ margin: '12px 0', fontSize: 12, color: '#999' }}>OR Walk-In / Guest</Divider>
                               <div style={{ background: '#f6ffed', padding: 12, borderRadius: 6, border: '1px solid #b7eb8f' }}>
@@ -389,6 +494,7 @@ console.log(orderData)
                                           <InputNumber 
                                               style={{width: '100%'}} 
                                               placeholder="Yrs"
+                                              min={1} 
                                               value={patientForm.age}
                                               onChange={v => handlePatientFormChange('age', v)}
                                           />
@@ -408,7 +514,6 @@ console.log(orderData)
                               </div>
                           </>
                       ) : (
-                          // MODE 2: REGISTERED PATIENT (Details View + Editing)
                           <div style={{ marginTop: 12, background: '#f0f5ff', padding: 12, borderRadius: 6, border: '1px solid #adc6ff' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                                   <Text strong style={{color: '#1d39c4'}}>
@@ -423,13 +528,14 @@ console.log(orderData)
                               </div>
                               <Row gutter={8}>
                                   <Col span={12}>
-                                       <Text type="secondary" style={{fontSize: 11}}>Mobile</Text>
-                                       <div style={{ fontWeight: 500 }}>{selectedPatientOriginal?.mobile}</div>
+                                        <Text type="secondary" style={{fontSize: 11}}>Mobile</Text>
+                                        <div style={{ fontWeight: 500 }}>{selectedPatientOriginal?.mobile}</div>
                                   </Col>
                                   <Col span={6}>
                                       <Text type="secondary" style={{fontSize: 11}}>Age (Edit)</Text>
                                       <InputNumber 
                                           style={{width: '100%'}} 
+                                          min={1}
                                           value={patientForm.age}
                                           onChange={v => handlePatientFormChange('age', v)}
                                           status={patientForm.age !== selectedPatientOriginal?.age ? "warning" : ""}
@@ -462,6 +568,7 @@ console.log(orderData)
                               onChange={handleServicesChange}
                               value={selectedItems.map(i => i._id)}
                               tagRender={() => null} 
+                              autoClearSearchValue={true}
                           >
                               <Select.OptGroup label="Packages">
                                   {packages?.map(p => (
@@ -484,16 +591,30 @@ console.log(orderData)
                           size="small"
                           dataSource={selectedItems}
                           locale={{ emptyText: <Empty description="No services selected" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-                          renderItem={item => (
-                              <List.Item actions={[<DeleteOutlined onClick={() => handleRemoveItem(item._id)} style={{color:'red'}} />]}>
-                                  <List.Item.Meta
-                                      avatar={<Avatar size="small" icon={<MedicineBoxOutlined />} style={{ backgroundColor: item.type === 'Package' ? '#87d068' : '#1890ff' }} />}
-                                      title={<span style={{fontSize: 13}}>{item.name}</span>}
-                                  />
-                                  <div>₹{item.price}</div>
-                              </List.Item>
+                      >
+                          {selectedItems.length === 0 ? null : (
+                              groupedItems.map(group => (
+                                  <div key={group.dept}>
+                                      <Divider orientation="left" style={{ margin: '12px 0 8px', fontSize: 12 }}>
+                                          <Tag color={group.color}>{group.dept}</Tag>
+                                      </Divider>
+                                      {group.items.map(item => (
+                                          <List.Item 
+                                            key={item._id}
+                                            actions={[<DeleteOutlined onClick={() => handleRemoveItem(item._id)} style={{color:'red', cursor: 'pointer'}} />]}
+                                            style={{padding: '4px 0'}}
+                                          >
+                                              <List.Item.Meta
+                                                  avatar={<Avatar size="small" icon={<MedicineBoxOutlined />} style={{ backgroundColor: item.type === 'Package' ? '#87d068' : '#1890ff' }} />}
+                                                  title={<span style={{fontSize: 13}}>{item.name}</span>}
+                                              />
+                                              <div>₹{item.price}</div>
+                                          </List.Item>
+                                      ))}
+                                  </div>
+                              ))
                           )}
-                      />
+                      </List>
                   </Card>
               </Col>
 
@@ -533,9 +654,10 @@ console.log(orderData)
                         label={
                             <div style={{display:'flex', justifyContent:'space-between', width:'100%', alignItems:'center'}}>
                                 <span>Advance / Paid Now</span>
-                                <Checkbox style={{marginLeft: '10px'}} onChange={(e) => {
-                                    if(e.target.checked) form.setFieldsValue({ paidAmount: netAmount });
-                                }}>Pay Full</Checkbox>
+                                <Checkbox 
+                                    style={{marginLeft: '10px'}} 
+                                    onChange={(e) => form.setFieldsValue({ paidAmount: e.target.checked ? netAmount : 0 })}
+                                >Pay Full</Checkbox>
                             </div>
                         }
                       >
@@ -567,6 +689,12 @@ console.log(orderData)
                         </div>
                       )}
 
+                      <div style={{ marginBottom: 16 }}>
+                          <Checkbox checked={isHomeCollection} onChange={handleHomeCollectionChange}>
+                              <HomeOutlined /> Home Collection
+                          </Checkbox>
+                      </div>
+
                       <Alert 
                         message={`Balance Due: ₹${dueAmount}`} 
                         type={dueAmount > 0 ? "warning" : "success"} 
@@ -581,6 +709,7 @@ console.log(orderData)
           </Form.Item>
 
         </Form>
+        )}
       </Drawer>
 
       <CreatePatientModal 
