@@ -123,10 +123,10 @@ export const searchMasterCatalog = async (dispatch, query, page = 1, limit = 10)
 };
 
 // --- LOCAL TESTS ---
-export const getMyTests = async (dispatch) => {
+export const getMyTests = async (dispatch,date) => {
   dispatch(processStart());
   try {
-    const res = await userRequest.get("/tests");
+    const res = await userRequest.get(`/tests?date=${date}`);
     dispatch(getTestsSuccess(res.data));
   } catch (err) {
     dispatch(processFailure());

@@ -17,7 +17,8 @@ import {
   Tag,
   Tooltip,
   Modal,
-  Space
+  Space,
+  DatePicker
 } from "antd";
 import {
   UserAddOutlined,
@@ -34,13 +35,14 @@ import {
   LaptopOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-import { createOrder, searchPatients, getOrders } from "../redux/apiCalls";
+import { createOrder, searchPatients, getOrders,getMyTests } from "../redux/apiCalls";
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
 import DiscountOverrideModal from "./DiscountOverrideModal";
 import OrderDetailsDrawer from "./OrderDetailsDrawer"; // Imported Drawer
 import { patientSearchSuccess } from "../redux/orderRedux";
-import dayjs from "dayjs";
+import moment from "moment";
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -95,6 +97,25 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [pendingSubmission, setPendingSubmission] = useState(null);
+     const [scheduleDate, setScheduleDate] = useState(moment().format("YYYY-MM-DD"));
+  
+  
+    useEffect(() => {
+      getMyTests(dispatch,scheduleDate);
+    }, [scheduleDate])
+  
+  
+    const disabledDate = (current) => {
+    return current && current < dayjs().startOf('day');
+  };
+  
+    const onScheduleDateChange = (date) => {
+    if (date) {
+      setScheduleDate(date.format("YYYY-MM-DD"));
+    } else {
+      setScheduleDate(null);
+    }
+  };
 
 // --- 1. INITIALIZATION (Runs ONCE on mount) ---
   useEffect(() => {
@@ -448,6 +469,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                                             <Option value="Female">Female</Option>
                                         </Select>
                                     </Col>
+                                     
                                 </Row>
                             ) : (
                                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', height: 32 }}>
@@ -468,30 +490,51 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
 
                 {/* 2. MIDDLE: Test List */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 16px', background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
-                        <Text type="secondary" style={{fontSize: 11, display:'block', marginBottom: 4}}>Add Tests or Packages (Search by Name or Alias)</Text>
-                        <Form.Item name="serviceSelect" noStyle>
-                            <Select
-                                ref={serviceSearchRef}
-                                mode="multiple"
-                                showSearch
-                                style={{ width: '100%' }}
-                                placeholder="Search tests/services... (F3)"
-                                filterOption={filterServices}
-                                onChange={handleServicesChange}
-                                value={selectedItems.map(i => i._id)}
-                                tagRender={() => null}
-                                size="middle"
-                            >
-                                <Select.OptGroup label="Packages">
-                                    {packages?.map(p => <Option key={p._id} value={p._id} alias={p.alias}>{p.name}</Option>)}
-                                </Select.OptGroup>
-                                <Select.OptGroup label="Tests">
-                                    {tests?.map(t => <Option key={t._id} value={t._id} alias={t.alias}>{t.name}</Option>)}
-                                </Select.OptGroup>
-                            </Select>
-                        </Form.Item>
-                    </div>
+                   <div style={{ padding: '8px 16px', background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+    <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+        Add Tests or Packages (Search by Name or Alias)
+    </Text>
+    
+    {/* Flex Container for Side-by-Side Layout */}
+    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        
+        {/* 1. Search Bar (Takes remaining space) */}
+        <div style={{ flex: 1 }}>
+            <Form.Item name="serviceSelect" noStyle>
+                <Select
+                    ref={serviceSearchRef}
+                    mode="multiple"
+                    showSearch
+                    style={{ width: '100%' }}
+                    placeholder="Search tests/services... (F3)"
+                    filterOption={filterServices}
+                    onChange={handleServicesChange}
+                    value={selectedItems.map(i => i._id)}
+                    tagRender={() => null}
+                    size="middle"
+                >
+                    <Select.OptGroup label="Packages">
+                        {packages?.map(p => <Option key={p._id} value={p._id} alias={p.alias}>{p.name}</Option>)}
+                    </Select.OptGroup>
+                    <Select.OptGroup label="Tests">
+                        {tests?.map(t => <Option key={t._id} value={t._id} alias={t.alias}>{t.name}</Option>)}
+                    </Select.OptGroup>
+                </Select>
+            </Form.Item>
+        </div>
+
+        {/* 2. Date Picker (Fixed width or natural width) */}
+        <DatePicker
+        // style={{width: '100%'}}
+            value={scheduleDate ? dayjs(scheduleDate, "YYYY-MM-DD") : null}
+            onChange={onScheduleDateChange}
+             format="ddd, Do MMMM YYYY"
+            disabledDate={disabledDate}
+            allowClear={false}
+            style={{ width: '220px' }} 
+        />
+    </div>
+</div>
 
                     <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px 16px' }}>
                         {selectedItems.length === 0 ? (

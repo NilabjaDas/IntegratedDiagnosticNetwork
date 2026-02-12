@@ -27,6 +27,8 @@ import Page3 from "./pages/Page3";
 import {
   getInstitutionDetails,
   getInstitutionStatus,
+  getMyTests,
+  getPackages,
   getPing,
 } from "./redux/apiCalls";
 
@@ -37,6 +39,7 @@ import DeactivatedOverlayComp from "./components/DeactivatedOverlayComp";
 import TestsPage from "./pages/TestsPage";
 import OrdersPage from "./pages/OrdersPage";
 import ConfigurationPage from "./pages/ConfigurationPage";
+import moment from "moment";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -138,6 +141,15 @@ function App() {
       await getInstitutionDetails(dispatch);
     };
     fetchInstitutionDetails();
+  }, [dispatch]);
+
+
+
+  useEffect(() => {
+    const today = moment().format("YYYY-MM-DD")
+    // Load initial data
+    getMyTests(dispatch,today);
+    getPackages(dispatch);
   }, [dispatch]);
 
   // -------------------------

@@ -20,13 +20,7 @@ const PageContainer = styled.div`
 `;
 
 const TestsPage = () => {
-  const dispatch = useDispatch();
 
-  useEffect(() => {
-    // Load initial data
-    getMyTests(dispatch);
-    getPackages(dispatch);
-  }, [dispatch]);
 
   const items = [
     {

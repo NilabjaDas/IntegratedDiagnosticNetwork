@@ -20,7 +20,8 @@ import {
   Checkbox,
   Modal,
   Tag,
-  Tooltip
+  Tooltip,
+  DatePicker
 } from "antd";
 import { 
   UserAddOutlined, 
@@ -38,12 +39,14 @@ import {
   ClearOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-import { createOrder, searchPatients, getOrders } from "../redux/apiCalls"; 
+import { createOrder, searchPatients, getOrders, getMyTests } from "../redux/apiCalls"; 
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
 import DiscountOverrideModal from "./DiscountOverrideModal"; 
 import { patientSearchSuccess } from "../redux/orderRedux";
 import RapidOrderLayout from "./RapidOrderLayout"; 
+import moment from "moment";
+import dayjs from 'dayjs';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -100,8 +103,26 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
   const [pendingSubmission, setPendingSubmission] = useState(null);
-
   const paidAmount = Form.useWatch("paidAmount", form);
+    const [scheduleDate, setScheduleDate] = useState(moment().format("YYYY-MM-DD"));
+
+
+  useEffect(() => {
+    getMyTests(dispatch,scheduleDate);
+  }, [scheduleDate])
+
+
+  const disabledDate = (current) => {
+  return current && current < dayjs().startOf('day');
+};
+
+  const onScheduleDateChange = (date) => {
+  if (date) {
+    setScheduleDate(date.format("YYYY-MM-DD"));
+  } else {
+    setScheduleDate(null);
+  }
+};
 
   // --- INITIALIZATION ---
   useEffect(() => {
@@ -337,7 +358,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
             notes: notes || "Advance Payment"
         };
     }
-
+console.log(orderData)
     const res = await createOrder(dispatch, orderData);
     setLoading(false);
 
@@ -619,7 +640,18 @@ const CreateOrderDrawer = ({ open, onClose }) => {
               </Col>
 
               <Col span={10}>
-                  <Card size="small" title="3. Billing" style={{ height: '100%' }}>
+                <Card size="small" title="3. Select Date" style={{ marginBottom: 16 }}>
+                <DatePicker style={{width: '100%'}}
+                            value={scheduleDate ? dayjs(scheduleDate, "YYYY-MM-DD") : null} 
+                                onChange={onScheduleDateChange} 
+                                format="ddd, Do MMMM YYYY"
+                                disabledDate={disabledDate} // <--- Add this prop
+                                allowClear={false}
+                            />
+                </Card>
+                  <Card size="small" title="4. Billing" style={{ height: '100%' }}>
+
+                  
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                           <Text type="secondary">Total:</Text>
                           <Text strong>₹{totalAmount}</Text>

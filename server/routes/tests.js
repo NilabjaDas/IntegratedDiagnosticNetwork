@@ -5,8 +5,11 @@ const BaseTest = require("../models/BaseTest");
 const Institution = require("../models/Institutions");
 const Test = require("../models/Test"); 
 const Package = require("../models/Package");
+const TestAvailabilitySchema = require("../models/TestAvailability");
 const getModel = require("../middleware/getModelsHandler");
 const { verifyToken } = require("../middleware/verifyToken");
+const moment = require("moment");
+
 
 // Middleware to Get Tenant Models
 const getTenantContext = async (req, res, next) => {
@@ -20,6 +23,7 @@ const getTenantContext = async (req, res, next) => {
     const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
     req.TenantTest = getModel(tenantDb, "Test", Test.schema || Test);
     req.TenantPackage = getModel(tenantDb, "Package", Package.schema || Package);
+    req.TenantAvailability = getModel(tenantDb, "TestAvailability", TestAvailabilitySchema);
     req.institutionData = institution;
 
     next();
@@ -226,12 +230,48 @@ router.post("/custom", async (req, res) => {
 });
 
 // --- 2. GENERAL ROOT ROUTES ---
-
-// Get all tests
+// Get all tests (Enhanced with Availability)
 router.get("/", async (req, res) => {
   try {
+    const { date } = req.query; // New Date Param
+    // Default to Today if not provided
+    const dateKey = date ? moment(date).format("YYYY-MM-DD") : moment().format("YYYY-MM-DD");
+
     const tests = await req.TenantTest.find({ isActive: true }).sort({ name: 1 });
-    res.json(tests);
+
+    // 1. Fetch Availability for ALL tests on this date
+    const testIds = tests.map(t => t._id.toString());
+    const availabilities = await req.TenantAvailability.find({
+        testId: { $in: testIds },
+        date: dateKey
+    });
+
+    // 2. Map Availability to ID for O(1) access
+    const availabilityMap = {};
+    availabilities.forEach(a => {
+        availabilityMap[a.testId] = a.count;
+    });
+
+    // 3. Merge Data
+    const testsWithAvailability = tests.map(testDoc => {
+        const test = testDoc.toObject();
+        const currentCount = availabilityMap[test._id.toString()] || 0;
+
+        test.scheduledCount = currentCount;
+        
+        // Calculate remaining slots if a limit exists
+        if (test.dailyLimit !== null && test.dailyLimit !== undefined && test.dailyLimit > 0) {
+            test.remainingSlots = Math.max(0, test.dailyLimit - currentCount);
+            test.isFullyBooked = currentCount >= test.dailyLimit;
+        } else {
+            test.remainingSlots = null; // Infinite
+            test.isFullyBooked = false;
+        }
+
+        return test;
+    });
+
+    res.json(testsWithAvailability);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -277,14 +317,18 @@ router.post("/", async (req, res) => {
 
 // --- 3. PARAMETERIZED ROUTES (MUST BE LAST) ---
 
-// Get Single Test Details (Merged)
+// Get Single Test Details (Merged with Availability)
 router.get("/:id", async (req, res) => {
   try {
+    const { date } = req.query; // New Date Param
+    const dateKey = date ? moment(date).format("YYYY-MM-DD") : moment().format("YYYY-MM-DD");
+
     const localTest = await req.TenantTest.findById(req.params.id);
     if (!localTest) return res.status(404).json({ message: "Test not found." });
 
     let responseData = localTest.toObject();
 
+    // 1. Merge Master Data
     if (localTest.baseTestId) {
       const masterTest = await BaseTest.findById(localTest.baseTestId);
       if (masterTest) {
@@ -296,6 +340,24 @@ router.get("/:id", async (req, res) => {
         if (!responseData.description) responseData.description = masterTest.description;
       }
     }
+
+    // 2. Fetch & Attach Availability
+    const availability = await req.TenantAvailability.findOne({
+        testId: localTest._id.toString(),
+        date: dateKey
+    });
+
+    const currentCount = availability ? availability.count : 0;
+    responseData.scheduledCount = currentCount;
+
+    if (responseData.dailyLimit !== null && responseData.dailyLimit !== undefined && responseData.dailyLimit > 0) {
+        responseData.remainingSlots = Math.max(0, responseData.dailyLimit - currentCount);
+        responseData.isFullyBooked = currentCount >= responseData.dailyLimit;
+    } else {
+        responseData.remainingSlots = null;
+        responseData.isFullyBooked = false;
+    }
+
     res.json(responseData);
   } catch (err) {
     console.error("Get Test Details Error:", err);

@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require("uuid");
 const handlebars = require("handlebars");
 const Institution = require("../models/Institutions");
 const Patient = require("../models/Patient"); 
-
+const TestAvailabilitySchema = require("../models/TestAvailability");
 // Schemas
 const OrderSchema = require("../models/Order");
 const TestSchema = require("../models/Test");
@@ -94,6 +94,7 @@ const getTenantContext = async (req, res, next) => {
     req.TenantPackage = getModel(tenantDb, "Package", PackageSchema);
     req.TenantTemplate = getModel(tenantDb, "Template", TemplateSchema);
     req.TenantUser = getModel(tenantDb, "User", UserSchema);
+    req.TenantAvailability = getModel(tenantDb, "TestAvailability", TestAvailabilitySchema);
     next();
   } catch (err) {
     res.status(500).json({ message: "Database Connection Error" });
@@ -124,17 +125,177 @@ const validateDiscount = async (userModel, userId, totalAmount, discountAmount) 
 };
 
 // 1. CREATE ORDER
+// router.post("/", async (req, res) => {
+//   try {
+//     const { 
+//         // Common Fields
+//         items, 
+//         paymentMode, 
+//         discountAmount = 0, 
+//         discountReason, 
+//         discountOverrideCode, 
+//         initialPayment, 
+//         notes,
+
+//         // Patient Selection Logic
+//         walkin,      // Boolean flag
+//         patientId,   // For Registered
+//         patientName, // For Walk-in
+//         age,         // For Walk-in OR Edit Registered
+//         gender,      // For Walk-in OR Edit Registered
+//         updatedPatientData // NEW FLAG: True if user edited registered patient details
+//     } = req.body;
+    
+//     const instId = req.user.institutionId;
+//     let finalPatientId = null;
+//     let finalPatientDetails = {};
+
+//     // --- A. PATIENT RESOLUTION ---
+//     if (walkin) {
+//         // CASE 1: WALK-IN PATIENT
+//         if (!patientName || !age || !gender) {
+//             return res.status(400).json({ message: "Name, Age, and Gender are required for Walk-ins." });
+//         }
+        
+//         finalPatientId = null; // No DB Link
+//         finalPatientDetails = {
+//             name: patientName,
+//             age: Number(age),
+//             gender: gender,
+//             mobile: "" 
+//         };
+
+//     } else {
+//         // CASE 2: REGISTERED PATIENT
+//         if (!patientId) return res.status(400).json({ message: "Patient ID is required." });
+
+//         const patient = await Patient.findById(patientId);
+//         if (!patient) return res.status(404).json({ message: "Patient not found." });
+
+//         // --- UPDATE PATIENT LOGIC (NEW) ---
+//         // If user edited details on frontend, update the Master DB record now.
+//         if (updatedPatientData) {
+//             if (age) patient.age = Number(age);
+//             if (gender) patient.gender = gender;
+//             await patient.save(); // Persist changes to Patient Collection
+//         }
+
+//         finalPatientId = patient._id;
+        
+//         // Snapshot relevant details (Using the freshest data from patient object)
+//         finalPatientDetails = {
+//             name: `${patient.firstName} ${patient.lastName || ''}`.trim(),
+//             age: patient.age, 
+//             gender: patient.gender,
+//             mobile: patient.mobile
+//         };
+
+//         // Link Patient to Institution if not already linked
+//         if(!patient.enrolledInstitutions.includes(instId)){
+//             patient.enrolledInstitutions.push(instId);
+//             await patient.save();
+//         }
+//     }
+
+//     // --- B. CALCULATE ITEMS ---
+//     const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
+//     if (orderItems.length === 0) return res.status(400).json({ message: "No valid items." });
+
+//     // --- C. DISCOUNT VALIDATION LOGIC ---
+//     let authorizerName = null;
+//     let isOverridden = false;
+
+//     if (discountAmount > 0) {
+//         try {
+//             authorizerName = await validateDiscount(req.TenantUser, req.user.userId, calculatedTotal, discountAmount);
+//         } catch (limitError) {
+//             if (discountOverrideCode) {
+//                 const institution = await Institution.findOne({ institutionId: instId }).select("+settings.discountOverrideCode");
+//                 if (institution.settings?.discountOverrideCode === discountOverrideCode) {
+//                     isOverridden = true;
+//                     authorizerName = `System Override (by ${req.user.username})`;
+//                 } else {
+//                     return res.status(403).json({ message: "Invalid Override Code" });
+//                 }
+//             } else {
+//                 return res.status(403).json({ 
+//                     message: limitError.message, 
+//                     requiresOverride: true 
+//                 });
+//             }
+//         }
+//     }
+
+//     // --- D. GENERATE DISPLAY ID ---
+//     const startOfDay = moment().startOf('day').toDate();
+//     const count = await req.TenantOrder.countDocuments({ createdAt: { $gte: startOfDay } });
+//     const displayId = `${moment().format("YYMMDD")}-${String(count + 1).padStart(3, '0')}`;
+
+//     // --- E. FINANCIALS ---
+//     let financials = {
+//         totalAmount: calculatedTotal,
+//         discountAmount,
+//         discountReason, 
+//         discountAuthorizedBy: authorizerName ? `${authorizerName}` : null,
+//         discountOverriden: isOverridden,
+//         netAmount: calculatedTotal - discountAmount,
+//         paidAmount: 0,
+//         dueAmount: calculatedTotal - discountAmount,
+//         status: "Pending"
+//     };
+
+//     // --- F. INITIAL PAYMENT ---
+//     let transactions = [];
+//     if (initialPayment && initialPayment.amount > 0) {
+//         transactions.push({
+//             paymentMode: initialPayment.mode,
+//             amount: Number(initialPayment.amount),
+//             transactionId: initialPayment.transactionId,
+//             notes: initialPayment.notes,
+//             recordedBy: req.user.userId,
+//             date: new Date()
+//         });
+//         financials.paidAmount = Number(initialPayment.amount);
+//         financials.dueAmount = financials.netAmount - financials.paidAmount;
+//         financials.status = financials.dueAmount <= 0 ? "Paid" : "PartiallyPaid";
+//     }
+
+//     // --- G. CREATE ORDER ---
+//     const newOrder = new req.TenantOrder({
+//       institutionId: instId,
+//       orderId: uuidv4(),
+//       displayId,
+      
+//       patientId: finalPatientId, // Null for Walk-ins
+//       isWalkIn: !!walkin,        // True/False
+//       patientDetails: finalPatientDetails, // The snapshot (contains updated age/gender)
+      
+//       items: orderItems,
+//       financials,
+//       transactions,
+//       notes
+//     });
+
+//     await newOrder.save();
+//     res.status(201).json(newOrder);
+
+//   } catch (err) {
+//     console.error("Order Error:", err);
+//     res.status(500).json({ message: err.message });
+//   }
+// });
+
 router.post("/", async (req, res) => {
   try {
     const { 
         // Common Fields
         items, 
-        paymentMode, 
         discountAmount = 0, 
         discountReason, 
         discountOverrideCode, 
         initialPayment, 
         notes,
+        appointment, // <--- NEW: Extract appointment object { date: ... }
 
         // Patient Selection Logic
         walkin,      // Boolean flag
@@ -200,6 +361,51 @@ router.post("/", async (req, res) => {
     const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
     if (orderItems.length === 0) return res.status(400).json({ message: "No valid items." });
 
+    // -------------------------------------------------------------
+    // --- NEW: SCHEDULING & CAPACITY CHECK ---
+    // -------------------------------------------------------------
+    // 1. Filter out IDs of items to check their config
+    const itemIds = orderItems.map(i => i.itemId);
+    
+    // 2. Fetch Test Configs from DB to check limits
+    const dbTests = await req.TenantTest.find({ _id: { $in: itemIds } });
+    const finalAppointmentDate = (appointment && appointment.date) ? appointment.date : new Date();
+    const dateKey = moment(finalAppointmentDate).format("YYYY-MM-DD");
+
+    for (const dbTest of dbTests) {
+        // If test has a limit (and it's not null/0)
+        if (dbTest.dailyLimit !== null && dbTest.dailyLimit !== undefined && dbTest.dailyLimit > 0) {
+            
+
+            // Check availability in Tenant DB
+            // We verify the current count before reserving
+            let availability = await req.TenantAvailability.findOne({
+                testId: dbTest._id.toString(),
+                date: dateKey
+            });
+
+            if (availability) {
+                if (availability.count >= dbTest.dailyLimit) {
+                    return res.status(400).json({ 
+                        message: `Capacity Full: ${dbTest.name} has reached its daily limit (${dbTest.dailyLimit}) for ${dateKey}.` 
+                    });
+                }
+                // Slot available -> Increment
+                availability.count += 1;
+                await availability.save();
+            } else {
+                // First booking of the day -> Create record
+                await req.TenantAvailability.create({
+                    testId: dbTest._id.toString(),
+                    date: dateKey,
+                    count: 1, 
+                    dailyLimit: dbTest.dailyLimit
+                });
+            }
+        }
+    }
+    // -------------------------------------------------------------
+
     // --- C. DISCOUNT VALIDATION LOGIC ---
     let authorizerName = null;
     let isOverridden = false;
@@ -247,7 +453,7 @@ router.post("/", async (req, res) => {
     let transactions = [];
     if (initialPayment && initialPayment.amount > 0) {
         transactions.push({
-            paymentMode: initialPayment.mode,
+            paymentMode: initialPayment.mode, // Preserved exact usage
             amount: Number(initialPayment.amount),
             transactionId: initialPayment.transactionId,
             notes: initialPayment.notes,
@@ -269,6 +475,12 @@ router.post("/", async (req, res) => {
       isWalkIn: !!walkin,        // True/False
       patientDetails: finalPatientDetails, // The snapshot (contains updated age/gender)
       
+      // --- NEW: Save Appointment Details ---
+      appointment: {
+          date: finalAppointmentDate,
+          status: "Scheduled"
+      },
+
       items: orderItems,
       financials,
       transactions,
@@ -283,6 +495,7 @@ router.post("/", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
 
 // 2. LIST ORDERS
 router.get("/", async (req, res) => {
@@ -439,25 +652,139 @@ router.get("/:id", async (req, res) => {
 // ==========================================
 // 4. MODIFY ORDER (Add/Remove Items)
 // ==========================================
+// router.put("/:id/items", async (req, res) => {
+//     try {
+//         const { items, discountAmount } = req.body; // Expecting NEW full list of items
+//         const order = await req.TenantOrder.findById(req.params.id);
+        
+//         if (!order) return res.status(404).json({ message: "Order not found" });
+//         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Cannot modify cancelled order." });
+
+//         // Recalculate everything based on new items list
+//         const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
+
+//         // Update Items
+//         order.items = orderItems;
+
+//         // Recalculate Financials (Preserve paidAmount)
+//         order.financials.totalAmount = calculatedTotal;
+//         const currentDiscount = discountAmount !== undefined ? discountAmount : order.financials.discountAmount;
+//         if (currentDiscount > 0) {
+//             try {
+//                 const authName = await validateDiscount(req.TenantUser, req.user.userId, calculatedTotal, currentDiscount);
+//                 order.financials.discountAuthorizedBy = `${authName} (${req.user.userId})`;
+//             } catch (e) {
+//                 return res.status(403).json({ message: e.message });
+//             }
+//         }
+//         if(discountAmount !== undefined) order.financials.discountAmount = discountAmount;
+        
+//         order.financials.netAmount = order.financials.totalAmount - order.financials.discountAmount;
+        
+//         // Logic: If netAmount drops below paidAmount (Refund scenario), handle as 'Paid' but negative due?
+//         // Usually, we keep it simple:
+//         order.financials.dueAmount = order.financials.netAmount - order.financials.paidAmount;
+        
+//         // Status Update
+//         if (order.financials.dueAmount <= 0) order.financials.status = "Paid";
+//         else if (order.financials.paidAmount > 0) order.financials.status = "PartiallyPaid";
+//         else order.financials.status = "Pending";
+
+//         await order.save();
+//         res.json(order);
+
+//     } catch(err) {
+//         console.error("Modify Order Error:", err);
+//         res.status(500).json({ message: err.message });
+//     }
+// });
 router.put("/:id/items", async (req, res) => {
     try {
-        const { items, discountAmount } = req.body; // Expecting NEW full list of items
+        const { items, discountAmount } = req.body; 
         const order = await req.TenantOrder.findById(req.params.id);
         
         if (!order) return res.status(404).json({ message: "Order not found" });
         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Cannot modify cancelled order." });
 
-        // Recalculate everything based on new items list
+        // 1. Calculate New Items Structure
         const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
 
-        // Update Items
+        // -------------------------------------------------------------
+        // --- NEW SECTION: CAPACITY DELTA CHECK ---
+        // -------------------------------------------------------------
+        // We need to verify if we need to Reserve or Release slots
+        
+        // A. Identify what changed
+        const oldItemIds = order.items.map(i => i.itemId.toString());
+        const newItemIds = orderItems.map(i => i.itemId.toString());
+
+        const addedIds = newItemIds.filter(id => !oldItemIds.includes(id));
+        const removedIds = oldItemIds.filter(id => !newItemIds.includes(id));
+
+        // Only proceed if there are changes and the order has a date
+        if ((addedIds.length > 0 || removedIds.length > 0)) {
+            
+            // If we are adding items, we strictly need a date. 
+            // If the order was legacy/walk-in without a date, default to Today or fail.
+            const orderDate = order.appointment?.date || new Date();
+            const dateKey = moment(orderDate).format("YYYY-MM-DD");
+
+            // B. Handle REMOVED Items (Release Slots)
+            if (removedIds.length > 0) {
+                const removedTests = await req.TenantTest.find({ _id: { $in: removedIds } });
+                for (const test of removedTests) {
+                    if (test.dailyLimit !== null && test.dailyLimit > 0) {
+                        await req.TenantAvailability.findOneAndUpdate(
+                            { testId: test._id.toString(), date: dateKey },
+                            { $inc: { count: -1 } }
+                        );
+                    }
+                }
+            }
+
+            // C. Handle ADDED Items (Reserve Slots)
+            if (addedIds.length > 0) {
+                const addedTests = await req.TenantTest.find({ _id: { $in: addedIds } });
+                for (const test of addedTests) {
+                    if (test.dailyLimit !== null && test.dailyLimit > 0) {
+                        
+                        // Check Availability
+                        const availability = await req.TenantAvailability.findOne({
+                            testId: test._id.toString(),
+                            date: dateKey
+                        });
+
+                        if (availability && availability.count >= test.dailyLimit) {
+                            return res.status(400).json({ 
+                                message: `Cannot add ${test.name}: Daily limit reached for ${dateKey}.` 
+                            });
+                        }
+
+                        // Reserve Slot
+                        await req.TenantAvailability.findOneAndUpdate(
+                            { testId: test._id.toString(), date: dateKey },
+                            { 
+                                $inc: { count: 1 },
+                                $setOnInsert: { dailyLimit: test.dailyLimit }
+                            },
+                            { upsert: true }
+                        );
+                    }
+                }
+            }
+        }
+        // -------------------------------------------------------------
+
+        // Update Items in Order
         order.items = orderItems;
 
-        // Recalculate Financials (Preserve paidAmount)
+        // Recalculate Financials
         order.financials.totalAmount = calculatedTotal;
+        
         const currentDiscount = discountAmount !== undefined ? discountAmount : order.financials.discountAmount;
         if (currentDiscount > 0) {
             try {
+                // Re-validate discount if total changed or discount changed
                 const authName = await validateDiscount(req.TenantUser, req.user.userId, calculatedTotal, currentDiscount);
                 order.financials.discountAuthorizedBy = `${authName} (${req.user.userId})`;
             } catch (e) {
@@ -467,9 +794,6 @@ router.put("/:id/items", async (req, res) => {
         if(discountAmount !== undefined) order.financials.discountAmount = discountAmount;
         
         order.financials.netAmount = order.financials.totalAmount - order.financials.discountAmount;
-        
-        // Logic: If netAmount drops below paidAmount (Refund scenario), handle as 'Paid' but negative due?
-        // Usually, we keep it simple:
         order.financials.dueAmount = order.financials.netAmount - order.financials.paidAmount;
         
         // Status Update
@@ -485,10 +809,47 @@ router.put("/:id/items", async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
-
 // ==========================================
 // 5. CANCEL ORDER
 // ==========================================
+// router.put("/:id/cancel", async (req, res) => {
+//     try {
+//         const { reason } = req.body;
+//         const order = await req.TenantOrder.findById(req.params.id);
+        
+//         if (!order) return res.status(404).json({ message: "Order not found" });
+//         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Order is already cancelled." });
+
+//         // 1. Set Cancellation Details
+//         order.cancellation = {
+//             isCancelled: true,
+//             reason: reason || "No reason provided",
+//             cancelledBy: req.user.userId,
+//             date: new Date()
+//         };
+
+//         // 2. Update Financials
+//         order.financials.status = "Cancelled";
+//         order.isReportDeliveryBlocked = true;
+
+//         // 3. Mark all items as cancelled
+//         if (order.items && order.items.length > 0) {
+//             order.items.forEach(item => item.status = "Cancelled");
+//         }
+
+//         // 4. --- UPDATE: Cancel the Appointment ---
+//         if (order.appointment) {
+//             order.appointment.status = "Cancelled";
+//         }
+
+//         await order.save();
+//         res.json(order);
+
+//     } catch(err) {
+//         console.error("Cancellation Error:", err);
+//         res.status(500).json({ message: err.message });
+//     }
+// });
 router.put("/:id/cancel", async (req, res) => {
     try {
         const { reason } = req.body;
@@ -497,24 +858,36 @@ router.put("/:id/cancel", async (req, res) => {
         if (!order) return res.status(404).json({ message: "Order not found" });
         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Order is already cancelled." });
 
-        // 1. Set Cancellation Details
+        // 1. Release Capacity Slots
+        if (order.appointment?.date) {
+            const dateKey = moment(order.appointment.date).format("YYYY-MM-DD");
+            // Find item IDs
+            const itemIds = order.items.map(i => i.itemId);
+            const dbTests = await req.TenantTest.find({ _id: { $in: itemIds } });
+
+            for (const dbTest of dbTests) {
+                if (dbTest.dailyLimit !== null && dbTest.dailyLimit > 0) {
+                    // Decrement count
+                    await req.TenantAvailability.findOneAndUpdate(
+                        { testId: dbTest._id.toString(), date: dateKey },
+                        { $inc: { count: -1 } }
+                    );
+                }
+            }
+        }
+
+        // 2. Set Cancellation Details
         order.cancellation = {
             isCancelled: true,
             reason: reason || "No reason provided",
             cancelledBy: req.user.userId,
             date: new Date()
         };
-
-        // 2. Update Financials
         order.financials.status = "Cancelled";
         order.isReportDeliveryBlocked = true;
-
-        // 3. Mark all items as cancelled
         if (order.items && order.items.length > 0) {
             order.items.forEach(item => item.status = "Cancelled");
         }
-
-        // 4. --- UPDATE: Cancel the Appointment ---
         if (order.appointment) {
             order.appointment.status = "Cancelled";
         }
