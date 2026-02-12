@@ -1,14 +1,11 @@
 const mongoose = require("mongoose");
 
-// Sub-schema for individual parameters (e.g., Hemoglobin within CBC)
+// Sub-schema for individual parameters
 const parameterSchema = new mongoose.Schema({
-  name: { type: String, required: true }, // e.g., "Hemoglobin"
-  unit: { type: String }, // e.g., "g/dL"
+  name: { type: String, required: true }, 
+  unit: { type: String }, 
   inputType: { type: String, enum: ["number", "text", "dropdown", "long_text"], default: "number" },
-  options: [String], // For dropdowns
-  
-  // Reference Ranges (JSON structure for flexibility)
-  // Example: { "Male": { "min": 13, "max": 17 }, "Female": { "min": 12, "max": 15 } }
+  options: [String], 
   bioRefRange: { type: mongoose.Schema.Types.Mixed, default: {} } 
 });
 
@@ -16,32 +13,40 @@ const testSchema = new mongoose.Schema({
   institutionId: { type: String, required: true, index: true },
   
   // --- Link to Master Catalog ---
-  baseTestId: { type: String, index: true }, // The _id from BaseTest (if imported)
-  baseTestCode: { type: String }, // e.g. "CBC"
+  baseTestId: { type: String, index: true }, 
+  baseTestCode: { type: String }, 
   
   // --- Identification ---
-  testCode: { type: String, required: true }, // Local code, e.g. "CBC-APOLLO"
+  testCode: { type: String, required: true }, 
   name: { type: String, required: true }, 
-  alias: { type: String }, // e.g. "Hemogram"
+  alias: { type: String }, 
   
   department: { 
     type: String, 
     enum: ["Pathology", "Radiology", "Cardiology", "Other"], 
     default: "Pathology" 
   },
-  category: { type: String }, // e.g. "Hematology"
+  category: { type: String }, 
   
   // --- Commercials ---
   price: { type: Number, required: true, default: 0 },
   tat: { type: Number }, // Turnaround time in hours
   
+  // --- NEW: Capacity & Logistics (Institution Specific) ---
+  dailyLimit: { type: Number, default: null }, // Null = unlimited. Useful for MRI slots or limited reagents.
+  processingLocation: { type: String, enum: ["In-house", "Outsourced"], default: "In-house" },
+  homeCollectionAvailable: { type: Boolean, default: false },
+  
+  // --- NEW: Patient Prerequisites ---
+  fastingRequired: { type: Boolean, default: false },
+  fastingDuration: { type: Number }, // Duration in hours, e.g., 8 or 12
+
   // --- Lab Workflow Specifics ---
-  specimenType: { type: String }, // e.g., "Whole Blood (EDTA)", "Serum", "Urine"
-  sampleQuantity: { type: String }, // e.g., "3 ml"
-  method: { type: String }, // e.g., "Flow Cytometry", "ELISA"
+  specimenType: { type: String }, 
+  sampleQuantity: { type: String }, 
+  method: { type: String }, 
   
   // --- Configuration ---
-  // If Pathology -> use parameters. If Radiology -> use template.
   parameters: [parameterSchema], 
   template: { type: String }, 
   

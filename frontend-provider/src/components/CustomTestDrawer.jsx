@@ -11,7 +11,8 @@ import {
   InputNumber,
   Divider,
   Card,
-  message
+  message,
+  Checkbox // <-- Added Checkbox
 } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
@@ -25,6 +26,7 @@ const CustomTestDrawer = ({ open, onClose }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
+  
   // Watch department to toggle between Parameters (Pathology) and Template (Radiology)
   const department = Form.useWatch("department", form);
   const isRadiology = department === "Radiology" || department === "Other";
@@ -66,7 +68,17 @@ const CustomTestDrawer = ({ open, onClose }) => {
         </Space>
       }
     >
-      <Form layout="vertical" form={form} onFinish={handleFinish} initialValues={{ department: "Pathology" }}>
+      <Form 
+        layout="vertical" 
+        form={form} 
+        onFinish={handleFinish} 
+        initialValues={{ 
+          department: "Pathology",
+          processingLocation: "In-house", // Default new operational field
+          homeCollectionAvailable: false, // Default new operational field
+          fastingRequired: false        // Default new operational field
+        }}
+      >
         
         <Divider orientation="left">Basic Details</Divider>
         <Row gutter={16}>
@@ -123,6 +135,51 @@ const CustomTestDrawer = ({ open, onClose }) => {
             </Form.Item>
           </Col>
         </Row>
+
+        {/* --- NEW SECTION: Operational Details --- */}
+        <Divider orientation="left">Operational Details</Divider>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="processingLocation" label="Processing Location">
+              <Select>
+                <Option value="In-house">In-house</Option>
+                <Option value="Outsourced">Outsourced</Option>
+              </Select>
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="dailyLimit" label="Daily Limit (Optional)">
+              <InputNumber style={{ width: "100%" }} min={1} placeholder="Leave blank for unlimited" />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Row gutter={16}>
+          <Col span={8}>
+            <Form.Item name="homeCollectionAvailable" valuePropName="checked">
+              <Checkbox>Home Collection Available</Checkbox>
+            </Form.Item>
+          </Col>
+          <Col span={8}>
+            <Form.Item name="fastingRequired" valuePropName="checked">
+              <Checkbox>Fasting Required</Checkbox>
+            </Form.Item>
+          </Col>
+          
+          {/* Dependency: Only show duration if fasting is required */}
+          <Form.Item noStyle shouldUpdate={(prev, current) => prev.fastingRequired !== current.fastingRequired}>
+            {({ getFieldValue }) => 
+              getFieldValue("fastingRequired") ? (
+                <Col span={8}>
+                  <Form.Item name="fastingDuration" label="Fasting Hours" rules={[{ required: true, message: 'Required' }]}>
+                    <InputNumber min={1} style={{ width: "100%" }} placeholder="e.g. 12" />
+                  </Form.Item>
+                </Col>
+              ) : null
+            }
+          </Form.Item>
+        </Row>
+        {/* --- END NEW SECTION --- */}
 
         <Divider orientation="left">Report Configuration</Divider>
         

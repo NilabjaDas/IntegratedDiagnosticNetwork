@@ -42,13 +42,11 @@ router.get("/master-catalog", async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // 1. Base Scoping (Global + Private)
     const scopeQuery = {
       $or: [{ institutionId: null }, { institutionId: req.user.institutionId }],
       isActive: true 
     };
 
-    // 2. Build Search Logic
     let searchQuery = {};
     if (search && search.trim().length > 0) {
         const regex = { $regex: search, $options: "i" };
@@ -62,12 +60,10 @@ router.get("/master-catalog", async (req, res) => {
         };
     }
 
-    // 3. Filters
     let filterQuery = {};
     if (department) filterQuery.department = department;
     if (category) filterQuery.category = category;
 
-    // 4. Combine
     const finalQuery = {
         $and: [
             scopeQuery,
@@ -76,12 +72,11 @@ router.get("/master-catalog", async (req, res) => {
         ]
     };
 
-    // 5. Query with Pagination
     const total = await BaseTest.countDocuments(finalQuery);
     
     const masterTests = await BaseTest.find(finalQuery)
       .select("code name department category method specimenType")
-      .sort({ name: 1 }) // Alphabetical sort for "All" view
+      .sort({ name: 1 }) 
       .skip(skip)
       .limit(limitNum);
 
@@ -182,10 +177,14 @@ router.delete("/packages/:id", async (req, res) => {
   }
 });
 
-// Create a purely custom test
+// Create a purely custom test (UPDATED)
 router.post("/custom", async (req, res) => {
   try {
-    const { name, testCode, department, category, price, tat, alias, specimenType, sampleQuantity, method, parameters, template } = req.body;
+    const { 
+        name, testCode, department, category, price, tat, alias, 
+        specimenType, sampleQuantity, method, parameters, template,
+        dailyLimit, processingLocation, homeCollectionAvailable, fastingRequired, fastingDuration 
+    } = req.body;
 
     if (!name || !testCode || !department || price === undefined) {
         return res.status(400).json({ message: "Name, Test Code, Department, and Price are required." });
@@ -204,6 +203,11 @@ router.post("/custom", async (req, res) => {
       category,
       price: price || 0,
       tat,
+      dailyLimit,
+      processingLocation,
+      homeCollectionAvailable,
+      fastingRequired,
+      fastingDuration,
       specimenType,
       sampleQuantity,
       method,
@@ -233,10 +237,14 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Add a test (Link BaseTest)
+// Add a test (Link BaseTest) - UPDATED
 router.post("/", async (req, res) => {
   try {
-    const { baseTestId, price, tat, alias, customCode } = req.body;
+    const { 
+        baseTestId, price, tat, alias, customCode, 
+        dailyLimit, processingLocation, homeCollectionAvailable, fastingRequired, fastingDuration 
+    } = req.body;
+    
     const baseTest = await BaseTest.findById(baseTestId);
     if (!baseTest) return res.status(404).json({ message: "Master Test not found." });
 
@@ -252,6 +260,11 @@ router.post("/", async (req, res) => {
       department: baseTest.department,
       price: price || 0,
       tat: tat || "",
+      dailyLimit,
+      processingLocation,
+      homeCollectionAvailable,
+      fastingRequired,
+      fastingDuration,
       isActive: true
     });
 
@@ -306,7 +319,7 @@ router.put("/:id", async (req, res) => {
         masterTest = await BaseTest.findById(existingTest.baseTestId);
     }
 
-    // 3. Define Core Fields
+    // 3. Define Core Fields (Operational fields like dailyLimit don't decouple)
     const coreFields = [
         "name", "department", "category", 
         "specimenType", "sampleQuantity", "method", 
@@ -321,16 +334,11 @@ router.put("/:id", async (req, res) => {
         const localVal = existingTest[field];
         const masterVal = masterTest ? masterTest[field] : undefined;
 
-        // Skip if incoming value is not provided
         if (incomingVal === undefined) continue;
 
-        // If incoming differs from Local...
         if (incomingVal !== localVal) {
-            // ...AND it also differs from Master (or Master doesn't exist)
-            // Then it is a true customization.
             if (!masterTest || incomingVal !== masterVal) {
                 shouldDecouple = true;
-                
                 break; 
             }
         }

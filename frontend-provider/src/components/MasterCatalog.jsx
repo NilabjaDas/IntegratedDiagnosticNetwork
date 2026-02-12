@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Table, Input, Button, Card, Tag, Modal, Form, InputNumber, message, Row, Col, Empty } from "antd";
+import { Table, Input, Button, Card, Tag, Modal, Form, InputNumber, message, Row, Col, Empty,Divider,Select,Checkbox } from "antd";
 import { SearchOutlined, PlusOutlined, ExperimentOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { searchMasterCatalog, addTestFromMaster } from "../redux/apiCalls";
 import CustomTestDrawer from "./CustomTestDrawer";
 
 const { Search } = Input;
+const { Option } = Select;
 
 const MasterCatalog = () => {
   const dispatch = useDispatch();
@@ -61,17 +62,22 @@ const MasterCatalog = () => {
     return tests.some((t) => t.baseTestId === baseTestId);
   };
 
-  const openAddModal = (record) => {
+const openAddModal = (record) => {
     setSelectedTest(record);
     form.setFieldsValue({
-      price: 0,
-      tat: "",
-      customCode: record.code, 
-      alias: "",
+        price: 0,
+        tat: "",
+        customCode: record.code, 
+        alias: "",
+        // --- NEW FIELDS DEFAULTS ---
+        processingLocation: "In-house",
+        homeCollectionAvailable: false,
+        fastingRequired: false,
+        fastingDuration: null,
+        dailyLimit: null
     });
     setIsModalOpen(true);
-  };
-
+};
   const handleAddSubmit = async (values) => {
     const payload = {
       baseTestId: selectedTest._id,
@@ -196,39 +202,83 @@ const MasterCatalog = () => {
 
       {/* Add from Master Modal */}
       <Modal
-        title={`Add ${selectedTest?.name}`}
-        open={isModalOpen}
-        onCancel={() => setIsModalOpen(false)}
-        onOk={form.submit}
-        okText="Add Test"
-      >
-        <Form layout="vertical" form={form} onFinish={handleAddSubmit}>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="price" label="Your Price" rules={[{ required: true }]}>
-                <InputNumber style={{ width: "100%" }} min={0} prefix="₹" />
+  title={`Add ${selectedTest?.name}`}
+  open={isModalOpen}
+  onCancel={() => setIsModalOpen(false)}
+  onOk={form.submit}
+  okText="Add Test"
+  width={700} // Increased width slightly to fit new fields
+>
+  <Form layout="vertical" form={form} onFinish={handleAddSubmit}>
+    <Divider orientation="left" style={{ margin: '10px 0' }}>Basic Info</Divider>
+    <Row gutter={16}>
+      <Col span={12}>
+        <Form.Item name="price" label="Your Price" rules={[{ required: true }]}>
+          <InputNumber style={{ width: "100%" }} min={0} prefix="₹" />
+        </Form.Item>
+      </Col>
+      <Col span={12}>
+        <Form.Item name="customCode" label="Test Code">
+          <Input placeholder="Leave default or change" />
+        </Form.Item>
+      </Col>
+    </Row>
+    <Row gutter={16}>
+      <Col span={12}>
+        <Form.Item name="tat" label="Turnaround Time (TAT hours)">
+          <InputNumber style={{ width: "100%" }} min={0} placeholder="e.g. 24" />
+        </Form.Item>
+      </Col>
+      <Col span={12}>
+        <Form.Item name="alias" label="Alias (Optional)">
+          <Input placeholder="Alt Name" />
+        </Form.Item>
+      </Col>
+    </Row>
+
+    <Divider orientation="left" style={{ margin: '10px 0' }}>Operational Details</Divider>
+    <Row gutter={16}>
+      <Col span={12}>
+        <Form.Item name="processingLocation" label="Processing Location">
+          <Select>
+            <Option value="In-house">In-house</Option>
+            <Option value="Outsourced">Outsourced</Option>
+          </Select>
+        </Form.Item>
+      </Col>
+      <Col span={12}>
+        <Form.Item name="dailyLimit" label="Daily Limit (Optional)">
+          <InputNumber style={{ width: "100%" }} min={1} placeholder="Leave blank for unlimited" />
+        </Form.Item>
+      </Col>
+    </Row>
+    <Row gutter={16}>
+      <Col span={8}>
+        <Form.Item name="homeCollectionAvailable" valuePropName="checked">
+          <Checkbox>Home Collection</Checkbox>
+        </Form.Item>
+      </Col>
+      <Col span={8}>
+        <Form.Item name="fastingRequired" valuePropName="checked">
+          <Checkbox>Fasting Required</Checkbox>
+        </Form.Item>
+      </Col>
+      
+      {/* Dependency: Only show duration if fasting is required */}
+      <Form.Item noStyle shouldUpdate={(prev, current) => prev.fastingRequired !== current.fastingRequired}>
+        {({ getFieldValue }) => 
+          getFieldValue("fastingRequired") ? (
+            <Col span={8}>
+              <Form.Item name="fastingDuration" label="Fasting Hours" rules={[{ required: true, message: 'Required' }]}>
+                <InputNumber min={1} style={{ width: "100%" }} placeholder="e.g. 12" />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="customCode" label="Test Code">
-                <Input placeholder="Leave default or change" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="tat" label="Turnaround Time (TAT)">
-                <Input placeholder="e.g. 4 Hours" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="alias" label="Alias (Optional)">
-                <Input placeholder="Alt Name" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
+          ) : null
+        }
+      </Form.Item>
+    </Row>
+  </Form>
+</Modal>
 
       {/* Custom Test Creation Drawer */}
       <CustomTestDrawer 

@@ -305,7 +305,6 @@ console.log(orderData)
         onClose={() => handleClose(true)}
         open={open}
         destroyOnClose
-        maskClosable={false}
         extra={
              <Statistic title="Net Payable" value={netAmount} prefix="₹" valueStyle={{ fontSize: 16, color: '#1890ff' }} />
         }

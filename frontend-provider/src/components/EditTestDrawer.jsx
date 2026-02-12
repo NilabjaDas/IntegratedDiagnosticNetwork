@@ -13,7 +13,7 @@ import {
   Card,
   message,
   Alert,
-  Spin
+  Spin, Checkbox
 } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
@@ -149,6 +149,48 @@ const EditTestDrawer = ({ open, onClose, testData }) => {
               </Form.Item>
              </Col>
           </Row>
+
+          <Divider orientation="left">Operational Details</Divider>
+<Row gutter={16}>
+  <Col span={12}>
+    <Form.Item name="processingLocation" label="Processing Location" initialValue="In-house">
+      <Select>
+        <Select.Option value="In-house">In-house</Select.Option>
+        <Select.Option value="Outsourced">Outsourced</Select.Option>
+      </Select>
+    </Form.Item>
+  </Col>
+  <Col span={12}>
+    <Form.Item name="dailyLimit" label="Daily Limit (Optional)">
+      <InputNumber style={{ width: "100%" }} min={1} placeholder="Leave blank for unlimited" />
+    </Form.Item>
+  </Col>
+</Row>
+
+<Row gutter={16}>
+  <Col span={8}>
+    <Form.Item name="homeCollectionAvailable" valuePropName="checked" initialValue={false}>
+      <Checkbox>Home Collection Available</Checkbox>
+    </Form.Item>
+  </Col>
+  <Col span={8}>
+    <Form.Item name="fastingRequired" valuePropName="checked" initialValue={false}>
+      <Checkbox>Fasting Required</Checkbox>
+    </Form.Item>
+  </Col>
+  
+  <Form.Item noStyle shouldUpdate={(prev, current) => prev.fastingRequired !== current.fastingRequired}>
+    {({ getFieldValue }) => 
+      getFieldValue("fastingRequired") ? (
+        <Col span={8}>
+          <Form.Item name="fastingDuration" label="Fasting Hours" rules={[{ required: true, message: 'Required' }]}>
+            <InputNumber min={1} style={{ width: "100%" }} placeholder="e.g. 12" />
+          </Form.Item>
+        </Col>
+      ) : null
+    }
+  </Form.Item>
+</Row>
 
           <Divider orientation="left" style={{ borderColor: '#d9d9d9', color: isLinked ? '#faad14' : 'inherit' }}>
              Core Details {isLinked && "(Triggers Unlink)"}
