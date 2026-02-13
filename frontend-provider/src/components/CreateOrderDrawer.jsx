@@ -75,7 +75,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   // Redux Data
   const { tests, packages } = useSelector((state) => state[process.env.REACT_APP_TESTS_DATA_KEY] || state.test);
   const { searchResults } = useSelector((state) => state[process.env.REACT_APP_ORDERS_DATA_KEY] || state.order); 
-  
   // Local State
   const [selectedItems, setSelectedItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -218,6 +217,27 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     form.setFieldsValue({ patientId: newPatient._id });
   };
 
+  // Group Active Tests by Department
+const testsByDepartment = useMemo(() => {
+  const groups = {};
+  tests.forEach((t) => {
+    if (!t.isActive) return; // Skip inactive
+    const dept = t.department || "Other";
+    if (!groups[dept]) groups[dept] = [];
+    groups[dept].push(t);
+  });
+  return groups; // e.g., { Pathology: [...], Radiology: [...] }
+}, [tests]);
+
+const activePackages = useMemo(() => packages.filter(p => p.isActive), [packages]);
+
+const filterServices = (input, option) => {
+    const search = input.toLowerCase();
+    // Access custom props 'name' and 'alias' passed to Option
+    const name = String(option.name || "").toLowerCase();
+    const alias = String(option.alias || "").toLowerCase();
+    return name.includes(search) || alias.includes(search);
+};
   // --- HANDLERS: SERVICES ---
 
   const handleServicesChange = (values) => {
@@ -315,7 +335,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         paymentMode, 
         transactionId, 
         notes,
-        discountOverrideCode 
+        discountOverrideCode,
     } = dataToSubmit;
 
     const orderData = {
@@ -325,7 +345,8 @@ const CreateOrderDrawer = ({ open, onClose }) => {
         paymentMode, 
         discountOverrideCode,
         notes: notes || "",
-        isHomeCollection: isHomeCollection
+        isHomeCollection: isHomeCollection,
+        scheduleDate: scheduleDate
     };
 
     if (patientId) {
@@ -388,13 +409,6 @@ console.log(orderData)
       onFinish({ ...pendingSubmission, overrideCode: code });
   };
 
-  const filterServices = (input, option) => {
-      if (!input) return true;
-      const text = input.toLowerCase();
-      const name = option.children ? String(option.children).toLowerCase() : '';
-      const alias = option.alias ? String(option.alias).toLowerCase() : '';
-      return name.includes(text) || alias.includes(text);
-  };
 
   return (
     <>
@@ -581,31 +595,88 @@ console.log(orderData)
 
                   <Card size="small" title="2. Services">
                       <Form.Item name="serviceSelect" style={{ marginBottom: 8 }}>
-                          <Select
-                              mode="multiple"
-                              showSearch
-                              placeholder="Search Test / Package (Name or Alias)..."
-                              filterOption={filterServices}
-                              onChange={handleServicesChange}
-                              value={selectedItems.map(i => i._id)}
-                              tagRender={() => null} 
-                              autoClearSearchValue={true}
-                          >
-                              <Select.OptGroup label="Packages">
-                                  {packages?.map(p => (
-                                      <Option key={p._id} value={p._id} alias={p.alias}>
-                                          {p.name} (₹{p.offerPrice})
-                                      </Option>
-                                  ))}
-                              </Select.OptGroup>
-                              <Select.OptGroup label="Tests">
-                                  {tests?.map(t => (
-                                      <Option key={t._id} value={t._id} alias={t.alias}>
-                                          {t.name} (₹{t.price})
-                                      </Option>
-                                  ))}
-                              </Select.OptGroup>
-                          </Select>
+                        <Select
+    mode="multiple"
+    showSearch
+    style={{ width: '100%' }}
+    placeholder="Search Test / Package (Name or Alias)..."
+    filterOption={filterServices}
+    onChange={handleServicesChange}
+    value={selectedItems.map(i => i._id)}
+    tagRender={() => null}
+    autoClearSearchValue={true}
+    listHeight={300}
+>
+    {/* 1. PACKAGES GROUP */}
+    {activePackages.length > 0 && (
+        <Select.OptGroup label="Packages">
+            {activePackages.map((p) => (
+                <Option 
+                    key={p._id} 
+                    value={p._id} 
+                    name={p.name} // For search filter
+                    alias={p.alias} // For search filter
+                >
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>
+                            {p.name} {p.alias && p.alias !== "nil" ? `(${p.alias})` : ""}
+                        </span>
+                        <span style={{ fontWeight: 500 }}>₹{p.offerPrice}</span>
+                    </div>
+                </Option>
+            ))}
+        </Select.OptGroup>
+    )}
+
+    {/* 2. TESTS GROUPED BY DEPARTMENT */}
+    {Object.keys(testsByDepartment).sort().map((dept) => (
+        <Select.OptGroup key={dept} label={dept}>
+            {testsByDepartment[dept].map((t) => {
+                // Formatting Logic
+                const showLimit = t.remainingSlots !== null;
+                const limitText = showLimit ? ` [${t.scheduledCount}/${t.dailyLimit}]` : "";
+                const isFull = t.isFullyBooked;
+                const aliasText = t.alias && t.alias !== "nil" ? `${t.alias}` : "";
+
+                return (
+                    <Option
+                        key={t._id}
+                        value={t._id}
+                        name={t.name} // For search filter
+                        alias={t.alias} // For search filter
+                        disabled={isFull}
+                        style={isFull ? { opacity: 0.5, fontStyle: 'italic' } : {}}
+                    >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+                            <span style={{ flex: 1, whiteSpace: 'normal' }}>
+                                {t.name} {aliasText && <span style={{ 
+                                        color: '#ffffff', 
+                                        fontSize: '0.85em',
+                                        fontStyle: 'italic',
+                                        padding: '0px 3px 0px 3px' ,
+                                        backgroundColor: '#a46500',
+                                        borderRadius: '2px'
+                                    }}>
+                                        {String(aliasText).toUpperCase()}
+                                    </span>}
+                                {showLimit && (
+                                    <span style={{ 
+                                        color: isFull ? 'red' : '#1890ff', 
+                                        fontSize: '0.85em',
+                                        marginLeft: 6 
+                                    }}>
+                                        {limitText}
+                                    </span>
+                                )}
+                            </span>
+                            <span style={{ fontWeight: 500, marginLeft: 8 }}>₹{t.price}</span>
+                        </div>
+                    </Option>
+                );
+            })}
+        </Select.OptGroup>
+    ))}
+</Select>
                       </Form.Item>
 
                       <List

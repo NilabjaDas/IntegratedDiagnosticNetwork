@@ -179,6 +179,9 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                         {!order?.patient?.isWalkIn &&<Descriptions.Item label="UHID">{order.patient?.uhid || "-"}</Descriptions.Item>}
                       </Descriptions>
                     </Card>
+                      <Card size="small" title="Appointment Information">
+                        <Descriptions.Item label="Name">{moment(order.appointment?.date).format("ddd, Do MMMM YYYY")}</Descriptions.Item>
+                      </Card>
 
                     {/* Items & Modify */}
                     <Card 

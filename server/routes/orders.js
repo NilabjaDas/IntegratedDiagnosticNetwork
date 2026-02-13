@@ -295,7 +295,7 @@ router.post("/", async (req, res) => {
         discountOverrideCode, 
         initialPayment, 
         notes,
-        appointment, // <--- NEW: Extract appointment object { date: ... }
+        scheduleDate, 
 
         // Patient Selection Logic
         walkin,      // Boolean flag
@@ -369,8 +369,8 @@ router.post("/", async (req, res) => {
     
     // 2. Fetch Test Configs from DB to check limits
     const dbTests = await req.TenantTest.find({ _id: { $in: itemIds } });
-    const finalAppointmentDate = (appointment && appointment.date) ? appointment.date : new Date();
-    const dateKey = moment(finalAppointmentDate).format("YYYY-MM-DD");
+    const finalAppointmentDate = scheduleDate ? scheduleDate : moment().format("YYYY-MM-DD");
+    const dateKey = finalAppointmentDate;
 
     for (const dbTest of dbTests) {
         // If test has a limit (and it's not null/0)
