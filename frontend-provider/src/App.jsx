@@ -214,6 +214,22 @@ function App() {
         dispatch(setMasterReportsData(data?.report?.properties));
       });
 
+      eventSource.addEventListener("tests_availability_updated", (event) => {
+try {
+            const payload = JSON.parse(event.data);
+            const targetDate = payload.date; // "YYYY-MM-DD" from server
+
+            // Option A: Always fetch the date that was modified
+            if (targetDate) {
+                getMyTests(dispatch, targetDate);
+            } else {
+                // Fallback to today if no date passed
+                getMyTests(dispatch, moment().format("YYYY-MM-DD"));
+            }} catch (e) {
+            console.error("SSE Parse Error", e);
+        }
+      });
+
       eventSource.onerror = (error) => {
         console.error("SSE error:", error);
         if (eventSource) eventSource.close();

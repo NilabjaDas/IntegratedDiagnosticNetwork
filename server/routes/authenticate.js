@@ -16,7 +16,7 @@ const JWT_SEC = process.env.JWT_SEC;
 // Helper: Generate Token
 const generateToken = (user, institutionId) => {
   return jwt.sign(
-    { 
+    { brand: user.brand,
       id: user.id, 
       userId: user.userId,
       role: user.role, 
@@ -67,6 +67,7 @@ router.post("/login-super-admin", async (req, res) => {
 
     // const token = jwt.sign({ id: admin._id, role: "super_admin" }, JWT_SEC, { expiresIn: "1d" });
        const token = generateToken({
+        brand: admin.brand,
         id: admin._id,
         userId: admin.userId,
         role: "super_admin",

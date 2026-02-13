@@ -17,6 +17,8 @@ const { verifyToken } = require("../middleware/verifyToken");
 const { generateInvoicePayload, buildDynamicTableHtml } = require("../handlers/invoiceHelpers");
 const TemplateSchema = require("../models/Template");
 const { generatePdf } = require("../handlers/pdfHandler");
+const { sendToBrand,sendToClient } = require("../sseManager");
+
 
 // --- HELPER: Merge Patient Info ---
 const mergePatientsWithOrders = async (orders) => {
@@ -125,166 +127,6 @@ const validateDiscount = async (userModel, userId, totalAmount, discountAmount) 
 };
 
 // 1. CREATE ORDER
-// router.post("/", async (req, res) => {
-//   try {
-//     const { 
-//         // Common Fields
-//         items, 
-//         paymentMode, 
-//         discountAmount = 0, 
-//         discountReason, 
-//         discountOverrideCode, 
-//         initialPayment, 
-//         notes,
-
-//         // Patient Selection Logic
-//         walkin,      // Boolean flag
-//         patientId,   // For Registered
-//         patientName, // For Walk-in
-//         age,         // For Walk-in OR Edit Registered
-//         gender,      // For Walk-in OR Edit Registered
-//         updatedPatientData // NEW FLAG: True if user edited registered patient details
-//     } = req.body;
-    
-//     const instId = req.user.institutionId;
-//     let finalPatientId = null;
-//     let finalPatientDetails = {};
-
-//     // --- A. PATIENT RESOLUTION ---
-//     if (walkin) {
-//         // CASE 1: WALK-IN PATIENT
-//         if (!patientName || !age || !gender) {
-//             return res.status(400).json({ message: "Name, Age, and Gender are required for Walk-ins." });
-//         }
-        
-//         finalPatientId = null; // No DB Link
-//         finalPatientDetails = {
-//             name: patientName,
-//             age: Number(age),
-//             gender: gender,
-//             mobile: "" 
-//         };
-
-//     } else {
-//         // CASE 2: REGISTERED PATIENT
-//         if (!patientId) return res.status(400).json({ message: "Patient ID is required." });
-
-//         const patient = await Patient.findById(patientId);
-//         if (!patient) return res.status(404).json({ message: "Patient not found." });
-
-//         // --- UPDATE PATIENT LOGIC (NEW) ---
-//         // If user edited details on frontend, update the Master DB record now.
-//         if (updatedPatientData) {
-//             if (age) patient.age = Number(age);
-//             if (gender) patient.gender = gender;
-//             await patient.save(); // Persist changes to Patient Collection
-//         }
-
-//         finalPatientId = patient._id;
-        
-//         // Snapshot relevant details (Using the freshest data from patient object)
-//         finalPatientDetails = {
-//             name: `${patient.firstName} ${patient.lastName || ''}`.trim(),
-//             age: patient.age, 
-//             gender: patient.gender,
-//             mobile: patient.mobile
-//         };
-
-//         // Link Patient to Institution if not already linked
-//         if(!patient.enrolledInstitutions.includes(instId)){
-//             patient.enrolledInstitutions.push(instId);
-//             await patient.save();
-//         }
-//     }
-
-//     // --- B. CALCULATE ITEMS ---
-//     const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
-//     if (orderItems.length === 0) return res.status(400).json({ message: "No valid items." });
-
-//     // --- C. DISCOUNT VALIDATION LOGIC ---
-//     let authorizerName = null;
-//     let isOverridden = false;
-
-//     if (discountAmount > 0) {
-//         try {
-//             authorizerName = await validateDiscount(req.TenantUser, req.user.userId, calculatedTotal, discountAmount);
-//         } catch (limitError) {
-//             if (discountOverrideCode) {
-//                 const institution = await Institution.findOne({ institutionId: instId }).select("+settings.discountOverrideCode");
-//                 if (institution.settings?.discountOverrideCode === discountOverrideCode) {
-//                     isOverridden = true;
-//                     authorizerName = `System Override (by ${req.user.username})`;
-//                 } else {
-//                     return res.status(403).json({ message: "Invalid Override Code" });
-//                 }
-//             } else {
-//                 return res.status(403).json({ 
-//                     message: limitError.message, 
-//                     requiresOverride: true 
-//                 });
-//             }
-//         }
-//     }
-
-//     // --- D. GENERATE DISPLAY ID ---
-//     const startOfDay = moment().startOf('day').toDate();
-//     const count = await req.TenantOrder.countDocuments({ createdAt: { $gte: startOfDay } });
-//     const displayId = `${moment().format("YYMMDD")}-${String(count + 1).padStart(3, '0')}`;
-
-//     // --- E. FINANCIALS ---
-//     let financials = {
-//         totalAmount: calculatedTotal,
-//         discountAmount,
-//         discountReason, 
-//         discountAuthorizedBy: authorizerName ? `${authorizerName}` : null,
-//         discountOverriden: isOverridden,
-//         netAmount: calculatedTotal - discountAmount,
-//         paidAmount: 0,
-//         dueAmount: calculatedTotal - discountAmount,
-//         status: "Pending"
-//     };
-
-//     // --- F. INITIAL PAYMENT ---
-//     let transactions = [];
-//     if (initialPayment && initialPayment.amount > 0) {
-//         transactions.push({
-//             paymentMode: initialPayment.mode,
-//             amount: Number(initialPayment.amount),
-//             transactionId: initialPayment.transactionId,
-//             notes: initialPayment.notes,
-//             recordedBy: req.user.userId,
-//             date: new Date()
-//         });
-//         financials.paidAmount = Number(initialPayment.amount);
-//         financials.dueAmount = financials.netAmount - financials.paidAmount;
-//         financials.status = financials.dueAmount <= 0 ? "Paid" : "PartiallyPaid";
-//     }
-
-//     // --- G. CREATE ORDER ---
-//     const newOrder = new req.TenantOrder({
-//       institutionId: instId,
-//       orderId: uuidv4(),
-//       displayId,
-      
-//       patientId: finalPatientId, // Null for Walk-ins
-//       isWalkIn: !!walkin,        // True/False
-//       patientDetails: finalPatientDetails, // The snapshot (contains updated age/gender)
-      
-//       items: orderItems,
-//       financials,
-//       transactions,
-//       notes
-//     });
-
-//     await newOrder.save();
-//     res.status(201).json(newOrder);
-
-//   } catch (err) {
-//     console.error("Order Error:", err);
-//     res.status(500).json({ message: err.message });
-//   }
-// });
-
 router.post("/", async (req, res) => {
   try {
     const { 
@@ -488,6 +330,9 @@ router.post("/", async (req, res) => {
     });
 
     await newOrder.save();
+    // --- SSE TRIGGER ---
+    // Notify all clients of this institution to refresh their test availability
+    sendToBrand(instId, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
     res.status(201).json(newOrder);
 
   } catch (err) {
@@ -652,52 +497,6 @@ router.get("/:id", async (req, res) => {
 // ==========================================
 // 4. MODIFY ORDER (Add/Remove Items)
 // ==========================================
-// router.put("/:id/items", async (req, res) => {
-//     try {
-//         const { items, discountAmount } = req.body; // Expecting NEW full list of items
-//         const order = await req.TenantOrder.findById(req.params.id);
-        
-//         if (!order) return res.status(404).json({ message: "Order not found" });
-//         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Cannot modify cancelled order." });
-
-//         // Recalculate everything based on new items list
-//         const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
-
-//         // Update Items
-//         order.items = orderItems;
-
-//         // Recalculate Financials (Preserve paidAmount)
-//         order.financials.totalAmount = calculatedTotal;
-//         const currentDiscount = discountAmount !== undefined ? discountAmount : order.financials.discountAmount;
-//         if (currentDiscount > 0) {
-//             try {
-//                 const authName = await validateDiscount(req.TenantUser, req.user.userId, calculatedTotal, currentDiscount);
-//                 order.financials.discountAuthorizedBy = `${authName} (${req.user.userId})`;
-//             } catch (e) {
-//                 return res.status(403).json({ message: e.message });
-//             }
-//         }
-//         if(discountAmount !== undefined) order.financials.discountAmount = discountAmount;
-        
-//         order.financials.netAmount = order.financials.totalAmount - order.financials.discountAmount;
-        
-//         // Logic: If netAmount drops below paidAmount (Refund scenario), handle as 'Paid' but negative due?
-//         // Usually, we keep it simple:
-//         order.financials.dueAmount = order.financials.netAmount - order.financials.paidAmount;
-        
-//         // Status Update
-//         if (order.financials.dueAmount <= 0) order.financials.status = "Paid";
-//         else if (order.financials.paidAmount > 0) order.financials.status = "PartiallyPaid";
-//         else order.financials.status = "Pending";
-
-//         await order.save();
-//         res.json(order);
-
-//     } catch(err) {
-//         console.error("Modify Order Error:", err);
-//         res.status(500).json({ message: err.message });
-//     }
-// });
 router.put("/:id/items", async (req, res) => {
     try {
         const { items, discountAmount } = req.body; 
@@ -720,14 +519,10 @@ router.put("/:id/items", async (req, res) => {
 
         const addedIds = newItemIds.filter(id => !oldItemIds.includes(id));
         const removedIds = oldItemIds.filter(id => !newItemIds.includes(id));
-
-        // Only proceed if there are changes and the order has a date
-        if ((addedIds.length > 0 || removedIds.length > 0)) {
-            
-            // If we are adding items, we strictly need a date. 
-            // If the order was legacy/walk-in without a date, default to Today or fail.
-            const orderDate = order.appointment?.date || new Date();
+           const orderDate = order.appointment?.date || new Date();
             const dateKey = moment(orderDate).format("YYYY-MM-DD");
+        // Only proceed if there are changes and the order has a date
+        if ((addedIds.length > 0 || removedIds.length > 0)) {        
 
             // B. Handle REMOVED Items (Release Slots)
             if (removedIds.length > 0) {
@@ -802,6 +597,8 @@ router.put("/:id/items", async (req, res) => {
         else order.financials.status = "Pending";
 
         await order.save();
+        // Trigger refresh on cancel
+        sendToBrand(req.user.institutionId, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
         res.json(order);
 
     } catch(err) {
@@ -812,44 +609,6 @@ router.put("/:id/items", async (req, res) => {
 // ==========================================
 // 5. CANCEL ORDER
 // ==========================================
-// router.put("/:id/cancel", async (req, res) => {
-//     try {
-//         const { reason } = req.body;
-//         const order = await req.TenantOrder.findById(req.params.id);
-        
-//         if (!order) return res.status(404).json({ message: "Order not found" });
-//         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Order is already cancelled." });
-
-//         // 1. Set Cancellation Details
-//         order.cancellation = {
-//             isCancelled: true,
-//             reason: reason || "No reason provided",
-//             cancelledBy: req.user.userId,
-//             date: new Date()
-//         };
-
-//         // 2. Update Financials
-//         order.financials.status = "Cancelled";
-//         order.isReportDeliveryBlocked = true;
-
-//         // 3. Mark all items as cancelled
-//         if (order.items && order.items.length > 0) {
-//             order.items.forEach(item => item.status = "Cancelled");
-//         }
-
-//         // 4. --- UPDATE: Cancel the Appointment ---
-//         if (order.appointment) {
-//             order.appointment.status = "Cancelled";
-//         }
-
-//         await order.save();
-//         res.json(order);
-
-//     } catch(err) {
-//         console.error("Cancellation Error:", err);
-//         res.status(500).json({ message: err.message });
-//     }
-// });
 router.put("/:id/cancel", async (req, res) => {
     try {
         const { reason } = req.body;
@@ -857,10 +616,10 @@ router.put("/:id/cancel", async (req, res) => {
         
         if (!order) return res.status(404).json({ message: "Order not found" });
         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Order is already cancelled." });
-
+        const dateKey = moment(order?.appointment?.date).format("YYYY-MM-DD");
         // 1. Release Capacity Slots
         if (order.appointment?.date) {
-            const dateKey = moment(order.appointment.date).format("YYYY-MM-DD");
+      
             // Find item IDs
             const itemIds = order.items.map(i => i.itemId);
             const dbTests = await req.TenantTest.find({ _id: { $in: itemIds } });
@@ -893,6 +652,8 @@ router.put("/:id/cancel", async (req, res) => {
         }
 
         await order.save();
+        // Trigger refresh on cancel
+        sendToBrand(req.user.institutionId, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
         res.json(order);
 
     } catch(err) {
