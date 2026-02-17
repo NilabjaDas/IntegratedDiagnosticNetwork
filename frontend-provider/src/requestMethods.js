@@ -2,6 +2,7 @@
 import axios from "axios";
 import CryptoJS from "crypto-js";
 import { store } from "./redux/store";
+import { CLEAR_ALL_REDUCERS } from "./redux/actionTypes";
 
 /* -------------------------
    Domain / baseURL helpers
@@ -11,12 +12,9 @@ const protocol = typeof window !== "undefined" ? window.location.protocol : "htt
 // Get hostname and remove admin. prefix if present
 const hostname = typeof window !== "undefined" ? window.location.hostname : "saltstayz.ai";
 const mainDomain = hostname.startsWith("admin.") ? hostname.slice(6) : hostname;
-const finalUrl = `${protocol}//${mainDomain}`;
 
 export const BASE_URL = "/";
-// export const BASE_URL = process.env.REACT_APP_BASE_URL;
-
-export const currentDomain = "wakilslab.com"
+export const currentDomain = "wakilslab.com";
 
 /* -------------------------
    Create axios instances
@@ -56,12 +54,10 @@ const getKey = () => getTokensFromStore().key;
 
 /* — helpers — */
 const encrypt = (obj) => {
-  // only encrypt if there's something to encrypt
   if (obj === undefined || obj === null) return obj;
   try {
     return CryptoJS.AES.encrypt(JSON.stringify(obj), getKey()).toString();
   } catch (e) {
-    // if encryption fails, return original (fail-safe)
     return obj;
   }
 };
@@ -84,10 +80,6 @@ const decrypt = (data) => {
 /* -------------------------
    Dynamic token interceptors
    ------------------------- */
-/*
-  These interceptors read the latest tokens from the Redux store at request time.
-  We keep references so we can re-eject/recreate them when the store changes.
-*/
 let userTokenInterceptor = userRequest.interceptors.request.use(
   (cfg) => {
     const { token } = getTokensFromStore();
@@ -134,157 +126,66 @@ store.subscribe(() => {
 });
 
 /* -------------------------
-   Request cancellation + AES encrypt/decrypt interceptors
+   Global Interceptors (Encryption + Auth Error Handling)
    ------------------------- */
-
-/*
-  Behavior:
-  - If a new request is started with the same "key" as an earlier still-pending request,
-    we abort the earlier one.
-  - Key is: method + baseURL + url + params + body (so POST/PUT with different bodies are distinct).
-  - Per-request opt-out: set `skipCancel: true` in axios config.
-*/
-
-const pendingRequests = new Map();
-
-const getRequestKey = (cfg = {}) => {
-  const method = (cfg.method || "get").toLowerCase();
-  const url = `${cfg.baseURL || ""}${cfg.url || ""}`;
-  const params = cfg.params ? JSON.stringify(cfg.params) : "";
-  // include data (body) to differentiate POSTs with different payloads
-  let data = "";
-  try {
-    if (cfg.data !== undefined && cfg.data !== null) {
-      // if data is an object, stringify it (but avoid huge objects); if it's already a string, use it
-      data = typeof cfg.data === "string" ? cfg.data : JSON.stringify(cfg.data);
-    }
-  } catch (e) {
-    data = "";
-  }
-  return `${method}::${url}::${params}::${data}`;
-};
+// Note: Cancellation logic removed to prevent "ERR_CANCELED" issues
 
 [publicRequest, userRequest, adminRequest].forEach((inst) => {
-  // 1) Cancellation interceptor (runs first for the instance)
+  
+  // 1) Encrypt outgoing payload (skip FormData)
   inst.interceptors.request.use(
     (cfg) => {
-      // allow opt-out per request
-      if (cfg && cfg.skipCancel) return cfg;
-
-      const key = getRequestKey(cfg);
-      const existing = pendingRequests.get(key);
-      if (existing) {
-        try {
-          if (existing.abort) existing.abort("Aborted in favor of new request");
-          else if (existing.cancel) existing.cancel("Aborted in favor of new request");
-        } catch (e) {
-          // swallow
-        }
-        pendingRequests.delete(key);
-      }
-
-      // create controller (prefer AbortController)
-      if (typeof AbortController !== "undefined") {
-        const controller = new AbortController();
-        cfg.signal = controller.signal; // axios supports AbortController.signal
-        pendingRequests.set(key, { abort: () => controller.abort(), key });
-      } else {
-        // fallback to axios CancelToken for older environments/axios versions
-        const source = axios.CancelToken.source();
-        cfg.cancelToken = source.token;
-        pendingRequests.set(key, { cancel: source.cancel, key });
-      }
-
-      // store key to help cleanup on response
-      cfg._pendingKey = key;
-      return cfg;
-    },
-    (err) => Promise.reject(err)
-  );
-
-  // 2) Token/header injection for publicRequest is only brandDomain (already set during creation)
-  //    (userRequest/adminRequest token interceptors were registered earlier and re-registered on store changes)
-
-  // 3) Encrypt outgoing payload (skip FormData)
-  inst.interceptors.request.use(
-    (cfg) => {
-      // If this is a FormData (file upload), skip encryption entirely
       if (cfg.data instanceof FormData) {
-        // also preserve Content-Type behavior (let browser set multipart/form-data boundary)
         return cfg;
       }
-
-      // Only encrypt non-empty data. Note: data may be a string or object.
       if (cfg.data !== undefined && cfg.data !== null && cfg.data !== "") {
         try {
-          // If data is already a string we still encrypt (server expects encrypted text/plain)
           cfg.data = encrypt(cfg.data);
           cfg.headers = cfg.headers || {};
           cfg.headers["Content-Type"] = "text/plain";
-        } catch (e) {
-          // if encryption fails, just pass original data
-        }
+        } catch (e) {}
       }
       return cfg;
     },
     (err) => Promise.reject(err)
   );
 
-  // 4) Decrypt responses (success)
+  // 2) Decrypt responses & Handle Auth Errors
   inst.interceptors.response.use(
     (res) => {
-      try {
-        const key = res?.config?._pendingKey;
-        if (key && pendingRequests.has(key)) pendingRequests.delete(key);
-      } catch (e) {}
-
+      // Attempt decryption
       try {
         const ct = (res?.headers?.["content-type"] || "").toString();
         if (typeof res.data === "string" && ct.includes("text/plain")) {
           res.data = decrypt(res.data);
         }
-      } catch (e) {
-        // ignore decryption errors
-      }
+      } catch (e) {}
       return res;
     },
     (err) => {
-      // cleanup pending map for this request (if any)
-      try {
-        const cfg = err?.config || err?.response?.config;
-        const key = cfg?._pendingKey;
-        if (key && pendingRequests.has(key)) pendingRequests.delete(key);
-      } catch (e) {}
+      // --- GLOBAL AUTH HANDLER ---
+      // If 401 or 403, force logout
+      if (err.response) {
+        const { status } = err.response;
+        if (status === 401 || status === 403) {
+           if (window.location.pathname !== "/login") {
+              store.dispatch({ type: CLEAR_ALL_REDUCERS });
+           }
+        }
+      }
 
-      // attempt to decrypt textual error payload if present
+      // Attempt to decrypt error payload if present
       try {
         const ct = (err?.response?.headers?.["content-type"] || "").toString();
         if (err?.response?.data && typeof err.response.data === "string" && ct.includes("text/plain")) {
           err.response.data = decrypt(err.response.data);
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
 
       return Promise.reject(err);
     }
   );
 });
-
-/* -------------------------
-   Cleanup pending requests on unload
-   ------------------------- */
-if (typeof window !== "undefined") {
-  window.addEventListener("beforeunload", () => {
-    pendingRequests.forEach((v) => {
-      try {
-        if (v.abort) v.abort();
-        else if (v.cancel) v.cancel();
-      } catch (e) {}
-    });
-    pendingRequests.clear();
-  });
-}
 
 /* -------------------------
    Exports

@@ -5,6 +5,9 @@ const userSchema = new mongoose.Schema(
   {
     userId: { type: String, default: () => uuidv4(), unique: true },
     institutionId: { type: String, required: true, index: true }, // Link to Institution
+    
+    // ADDED: Brand field to link User directly to a Brand (for SSE & Token scope)
+    brand: { type: String, required: false, index: true }, 
 
     // Auth
     username: { type: String, required: true, lowercase: true, trim: true },
@@ -35,10 +38,12 @@ const userSchema = new mongoose.Schema(
     // For Doctors/Pathologists
     signatureUrl: { type: String }, // URL to image of signature
     registrationNumber: { type: String }, // Medical Council Reg No.
+    
     settings: {
-    maxDiscountPercent: { type: Number, default: 0 }, // 0% by default for safety
-    canDeleteOrders: { type: Boolean, default: false }
-  },
+        maxDiscountPercent: { type: Number, default: 0 }, // 0% by default for safety
+        canDeleteOrders: { type: Boolean, default: false }
+    },
+    
     isActive: { type: Boolean, default: true },
     lastLogin: { type: Date },
   },

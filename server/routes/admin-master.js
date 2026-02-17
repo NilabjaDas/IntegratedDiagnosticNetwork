@@ -253,9 +253,11 @@ router.post("/institutions", requireSuperAdmin, async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedAdminPassword = await bcrypt.hash(adminData.password, salt);
 
+        // UPDATED: Include brand field from institution
         const newAdminUser = new TenantUser({
             institutionId: savedInstitution.institutionId,
             userId: uuidv4(),
+            brand: savedInstitution.brandCode || savedInstitution.institutionCode, // <--- Added Brand
             username: adminData.username,
             password: hashedAdminPassword,
             fullName: adminData.fullName,
@@ -319,9 +321,16 @@ router.post("/institutions/:id/users", requireSuperAdmin, async (req, res) => {
             return res.status(400).json({ message: "Username, password, and full name are required." });
         }
 
-        const TenantUser = await getTenantUserModel(id);
-        if (!TenantUser) {
+        // Fetch Institution first to get the brandCode
+        const institution = await Institution.findOne({ institutionId: id });
+        if (!institution) {
             return res.status(404).json({ message: "Institution not found." });
+        }
+
+        const TenantUser = await getTenantUserModel(id);
+        // Double check in case db connection failed
+        if (!TenantUser) {
+             return res.status(500).json({ message: "Failed to connect to institution database." });
         }
 
         // Check if username exists in tenant DB
@@ -333,9 +342,11 @@ router.post("/institutions/:id/users", requireSuperAdmin, async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
+        // UPDATED: Include brand field
         const newUser = new TenantUser({
             institutionId: id, 
             userId: uuidv4(),
+            brand: institution.brandCode || institution.institutionCode, // <--- Added Brand
             username,
             password: hashedPassword,
             fullName,
@@ -358,7 +369,6 @@ router.post("/institutions/:id/users", requireSuperAdmin, async (req, res) => {
         res.status(500).json({ message: "Internal Server Error" });
     }
 });
-
 /**
  * @route   PUT /api/institutions/:id/users/:userId
  * @desc    Update a user for a specific institution

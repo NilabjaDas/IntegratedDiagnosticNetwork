@@ -35,7 +35,6 @@ import {
 import useOnBack from "./redux/useOnBack";
 import LogoutModal from "./components/LogoutModal";
 import MainLayout from "./components/MainLayout";
-import DeactivatedOverlayComp from "./components/DeactivatedOverlayComp";
 import TestsPage from "./pages/TestsPage";
 import OrdersPage from "./pages/OrdersPage";
 import ConfigurationPage from "./pages/ConfigurationPage";
@@ -72,7 +71,6 @@ function App() {
     (state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme
   );
   const dispatch = useDispatch();
-  const blockedRef = useRef(false);
   // --- selectors (kept those still used) ---
   const institutionDetails = useSelector(
     (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails
@@ -96,6 +94,7 @@ function App() {
   );
   const [modalOpen, setModalOpen] = useState(false);
   const [modalResponse, setModalResponse] = useState(false);
+  
   // utility to check if current route is login
   const isOnLoginRoute = () => {
     try {
@@ -106,27 +105,28 @@ function App() {
   };
 
   // -------------------------
-  // Ping effect (uses route check instead of viewPort redux)
+  // Ping effect
   // -------------------------
   useEffect(() => {
     if (!token) return; // don't run anything unless token exists
 
     const pingServer = async () => {
       if (isOnLoginRoute()) return;
-      const res = await getPing(
-        dispatch /* pass viewPort if your API expects it */
-      );
-      if (res === 403) {
-        alert("Session Has Expired");
-        dispatch({ type: CLEAR_ALL_REDUCERS });
+      try {
+        // We just call getPing. 
+        // If it returns 403/401, the Axios Interceptor in requestMethods.js 
+        // will automatically dispatch CLEAR_ALL_REDUCERS.
+        await getPing(dispatch);
+      } catch (error) {
+        console.error("Ping failed:", error);
       }
     };
 
     // immediate ping once token is available
-    pingServer().catch((error) => console.error("Ping failed:", error));
+    pingServer();
 
     const interval = setInterval(() => {
-      pingServer().catch((error) => console.error("Ping failed:", error));
+      pingServer();
     }, 600000); // 10 minutes
 
     return () => clearInterval(interval);
@@ -143,29 +143,48 @@ function App() {
     fetchInstitutionDetails();
   }, [dispatch]);
 
-
-
+  // -------------------------
+  // Initial Data Load
+  // -------------------------
   useEffect(() => {
-    const today = moment().format("YYYY-MM-DD")
+    const today = moment().format("YYYY-MM-DD");
     // Load initial data
-    getMyTests(dispatch,today);
-    getPackages(dispatch);
-  }, [dispatch]);
+    if (token) {
+      getMyTests(dispatch, today);
+      getPackages(dispatch);
+    }
+  }, [dispatch, token]);
 
   // -------------------------
-  // SSE / EventSource (kept intact, but uses route check instead of viewPortRef)
+  // SSE / EventSource
   // -------------------------
   useEffect(() => {
     let eventSource;
     let retryTimeout;
 
     const connectEventSource = () => {
+      if (!token) return;
+
       const eventUrl =
         BASE_URL === "/"
           ? `/server/events?token=${token}&domain=${currentDomain}`
           : `${BASE_URL}/server/events?token=${token}&domain=${currentDomain}`;
 
       eventSource = new EventSource(eventUrl);
+
+      // --- NEW: Listen for Authentication Errors from SSE ---
+      eventSource.addEventListener("error", (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data && (data.message === "Token expired" || data.message === "Unauthorized")) {
+                console.warn("SSE Auth Error:", data.message);
+                eventSource.close();
+                dispatch({ type: CLEAR_ALL_REDUCERS }); // Force logout
+            }
+        } catch (e) {
+            // Standard network error or connection drop will be handled by onerror
+        }
+      });
 
       eventSource.onmessage = (event) => {
         // console.log("SSE message:", event.data);
@@ -198,9 +217,6 @@ function App() {
 
         setIsMaintenanceModalOpen(data?.activeStatus || false);
         dispatch(setScheduledMaintenanceData(data));
-
-        // Replace previous viewPortRef logic: if maintenance active -> 100, else -> 0
-        // (This replicates the main effect of the original behavior without reading viewPort from Redux)
         dispatch(viewPortData(data?.activeStatus ? 100 : 0));
       });
 
@@ -215,22 +231,24 @@ function App() {
       });
 
       eventSource.addEventListener("tests_availability_updated", (event) => {
-try {
-            const payload = JSON.parse(event.data);
-            const targetDate = payload.date; // "YYYY-MM-DD" from server
+        try {
+          const payload = JSON.parse(event.data);
+          const targetDate = payload.date; // "YYYY-MM-DD" from server
 
-            // Option A: Always fetch the date that was modified
-            if (targetDate) {
-                getMyTests(dispatch, targetDate);
-            } else {
-                // Fallback to today if no date passed
-                getMyTests(dispatch, moment().format("YYYY-MM-DD"));
-            }} catch (e) {
-            console.error("SSE Parse Error", e);
+          // Option A: Always fetch the date that was modified
+          if (targetDate) {
+            getMyTests(dispatch, targetDate);
+          } else {
+            // Fallback to today if no date passed
+            getMyTests(dispatch, moment().format("YYYY-MM-DD"));
+          }
+        } catch (e) {
+          console.error("SSE Parse Error", e);
         }
       });
 
       eventSource.onerror = (error) => {
+        // Standard EventSource error (network down, 401 status on handshake, etc)
         console.error("SSE error:", error);
         if (eventSource) eventSource.close();
         retryTimeout = setTimeout(() => {
@@ -261,10 +279,6 @@ try {
     setModalResponse(val);
   };
 
-  // if (!institutionStatus.status) {
-  //   handleLogout();
-  // }
-
   useEffect(() => {
     if (modalResponse) {
       handleLogout();
@@ -277,10 +291,7 @@ try {
 
     useOnBack(
       (prevLocation, newLocation) => {
-        // If we just programmatically corrected navigation, ignore this event.
-        // (defensive — replace navigations shouldn't trigger onBack, but this avoids flicker/loops.)
         if (blockedRef.current) {
-          // reset the flag and ignore
           blockedRef.current = false;
           return;
         }
@@ -288,7 +299,6 @@ try {
         // Only block if the user WAS on "/" when they pressed back
         if (prevLocation?.pathname === "/") {
           setModalOpen(true);
-          // Prevent leaving "/" by replacing the current entry with "/"
           blockedRef.current = true;
           navigate("/", { replace: true });
         }
@@ -309,7 +319,14 @@ try {
   return (
     <ConfigProvider theme={theme === "dark" ? darkTheme : {}}>
       <Helmet>
-        <link rel="icon" href={institutionDetails?.favicon || institutionDetails?.institutionSymbolUrl || institutionDetails?.institutionLogoUrl} />
+        <link
+          rel="icon"
+          href={
+            institutionDetails?.favicon ||
+            institutionDetails?.institutionSymbolUrl ||
+            institutionDetails?.institutionLogoUrl
+          }
+        />
         <title>
           {`Medico Control Center | ${
             institutionDetails?.brandName || "TechFloater"
@@ -319,9 +336,7 @@ try {
 
       <GlobalStyle />
       <ToastContainer />
-      {/* {!institutionStatus.status &&
-       <DeactivatedOverlayComp institutionDetails = {institutionDetails}/>
-      } */}
+
       <Modal
         open={isMaintenanceModalOpen}
         footer={null}

@@ -332,7 +332,8 @@ router.post("/", async (req, res) => {
     await newOrder.save();
     // --- SSE TRIGGER ---
     // Notify all clients of this institution to refresh their test availability
-    sendToBrand(instId, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
+    const brandCode = req.user.brand;
+    sendToBrand(brandCode, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
     res.status(201).json(newOrder);
 
   } catch (err) {

@@ -14,15 +14,17 @@ const userSchema = require("../models/User");
 const JWT_SEC = process.env.JWT_SEC;
 
 // Helper: Generate Token
-const generateToken = (user, institutionId) => {
+const generateToken = (user, institutionId, brandOverride = null) => {
   return jwt.sign(
-    { brand: user.brand,
+    { 
+      // Use override if provided (from request context), otherwise fallback to user.brand
+      brand: brandOverride || user.brand, 
       id: user.id, 
       userId: user.userId,
       role: user.role, 
       institutionId: institutionId,
       username: user.username,
-      isMasterAdmin: user.isMasterAdmin // Critical payload
+      isMasterAdmin: user.isMasterAdmin 
     }, 
     process.env.JWT_SEC,
     { expiresIn: "7d" }
@@ -118,9 +120,10 @@ router.post("/login-staff", async (req, res) => {
 
     // 4. Check User Active Status
     if (user.isActive === false) return res.status(403).json({ message: "Your account has been disabled." });
+    const brandId = req.institution ? req.institution.brandId : user.brand;
 
     // 5. Generate Token
-    const token = generateToken(user, user.institutionId);
+    const token = generateToken(user, user.institutionId,brandId);
 
     // 6. Update Last Login
     user.lastLogin = new Date();
