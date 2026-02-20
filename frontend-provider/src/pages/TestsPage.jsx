@@ -13,7 +13,7 @@ const { Title } = Typography;
 // --- Styled Components ---
 const PageContainer = styled.div`
   /* padding: 24px; */
-  min-height: 100vh;
+  /* min-height: 100vh; */
   /* You can add more theme-specific styles here if needed */
   /* border-radius: 8px; */
   /* box-shadow: 0 2px 8px rgba(0,0,0,0.1); */
@@ -57,7 +57,6 @@ const TestsPage = () => {
 
   return (
     <PageContainer>
-      {/* <Title level={2}>Tests Management</Title> */}
       <Tabs defaultActiveKey="1" items={items} size="large" />
     </PageContainer>
   );

@@ -11,7 +11,7 @@ const MainLayout = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout >
       <Sidebar collapsed={collapsed} />
 
       <Layout
@@ -24,7 +24,7 @@ const MainLayout = ({ children }) => {
       >
         <Navbar collapsed={collapsed} setCollapsed={setCollapsed} />
 
-        <Content style={{ margin: "24px 16px 0", overflow: "initial" }}>
+        <Content style={{ margin: "0px 1px 0", overflow: "initial" }}>
           <div
             className="site-layout-background"
             style={{

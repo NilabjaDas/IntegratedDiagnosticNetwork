@@ -34,17 +34,30 @@ const { TextArea } = Input;
 const PackageManager = () => {
   const dispatch = useDispatch();
   
-  // Use your env key or default to 'test' slice based on your setup
   const { packages, tests, isFetching } = useSelector((state) => 
     state[process.env.REACT_APP_TESTS_DATA_KEY]
   );
 
+  // --- Pagination State (NEW) ---
+  const [tableParams, setTableParams] = useState({
+    current: 1,
+    pageSize: 8, // Matching your previous pageSize
+    showSizeChanger: true, 
+  });
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [form] = Form.useForm();
-
-  // Helper to calculate total price of selected tests
   const [selectedTestsCost, setSelectedTestsCost] = useState(0);
+
+  // --- Handlers ---
+  const handleTableChange = (pagination) => {
+    setTableParams({
+      ...tableParams,
+      current: pagination.current,
+      pageSize: pagination.pageSize,
+    });
+  };
 
   const handleTestsChange = (selectedIds) => {
     const total = tests
@@ -57,7 +70,6 @@ const PackageManager = () => {
     setEditingItem(item);
     if (item) {
       // Edit Mode
-      // Ensure we treat 'tests' as IDs whether they are populated objects or just strings
       const ids = item.tests.map((t) => t._id || t);
       
       form.setFieldsValue({
@@ -109,6 +121,16 @@ const PackageManager = () => {
   };
 
   const columns = [
+    // 1. NEW: Serial Number Column
+    {
+      title: "#",
+      key: "index",
+      width: 60,
+      render: (text, record, index) => {
+        const runningIndex = (tableParams.current - 1) * tableParams.pageSize + index + 1;
+        return <span style={{ color: '#888' }}>{runningIndex}</span>;
+      },
+    },
     {
       title: "Package Name",
       dataIndex: "name",
@@ -125,6 +147,7 @@ const PackageManager = () => {
     {
       title: "Targeting",
       key: "targeting",
+      width: 150,
       render: (_, record) => (
         <Space direction="vertical" size={0}>
           <Tag color="geekblue">{record.targetGender}</Tag>
@@ -136,15 +159,12 @@ const PackageManager = () => {
       title: "Content",
       dataIndex: "tests",
       key: "tests",
-      maxWidth: 300,
+      width: 300, 
       render: (pkgTests) => (
         <div style={{ maxHeight: '60px', overflowY: 'auto' }}>
           <Space wrap>
             {pkgTests && pkgTests.map((t) => {
-              // 1. Get the ID (handle both populated object and direct ID string)
               const testId = t._id || t;
-              
-              // 2. Lookup the full test details from the Redux 'tests' list
               const fullTest = tests.find(item => item._id === testId);
 
               return (
@@ -161,11 +181,13 @@ const PackageManager = () => {
       title: "Offer Price",
       dataIndex: "offerPrice",
       key: "offerPrice",
+      width: 120,
       render: (price) => <b style={{ color: "green" }}>₹ {price}</b>,
     },
     {
       title: "Action",
       key: "action",
+      width: 100,
       render: (_, record) => (
         <Space>
           <Button icon={<EditOutlined />} onClick={() => handleOpenDrawer(record)} />
@@ -176,20 +198,29 @@ const PackageManager = () => {
   ];
 
   return (
-    <div>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => handleOpenDrawer()}>
           Create New Package
         </Button>
       </div>
 
-      <Table
-        dataSource={packages}
-        columns={columns}
-        rowKey="_id"
-        loading={isFetching}
-        pagination={{ pageSize: 8 }}
-      />
+      {/* 2. Container with fixed height for scrolling */}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <Table
+          dataSource={packages}
+          columns={columns}
+          rowKey="_id"
+          loading={isFetching}
+          
+          // 3. Connect Pagination State
+          pagination={tableParams}
+          onChange={handleTableChange}
+          
+          // 4. Set Scroll (Subtract header/footer space approx 110px)
+          scroll={{ y: 'calc(80vh - 250px)' }} 
+        />
+      </div>
 
       <Drawer
         title={editingItem ? "Edit Package" : "Create New Package"}
