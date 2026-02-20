@@ -42,6 +42,12 @@ import {
   getCommTemplates,
 } from "./templateLibraryRedux";
 
+import {
+  queueProcessStart,
+  queueProcessFailure,
+  getQueueSuccess,
+  updateTokenSuccess
+} from "./queueRedux";
 
 
 import { getInstitutionSuccess, setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
@@ -550,4 +556,27 @@ export const getTemplateConfig = async (type = "BILL") => {
         console.error("Failed to fetch template config", err);
         return { variables: [], tableKeys: [] };
     }
+};
+
+
+export const fetchDepartmentQueue = async (dispatch, departmentName) => {
+  dispatch(queueProcessStart());
+  try {
+    const res = await userRequest.get(`/queue-manager/department/${departmentName}`);
+    dispatch(getQueueSuccess(res.data));
+  } catch (err) {
+    dispatch(queueProcessFailure());
+  }
+};
+
+// 2. Update Token Status
+export const updateTokenStatus = async (dispatch, tokenId, action) => {
+  dispatch(queueProcessStart());
+  try {
+    const res = await userRequest.put(`/queue-manager/token/${tokenId}/action`, { action });
+    // This updates the local UI instantly for the user who clicked the button
+    dispatch(updateTokenSuccess(res.data)); 
+  } catch (err) {
+    dispatch(queueProcessFailure());
+  }
 };

@@ -12,6 +12,8 @@ const OrderSchema = require("../models/Order");
 const TestSchema = require("../models/Test");
 const PackageSchema = require("../models/Package");
 const UserSchema = require("../models/User");
+const DailyCounterSchema = require("../models/DailyCounter");
+const QueueTokenSchema = require("../models/QueueToken");
 const getModel = require("../middleware/getModelsHandler");
 const { verifyToken } = require("../middleware/verifyToken");
 const { generateInvoicePayload, buildDynamicTableHtml } = require("../handlers/invoiceHelpers");
@@ -97,6 +99,8 @@ const getTenantContext = async (req, res, next) => {
     req.TenantTemplate = getModel(tenantDb, "Template", TemplateSchema);
     req.TenantUser = getModel(tenantDb, "User", UserSchema);
     req.TenantAvailability = getModel(tenantDb, "TestAvailability", TestAvailabilitySchema);
+    req.TenantDailyCounter = getModel(tenantDb, "DailyCounter", DailyCounterSchema);
+    req.TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
     next();
   } catch (err) {
     res.status(500).json({ message: "Database Connection Error" });
@@ -149,6 +153,7 @@ router.post("/", async (req, res) => {
     } = req.body;
     
     const instId = req.user.institutionId;
+    const brandCode = req.user.brand;
     let finalPatientId = null;
     let finalPatientDetails = {};
 
@@ -330,11 +335,66 @@ router.post("/", async (req, res) => {
     });
 
     await newOrder.save();
+
+// -------------------------------------------------------------
+    // --- SMART QUEUE / TOKEN GENERATION ---
+    // -------------------------------------------------------------
+    const tokenPrefixes = { "Pathology": "PAT", "Radiology": "RAD", "Cardiology": "CAR", "Other": "OTH" };
+    
+    // 1. Group the ordered tests by Department
+    const departmentGroups = {};
+    for (const item of orderItems) {
+        if (item.itemType === 'Test') {
+            const testDef = await req.TenantTest.findById(item.itemId);
+            const dept = testDef?.department || "Other";
+            
+            if (!departmentGroups[dept]) departmentGroups[dept] = [];
+            departmentGroups[dept].push({ testId: item.itemId, name: item.name });
+        }
+    }
+    
+    const generatedTokens = [];
+    
+    // 2. Generate an Atomic Token for each Department involved
+    for (const [dept, tests] of Object.entries(departmentGroups)) {
+        
+        // ATOMIC INCREMENT: Safe against race conditions
+        const counter = await req.TenantDailyCounter.findOneAndUpdate(
+            { institutionId: instId, date: dateKey, department: dept },
+            { $inc: { sequence_value: 1 } },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+        
+        const seq = counter.sequence_value;
+        const prefix = tokenPrefixes[dept] || "GEN";
+        const tokenStr = `${prefix}-${String(seq).padStart(3, '0')}`; // e.g. PAT-001
+        
+        // 3. Create the Queue Token
+        const newToken = new req.TenantQueueToken({
+            institutionId: instId,
+            date: dateKey,
+            department: dept,
+            tokenNumber: tokenStr,
+            sequence: seq,
+            orderId: newOrder._id,
+            patientId: finalPatientId,
+            patientDetails: finalPatientDetails,
+            tests: tests,
+            status: 'WAITING'
+        });
+        
+        await newToken.save();
+        generatedTokens.push(newToken);
+        
+        // 4. SSE TRIGGER (Optional Feature): Instantly update the Department's Screen
+        sendToBrand(brandCode, { type: 'NEW_TOKEN', token: newToken }, 'tests_queue_updated');
+    }
+
     // --- SSE TRIGGER ---
     // Notify all clients of this institution to refresh their test availability
-    const brandCode = req.user.brand;
     sendToBrand(brandCode, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
-    res.status(201).json(newOrder);
+    // Return order + newly generated tokens
+    res.status(201).json({ order: newOrder, tokens: generatedTokens });
 
   } catch (err) {
     console.error("Order Error:", err);

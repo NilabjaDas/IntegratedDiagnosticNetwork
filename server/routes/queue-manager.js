@@ -5,6 +5,83 @@ const Order = require("../models/Order");
 const QueueState = require("../models/QueueState");
 const Doctor = require("../models/Doctor");
 const { authenticateUser } = require("../middleware/auth");
+const getModel = require("../middleware/getModelsHandler");
+const QueueTokenSchema = require("../models/QueueToken");
+const { sendToBrand } = require("../sseManager");
+const Institution = require("../models/Institutions");
+const mongoose = require("mongoose");
+
+// 1. Add Tenant Context Middleware
+const getTenantContext = async (req, res, next) => {
+    try {
+        const institution = await Institution.findOne({ institutionId: req.user.institutionId });
+        if (!institution) return res.status(404).json({ message: "Institution not found." });
+        
+        const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+        req.TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
+        next();
+    } catch (err) {
+        res.status(500).json({ message: "Database Connection Error" });
+    }
+};
+
+router.use("/department", authenticateUser, getTenantContext);
+router.use("/token", authenticateUser, getTenantContext);
+
+
+// 2. Fetch Live Queue for a specific Department
+router.get("/department/:deptName", async (req, res) => {
+    try {
+        const todayStr = moment().format("YYYY-MM-DD");
+        const queue = await req.TenantQueueToken.find({
+            institutionId: req.user.institutionId,
+            date: todayStr,
+            department: req.params.deptName,
+            status: { $in: ['WAITING', 'CALLED', 'IN_PROGRESS', 'HOLD'] } // Ignore completed
+        }).sort({ sequence: 1 });
+        
+        res.json(queue);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 3. Control Token Status (Call, Start, Complete, Hold)
+router.put("/token/:tokenId/action", async (req, res) => {
+    try {
+        const { action } = req.body; 
+        const token = await req.TenantQueueToken.findById(req.params.tokenId);
+        if (!token) return res.status(404).json({ message: "Token not found" });
+
+        switch(action) {
+            case "CALL":
+                token.status = "CALLED";
+                token.calledAt = new Date();
+                // Broadcast to Waiting Room TVs!
+                sendToBrand(req.user.institutionId, { type: 'TV_ANNOUNCEMENT', token: token.tokenNumber, counter: req.user.username }, 'tv_display');
+                break;
+            case "START":
+                token.status = "IN_PROGRESS";
+                break;
+            case "COMPLETE":
+                token.status = "COMPLETED";
+                token.completedAt = new Date();
+                break;
+            case "HOLD":
+                token.status = "HOLD";
+                break;
+        }
+
+        await token.save();
+        
+        // Broadcast to the specific department's technicians to update their screens
+        sendToBrand(req.user.institutionId, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
+
+        res.json(token);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Helper to add minutes to "10:30 AM"
 const addMinutesToTimeStr = (timeStr, minutesToAdd) => {
@@ -132,6 +209,68 @@ router.get("/status/:doctorId", async (req, res) => {
         currentDelay: state ? state.cumulativeDelay : 0,
         status: (state && state.cumulativeDelay > 15) ? "Delayed" : "On Time"
     });
+});
+
+// GET /api/queue/department/:departmentName
+// Fetches the live queue for a specific department (e.g. Pathology)
+router.get("/department/:dept", authenticateUser, async (req, res) => {
+    try {
+        // Assuming Tenant setup is applied here like in orders.js
+        const todayStr = moment().format("YYYY-MM-DD");
+        const dept = req.params.dept;
+
+        const queue = await req.TenantQueueToken.find({
+            institutionId: req.user.institutionId,
+            date: todayStr,
+            department: dept,
+            // Exclude skipped/completed so the UI is clean
+            status: { $in: ['WAITING', 'CALLED', 'IN_PROGRESS', 'HOLD'] } 
+        }).sort({ sequence: 1 }); // Sorted by token number
+
+        res.json(queue);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/queue/token/:tokenId/action
+// Actions: "CALL", "START", "COMPLETE", "HOLD"
+router.put("/token/:tokenId/action", authenticateUser, async (req, res) => {
+    try {
+        const { action } = req.body; 
+        const token = await req.TenantQueueToken.findById(req.params.tokenId);
+        
+        if (!token) return res.status(404).json({ message: "Token not found" });
+
+        switch(action) {
+            case "CALL":
+                token.status = "CALLED";
+                token.calledAt = new Date();
+                // SSE Trigger: Announce on Waiting Room TV!
+                sendToBrand(req.user.brand, { type: 'TV_ANNOUNCEMENT', token: token.tokenNumber, counter: req.user.username }, 'tv_display');
+                break;
+            case "START":
+                token.status = "IN_PROGRESS";
+                break;
+            case "COMPLETE":
+                token.status = "COMPLETED";
+                token.completedAt = new Date();
+                break;
+            case "HOLD":
+                // If patient isn't there, put them on hold. They drop out of the active flow.
+                token.status = "HOLD";
+                break;
+        }
+
+        await token.save();
+        
+        // SSE Trigger: Update the technician's screen so row colors change
+        sendToBrand(req.user.brand, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
+
+        res.json(token);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 module.exports = router;

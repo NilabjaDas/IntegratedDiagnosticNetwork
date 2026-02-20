@@ -111,6 +111,9 @@ const Sidebar = ({ collapsed }) => {
         <Menu.Item key="/orders-management" icon={<ProductOutlined />}>
           <Link to="/orders-management">Orders Management</Link>
         </Menu.Item>
+         <Menu.Item key="/queue-management" icon={<SettingOutlined />}>
+          <Link to="/queue-management">QueueManagerPage</Link>
+        </Menu.Item>
         <Menu.Item key="/configuration" icon={<SettingOutlined />}>
           <Link to="/configuration">Configuration</Link>
         </Menu.Item>

@@ -6,6 +6,7 @@ import uiReducer from "./uiRedux";
 import institutionReducer from "./InstitutionRedux";
 import testsReducer from "./testRedux"
 import ordersReducer from "./orderRedux"
+import queueReducer from "./queueRedux";
 import templateLibraryReducer from "./templateLibraryRedux";
 import { CLEAR_ALL_REDUCERS } from "./actionTypes";
 
@@ -60,6 +61,7 @@ const appReducer = combineReducers({
   [process.env.REACT_APP_TESTS_DATA_KEY] : testsReducer,
   [process.env.REACT_APP_ORDERS_DATA_KEY] : ordersReducer,
   [process.env.REACT_APP_TEMPLATELIBRARY_DATA_KEY] : templateLibraryReducer,
+  [process.env.REACT_APP_QUEUE_DATA_KEY] : queueReducer,
 });
 
 const rootReducer = (state, action) => {
@@ -71,7 +73,8 @@ const rootReducer = (state, action) => {
         [process.env.REACT_APP_ACCESS_TOKEN_KEY]: undefined,
         [process.env.REACT_APP_UI_DATA_KEY]: undefined,
         [process.env.REACT_APP_TESTS_DATA_KEY] : undefined,
-        [process.env.REACT_APP_ORDERS_DATA_KEY] : undefined
+        [process.env.REACT_APP_ORDERS_DATA_KEY] : undefined,
+        [process.env.REACT_APP_QUEUE_DATA_KEY] : undefined
       },
       action
     );
