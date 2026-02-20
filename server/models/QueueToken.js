@@ -22,7 +22,9 @@ const queueTokenSchema = new mongoose.Schema({
       testId: String,
       name: String
   }],
-  
+  assignedCounterId: { type: String },
+  assignedCounterName: { type: String },
+  assignedStaffId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   // The Lifecycle of a Token
   status: { 
       type: String, 

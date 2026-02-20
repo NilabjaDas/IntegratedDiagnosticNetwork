@@ -272,7 +272,7 @@ const TemplateEditor = ({ templates, onCreate, onUpdate, onDelete }) => {
     }
   }, [templates, editingId, form]);
 
-  const filteredTemplates = templates.filter((t) => {
+  const filteredTemplates = templates?.filter((t) => {
     const type = t.printDetails?.type || t.type;
     return filterType === "ALL" ? true : type === filterType;
   });

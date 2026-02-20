@@ -1,9 +1,8 @@
-// frontend-provider/src/pages/QueueManager/components/QueueTable.jsx
 import React from 'react';
-import { Table, Tag, Button, Space } from 'antd';
-import { PlayCircleOutlined, CheckCircleOutlined, PauseCircleOutlined, SoundOutlined } from '@ant-design/icons';
+import { Table, Tag, Button, Space, Tooltip } from 'antd';
+import { PlayCircleOutlined, CheckCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
 
-const QueueTable = ({ queue, handleAction }) => {
+const QueueTable = ({ queue, handleAction, selectedCounter }) => {
     
     const columns = [
         {
@@ -30,48 +29,60 @@ const QueueTable = ({ queue, handleAction }) => {
             ),
         },
         {
-            title: 'Status',
-            dataIndex: 'status',
+            title: 'Status & Location',
             key: 'status',
-            render: (status) => {
-                let color = status === 'WAITING' ? 'default' : 
-                            status === 'CALLED' ? 'processing' : 
-                            status === 'IN_PROGRESS' ? 'success' : 'warning';
-                return <Tag color={color} style={{ fontSize: '14px', padding: '4px 10px' }}>{status}</Tag>;
+            render: (_, record) => {
+                let color = record.status === 'WAITING' ? 'default' : 
+                            record.status === 'CALLED' ? 'processing' : 
+                            record.status === 'IN_PROGRESS' ? 'success' : 'warning';
+                return (
+                    <div>
+                        <Tag color={color} style={{ fontSize: '13px', padding: '4px 10px', marginBottom: '4px' }}>
+                            {record.status}
+                        </Tag>
+                        {record.assignedCounterName && (
+                            <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
+                                Desk: {record.assignedCounterName}
+                            </div>
+                        )}
+                    </div>
+                );
             },
         },
         {
             title: 'Actions',
             key: 'action',
-            render: (_, record) => (
-                <Space size="middle">
-                    {record.status === 'WAITING' && (
-                        <Button type="primary" icon={<SoundOutlined />} onClick={() => handleAction(record._id, 'CALL')}>
-                            Call Patient
-                        </Button>
-                    )}
-                    {record.status === 'CALLED' && (
-                        <>
-                            <Button type="default" style={{ color: '#52c41a', borderColor: '#52c41a' }} icon={<PlayCircleOutlined />} onClick={() => handleAction(record._id, 'START')}>
-                                Start
+            render: (_, record) => {
+                // Determine if this specific row is assigned to the current staff member's desk
+                const isMyPatient = selectedCounter && record.assignedCounterId === selectedCounter.counterId;
+
+                return (
+                    <Space size="middle">
+                        {record.status === 'CALLED' && isMyPatient && (
+                            <>
+                                <Button type="default" style={{ color: '#52c41a', borderColor: '#52c41a' }} icon={<PlayCircleOutlined />} onClick={() => handleAction(record._id, 'START')}>
+                                    Start Test
+                                </Button>
+                                <Button danger onClick={() => handleAction(record._id, 'HOLD')}>No Show</Button>
+                            </>
+                        )}
+                        {record.status === 'IN_PROGRESS' && isMyPatient && (
+                            <Button type="primary" style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }} icon={<CheckCircleOutlined />} onClick={() => handleAction(record._id, 'COMPLETE')}>
+                                Complete
                             </Button>
-                            <Button danger onClick={() => handleAction(record._id, 'HOLD')}>No Show (Hold)</Button>
-                        </>
-                    )}
-                    {record.status === 'IN_PROGRESS' && (
-                        <Button type="primary" style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }} icon={<CheckCircleOutlined />} onClick={() => handleAction(record._id, 'COMPLETE')}>
-                            Complete Test
-                        </Button>
-                    )}
-                    {record.status === 'HOLD' && (
-                        <Button type="dashed" onClick={() => handleAction(record._id, 'CALL')}>Recall</Button>
-                    )}
-                </Space>
-            ),
+                        )}
+                        {record.status === 'HOLD' && (
+                            <Tooltip title="Flash TV Screen again">
+                                <Button type="dashed" onClick={() => handleAction(record._id, 'RECALL')}>Recall</Button>
+                            </Tooltip>
+                        )}
+                        {/* Note: 'WAITING' status has no actions here anymore. They must use the green "Call Next Patient" button at the top! */}
+                    </Space>
+                );
+            },
         },
     ];
 
-    // AntD requires a 'key' prop on data source arrays
     const dataSource = queue.map(item => ({ ...item, key: item._id }));
 
     return (
@@ -79,7 +90,13 @@ const QueueTable = ({ queue, handleAction }) => {
             columns={columns} 
             dataSource={dataSource} 
             pagination={false} 
-            rowClassName={(record) => record.status === 'CALLED' ? 'row-highlight-called' : ''}
+            rowClassName={(record) => {
+                // Highlight rows that belong to the current logged-in desk
+                if (selectedCounter && record.assignedCounterId === selectedCounter.counterId) {
+                    return 'row-highlight-mine';
+                }
+                return '';
+            }}
         />
     );
 };

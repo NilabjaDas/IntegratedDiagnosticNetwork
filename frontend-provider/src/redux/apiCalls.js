@@ -580,3 +580,64 @@ export const updateTokenStatus = async (dispatch, tokenId, action) => {
     dispatch(queueProcessFailure());
   }
 };
+
+
+
+export const fetchQueueCounters = async () => {
+    try {
+        const res = await userRequest.get(`/queue-manager/counters`);
+        return res.data; // { departments: [], counters: [] }
+    } catch (err) {
+        console.error("Failed to fetch counters", err);
+        return null;
+    }
+};
+
+export const updateCounterStatus = async (counterId, status) => {
+    try {
+        await userRequest.put(`/queue-manager/counters/${counterId}/status`, { status });
+    } catch (err) {
+        console.error("Failed to update counter status", err);
+    }
+};
+
+export const callNextPatientInQueue = async (dispatch, dept, counterId, counterName) => {
+    // We dispatch queueProcessStart if you want a loading state, or just call directly
+    try {
+        const res = await userRequest.post(`/queue-manager/department/${dept}/call-next`, { 
+            counterId, 
+            counterName 
+        });
+        // The SSE will automatically update the table, but you can also dispatch manually
+        return res.data;
+    } catch (err) {
+        if (err.response && err.response.status === 404) {
+            alert("No patients waiting in queue!");
+        } else {
+            console.error("Failed to call next patient", err);
+        }
+        return null;
+    }
+};
+
+
+// Add these to apiCalls.js
+export const fetchMyInstitutionSettings = async () => {
+    try {
+        const res = await userRequest.get("/institutions/my-settings");
+        return res.data;
+    } catch (err) {
+        console.error("Failed to fetch settings", err);
+        return null;
+    }
+};
+
+export const updateMyInstitutionSettings = async (payload) => {
+    try {
+        const res = await userRequest.put("/institutions/my-settings", payload);
+        return res.data;
+    } catch (err) {
+        console.error("Failed to update settings", err);
+        throw err;
+    }
+};

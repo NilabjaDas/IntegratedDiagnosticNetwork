@@ -1,12 +1,25 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
-
 const maintenanceSchema = new mongoose.Schema({
   activeStatus: { type: Boolean, default: false },
   startTime: { type: String, default: "" },
   endTime: { type: String, default: "" },
   updateInfo: { type: String, default: "Scheduled Maintenance" },
   updateDescription: { type: String, default: "We are improving our services." },
+}, { _id: false });
+
+
+const counterSchema = new mongoose.Schema({
+  counterId: { type: String, default: () => uuidv4() },
+  name: { type: String, required: true }, // e.g., "Desk 1", "Room A"
+  department: { type: String, required: true }, // e.g., "Pathology"
+  status: { 
+    type: String, 
+    enum: ["Online", "Paused", "Offline"], 
+    default: "Offline" 
+  },
+  // Future Provision: To lock this counter to a specific logged-in user
+  currentStaffId: { type: String, default: null } 
 }, { _id: false });
 
 const outletSchema = new mongoose.Schema({
@@ -34,7 +47,7 @@ const institutionsSchema = new mongoose.Schema({
   
   institutionType: { 
     type: String, 
-    enum: ["soloDoc", "multiDoc", "pathologyWithDoc"], 
+    enum: ["soloDoc", "multiDoc", "pathology", "pathologyWithDoc"], 
     default: "pathologyWithDoc",
     required: true 
   },
@@ -111,11 +124,18 @@ const institutionsSchema = new mongoose.Schema({
     timezone: { type: String, default: "Asia/Kolkata" },
     locale: { type: String, default: "en-IN" },
     defaultLanguage: { type: String, default: "en" },
+    // Formatting & Identifiers
+    orderFormat: { type: String, default: "ORD-{YYMMDD}-{SEQ}" },
     sampleBarcodePrefix: { type: String, default: "LAB" },
+    barcodeFormat: { type: String, default: "{PREFIX}-{YYMMDD}-{SEQ}" },
     discountOverrideCode: { type: String, select: false },
     queue: {
       incrementalPerOutlet: { type: Boolean, default: true },
-      tokenFormat: { type: String, default: "{OUTLET}-{NUMBER}" }
+      tokenFormat: { type: String, default: "{OUTLET}-{NUMBER}" },
+      departments: { 
+        type: [String], 
+        default: ["Pathology", "Radiology", "Cardiology", "Consultation", "Billing"] 
+      },
     }
   },
 

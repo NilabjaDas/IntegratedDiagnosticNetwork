@@ -4,11 +4,17 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt"); // Needed for user creation
 const Institution = require("../models/Institutions");
-const { authorizeRoles } = require("../middleware/auth"); 
+const { authorizeRoles, authenticateUser } = require("../middleware/auth"); 
 const { verifyToken } = require("../middleware/verifyToken");
+const { compressImage } = require("../handlers/imageCompressor");
+const { uploadToFirebase } = require("../handlers/fileUploader");
+const multer = require("multer");
 
-
-
+// Configure Multer to hold files in memory for processing
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 // 1. Filter Sensitive Data
 function filterInstitutionForClient(doc) {
@@ -36,6 +42,99 @@ const checkOwnership = (reqUser, targetId) => {
     return false;
 };
 
+// GET /api/institutions/my-settings
+router.get("/my-settings", authenticateUser, async (req, res) => {
+    try {
+        // Explicitly SELECT the allowed fields + institutionType (for conditional rendering)
+        const institution = await Institution.findOne({ institutionId: req.user.institutionId })
+            .select("institutionType loginPageImgUrl institutionLogoUrl institutionSymbolUrl favicon theme contact address billing outlets settings counters");
+        
+        if (!institution) return res.status(404).json({ message: "Institution not found." });
+        res.json(institution);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/institutions/my-settings
+router.put("/my-settings", authenticateUser, upload.fields([
+    { name: 'institutionLogoUrl', maxCount: 1 },
+    { name: 'loginPageImgUrl', maxCount: 1 },
+    { name: 'institutionSymbolUrl', maxCount: 1 },
+    { name: 'favicon', maxCount: 1 }
+]), async (req, res) => {
+    try {
+        const { 
+            loginPageImgUrl, institutionLogoUrl, institutionSymbolUrl, favicon,
+            theme, contact, address, billing, outlets, settings, counters 
+        } = req.body;
+
+        const updateData = {};
+        
+        // Helper: FormData sends nested objects as JSON Strings. Normal JSON requests send actual objects.
+        const parseSafely = (val) => (typeof val === 'string' ? JSON.parse(val) : val);
+
+        if (theme !== undefined) updateData.theme = parseSafely(theme);
+        if (contact !== undefined) updateData.contact = parseSafely(contact);
+        if (address !== undefined) updateData.address = parseSafely(address);
+        if (billing !== undefined) updateData.billing = parseSafely(billing);
+        if (outlets !== undefined) updateData.outlets = parseSafely(outlets);
+        if (settings !== undefined) updateData.settings = parseSafely(settings);
+        if (counters !== undefined) updateData.counters = parseSafely(counters);
+
+        // Map existing string URLs (if they weren't replaced by files)
+        if (loginPageImgUrl !== undefined && !loginPageImgUrl.startsWith('blob:')) updateData.loginPageImgUrl = loginPageImgUrl;
+        if (institutionLogoUrl !== undefined && !institutionLogoUrl.startsWith('blob:')) updateData.institutionLogoUrl = institutionLogoUrl;
+        if (institutionSymbolUrl !== undefined && !institutionSymbolUrl.startsWith('blob:')) updateData.institutionSymbolUrl = institutionSymbolUrl;
+        if (favicon !== undefined && !favicon.startsWith('blob:')) updateData.favicon = favicon;
+
+        // ---------------------------------------------------------
+        // IMAGE PROCESSING & FIREBASE UPLOAD
+        // ---------------------------------------------------------
+        if (req.files) {
+            const processAndUploadFile = async (fieldName) => {
+                if (req.files[fieldName] && req.files[fieldName][0]) {
+                    const file = req.files[fieldName][0];
+                    let buffer = file.buffer;
+                    let mimetype = file.mimetype;
+                    let extension = ''; // Let uploader extract from original name if empty
+
+                    // Only compress if it is an image (skip SVGs or PDFs)
+                    if (mimetype.startsWith('image/') && mimetype !== 'image/svg+xml' && mimetype !== 'image/gif') {
+                        const compressed = await compressImage(file.buffer);
+                        buffer = compressed.buffer;
+                        mimetype = compressed.mimetype;
+                        extension = compressed.extension;
+                    }
+
+                    const downloadUrl = await uploadToFirebase(buffer, file.originalname, mimetype, extension, "institutions/branding");
+                    updateData[fieldName] = downloadUrl;
+                }
+            };
+
+            await processAndUploadFile('institutionLogoUrl');
+            await processAndUploadFile('loginPageImgUrl');
+            await processAndUploadFile('institutionSymbolUrl');
+            await processAndUploadFile('favicon');
+        }
+
+        // 3. Update Database
+        const updatedInstitution = await Institution.findOneAndUpdate(
+            { institutionId: req.user.institutionId },
+            { $set: updateData },
+            { new: true, runValidators: true }
+        ).select("institutionName institutionType loginPageImgUrl institutionLogoUrl institutionSymbolUrl favicon theme contact address billing outlets settings counters");
+
+        if (!updatedInstitution) {
+            return res.status(404).json({ message: "Institution not found." });
+        }
+
+        res.json(updatedInstitution);
+    } catch (err) {
+        console.error("Institution Settings Update Error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
 
 router.get("/status", async (req, res) => {
     try {
@@ -241,6 +340,10 @@ router.post("/users/:institutionId", authorizeRoles("admin"), async (req, res) =
         res.status(500).json({ message: "Failed to create user: " + err.message });
     }
 });
+
+
+
+
 
 
 

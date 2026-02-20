@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 dotenv.config();
+const { initializeFirebase } = require("./handlers/firebaseInit");
+initializeFirebase();
 const app = express();
 
 const AdminMasterRoute = require("./routes/admin-master")

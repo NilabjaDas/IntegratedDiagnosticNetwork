@@ -211,21 +211,53 @@ router.get("/status/:doctorId", async (req, res) => {
     });
 });
 
-// GET /api/queue/department/:departmentName
-// Fetches the live queue for a specific department (e.g. Pathology)
+// GET /api/queue/counters
+// Fetches the physical layout so the frontend dropdown knows what desks exist
+router.get("/counters", authenticateUser, async (req, res) => {
+    try {
+        const institution = await Institution.findOne({ institutionId: req.user.institutionId });
+        res.json({
+            departments: institution.settings.queue.departments,
+            counters: institution.counters
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /api/queue/counters/:counterId/status
+// Allows staff to Pause (e.g. Bathroom break) or Close their desk
+router.put("/counters/:counterId/status", authenticateUser, async (req, res) => {
+    try {
+        const { status } = req.body; // "Online", "Paused", "Offline"
+        
+        await Institution.updateOne(
+            { institutionId: req.user.institutionId, "counters.counterId": req.params.counterId },
+            { $set: { "counters.$.status": status, "counters.$.currentStaffId": req.user._id } }
+        );
+        
+        res.json({ message: "Counter status updated successfully" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /api/queue/department/:dept
+// Future Provision: We check req.user to see if they are assigned to this dept
 router.get("/department/:dept", authenticateUser, async (req, res) => {
     try {
-        // Assuming Tenant setup is applied here like in orders.js
         const todayStr = moment().format("YYYY-MM-DD");
         const dept = req.params.dept;
+
+        // Future RBAC check here: 
+        // if (req.user.role !== 'Admin' && !req.user.departments.includes(dept)) return 403;
 
         const queue = await req.TenantQueueToken.find({
             institutionId: req.user.institutionId,
             date: todayStr,
             department: dept,
-            // Exclude skipped/completed so the UI is clean
             status: { $in: ['WAITING', 'CALLED', 'IN_PROGRESS', 'HOLD'] } 
-        }).sort({ sequence: 1 }); // Sorted by token number
+        }).sort({ sequence: 1 }); 
 
         res.json(queue);
     } catch (err) {
@@ -233,44 +265,86 @@ router.get("/department/:dept", authenticateUser, async (req, res) => {
     }
 });
 
-// PUT /api/queue/token/:tokenId/action
-// Actions: "CALL", "START", "COMPLETE", "HOLD"
-router.put("/token/:tokenId/action", authenticateUser, async (req, res) => {
+// POST /api/queue/department/:dept/call-next
+// ATOMIC ROUTE: Finds the oldest WAITING patient and assigns them to the requesting counter
+router.post("/department/:dept/call-next", authenticateUser, async (req, res) => {
     try {
-        const { action } = req.body; 
-        const token = await req.TenantQueueToken.findById(req.params.tokenId);
-        
-        if (!token) return res.status(404).json({ message: "Token not found" });
+        const { counterId, counterName } = req.body;
+        const todayStr = moment().format("YYYY-MM-DD");
 
-        switch(action) {
-            case "CALL":
-                token.status = "CALLED";
-                token.calledAt = new Date();
-                // SSE Trigger: Announce on Waiting Room TV!
-                sendToBrand(req.user.brand, { type: 'TV_ANNOUNCEMENT', token: token.tokenNumber, counter: req.user.username }, 'tv_display');
-                break;
-            case "START":
-                token.status = "IN_PROGRESS";
-                break;
-            case "COMPLETE":
-                token.status = "COMPLETED";
-                token.completedAt = new Date();
-                break;
-            case "HOLD":
-                // If patient isn't there, put them on hold. They drop out of the active flow.
-                token.status = "HOLD";
-                break;
-        }
+        // Use findOneAndUpdate to prevent race conditions!
+        const token = await req.TenantQueueToken.findOneAndUpdate(
+            { 
+                institutionId: req.user.institutionId, 
+                date: todayStr, 
+                department: req.params.dept,
+                status: 'WAITING' 
+            },
+            { 
+                $set: { 
+                    status: 'CALLED', 
+                    calledAt: new Date(),
+                    assignedCounterId: counterId,
+                    assignedCounterName: counterName,
+                    assignedStaffId: req.user._id // Tracks exactly who called them
+                } 
+            },
+            { new: true, sort: { sequence: 1 } } // Grabs the oldest one first
+        );
 
-        await token.save();
-        
-        // SSE Trigger: Update the technician's screen so row colors change
-        sendToBrand(req.user.brand, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
+        if (!token) return res.status(404).json({ message: "No patients waiting in queue." });
+
+        // SSE: Broadcast to TVs "Token PAT-001 -> Desk 3"
+        sendToBrand(req.user.institutionId, { 
+            type: 'TV_ANNOUNCEMENT', 
+            token: token.tokenNumber, 
+            counterName: counterName 
+        }, 'tv_display');
+
+        // SSE: Update Staff Screens
+        sendToBrand(req.user.institutionId, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
 
         res.json(token);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
+
+// PUT /api/queue/token/:tokenId/action
+// Actions: "START", "COMPLETE", "HOLD" (CALL is now handled by call-next)
+router.put("/token/:tokenId/action", authenticateUser, async (req, res) => {
+    try {
+        const { action } = req.body; 
+        const token = await req.TenantQueueToken.findById(req.params.tokenId);
+        if (!token) return res.status(404).json({ message: "Token not found" });
+
+        switch(action) {
+            case "START": token.status = "IN_PROGRESS"; break;
+            case "COMPLETE":
+                token.status = "COMPLETED";
+                token.completedAt = new Date();
+                break;
+            case "HOLD": token.status = "HOLD"; break;
+            case "RECALL":
+                token.status = "CALLED";
+                token.calledAt = new Date();
+                // Flash the TV again
+                sendToBrand(req.user.institutionId, { 
+                    type: 'TV_ANNOUNCEMENT', 
+                    token: token.tokenNumber, 
+                    counterName: token.assignedCounterName 
+                }, 'tv_display');
+                break;
+        }
+
+        await token.save();
+        sendToBrand(req.user.institutionId, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
+
+        res.json(token);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 module.exports = router;
