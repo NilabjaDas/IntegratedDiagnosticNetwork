@@ -40,6 +40,7 @@ import OrdersPage from "./pages/OrdersPage";
 import ConfigurationPage from "./pages/ConfigurationPage";
 import moment from "moment";
 import QueueManagerPage from "./pages/QueueManagerPage";
+import TvDisplayPage from "./components/TvDisplayPage";
 import { addTokenSuccess, getQueueSuccess } from "./redux/queueRedux";
 
 // Global style to reset default margin and padding
@@ -393,6 +394,7 @@ function App() {
                     <Route path="/configuration" element={<ConfigurationPage />} />
                     <Route path="/page2" element={<Page2 />} />
                     <Route path="/page3" element={<Page3 />} />
+                    <Route path="/tv-display/:department" element={<TvDisplayPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </MainLayout>
