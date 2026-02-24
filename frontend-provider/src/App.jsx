@@ -42,7 +42,7 @@ import DoctorManagerPage from './pages/DoctorManagerPage';
 import DoctorWorkspacePage from './pages/DoctorWorkspacePage';
 import moment from "moment";
 import QueueManagerPage from "./pages/QueueManagerPage";
-import TvDisplayPage from "./components/TvDisplayPage";
+import TvDisplayPage from "./pages/TvDisplayPage";
 import { addTokenSuccess, getQueueSuccess } from "./redux/queueRedux";
 
 // Global style to reset default margin and padding

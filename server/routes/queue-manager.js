@@ -137,10 +137,10 @@ router.post("/department/:dept/call-next", async (req, res) => {
         if (!token) return res.status(404).json({ message: "No patients waiting in queue." });
 
         sendToBrand(req.user.institutionId, { 
-            type: 'TV_ANNOUNCEMENT', 
-            token: token.tokenNumber, 
-            counterName: counterName 
-        }, 'tv_display');
+                    type: 'TV_ANNOUNCEMENT', 
+                    token: token.tokenNumber, 
+                    counterName: token.assignedCounterName 
+                }, 'tv_display');
 
         sendToBrand(req.user.institutionId, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
 

@@ -33,13 +33,18 @@ const QueueManagerPage = () => {
     const [config, setConfig] = useState({ departments: [], counters: [] });
 
     // 1. Initial Load: Fetch Physical Infrastructure
-    useEffect(() => {
+useEffect(() => {
         const loadConfig = async () => {
             const data = await fetchQueueCounters();
             if (data) {
-                setConfig(data);
-                if (data.departments.length > 0) {
-                    setDepartment(data.departments[0]);
+                // FIX: Strictly remove 'Consultation' so Lab Techs cannot see Doctor queues
+                const filteredDepartments = data.departments.filter(dept => dept !== 'Consultation');
+                
+                setConfig({ ...data, departments: filteredDepartments });
+                
+                // Auto-select the first available diagnostic department
+                if (filteredDepartments.length > 0) {
+                    setDepartment(filteredDepartments[0]);
                 }
             }
         };
