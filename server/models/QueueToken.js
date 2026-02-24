@@ -5,6 +5,8 @@ const queueTokenSchema = new mongoose.Schema({
   date: { type: String, required: true, index: true }, 
   department: { type: String, required: true, index: true }, 
   departmentOrderId: { type: String },
+  doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor', default: null },
+    shiftName: { type: String, default: null }, // e.g., "Morning OPD"
   tokenNumber: { type: String, required: true }, // e.g., "PAT-001"
   sequence: { type: Number, required: true },    // 1
   

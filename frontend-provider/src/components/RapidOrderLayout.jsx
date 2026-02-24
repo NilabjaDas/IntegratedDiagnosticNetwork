@@ -340,8 +340,10 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
     patientSearchRef.current?.focus();
   };
 
-  const handleServicesChange = (values) => {
+const handleServicesChange = (values) => {
     const newItems = [];
+    const selectedDayIndex = scheduleDate ? dayjs(scheduleDate).day() : dayjs().day();
+
     values.forEach((val) => {
       const testMatch = tests.find((t) => t._id === val);
       if (testMatch) {
@@ -351,16 +353,26 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
         if (pkgMatch) {
           newItems.push({ ...pkgMatch, price: pkgMatch.offerPrice, type: "Package" });
         } else {
-          // --- NEW: Map Doctor to Cart Item ---
+          // It's a Doctor!
           const docMatch = doctors.find(d => d._id === val || d.doctorId === val);
           if (docMatch) {
+            // Find shifts for the currently selected date
+            const daySchedule = docMatch.schedule?.find(s => s.dayOfWeek === selectedDayIndex);
+            const availableShifts = daySchedule?.isAvailable ? daySchedule.shifts : [];
+            
+            // Auto-select the first shift, if any exist
+            const defaultShift = availableShifts.length > 0 ? availableShifts[0].shiftName : "OPD";
+
             newItems.push({
                 _id: docMatch._id,
                 name: `Consultation: Dr. ${docMatch.personalInfo?.firstName} ${docMatch.personalInfo?.lastName}`,
                 price: docMatch.fees?.newConsultation || 0,
                 type: 'Consultation',
-                department: 'Consultation', 
-                homeCollectionAvailable: false
+                department: 'Consultation',
+                homeCollectionAvailable: false,
+                // --- NEW: Attach Shift ---
+                shiftName: defaultShift,
+                availableShifts: availableShifts // Save for the dropdown UI
             });
           }
         }
@@ -702,11 +714,28 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                             }
                           />
                           <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-                            <div style={{ flex: 1 }}>
-                              <Text style={{ fontWeight: 'bold', fontSize: 13 }}>{item.name}</Text>
-                              {item.type === "Package" && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>PKG</Tag>}
-                            </div>
-                            <div style={{ width: 80, textAlign: "right", fontWeight: 500 }}>₹{item.price}</div>
+                           <div style={{ flex: 1 }}>
+  <Text style={{ fontWeight: 'bold', fontSize: 13 }}>{item.name}</Text>
+  {item.type === "Package" && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>PKG</Tag>}
+  
+  {/* NEW: Shift Selector for Doctors */}
+  {item.type === "Consultation" && item.availableShifts?.length > 0 && (
+      <div style={{ marginTop: 4 }}>
+          <Select 
+              value={item.shiftName} 
+              onChange={(val) => {
+                  const updated = selectedItems.map(i => i._id === item._id ? { ...i, shiftName: val } : i);
+                  setSelectedItems(updated);
+              }}
+              style={{ width: 200, fontSize: 11 }}
+          >
+              {item.availableShifts?.map(s => (
+                  <Option key={s.shiftName} value={s.shiftName}>{s.shiftName} ({moment(s.startTime,"HH").format("ha")}-{moment(s.endTime,"HH").format("ha")})</Option>
+              ))}
+          </Select>
+      </div>
+  )}
+</div>
                           </div>
                         </List.Item>
                       )}

@@ -70,7 +70,8 @@ const calculateOrderItems = async (items, req) => {
                     itemId: doctor._id, 
                     name: `Consultation: Dr. ${doctor.personalInfo.firstName} ${doctor.personalInfo.lastName}`, 
                     price: doctor.fees.newConsultation, 
-                    itemType: 'Consultation' 
+                    itemType: 'Consultation',
+                    shiftName: item.shiftName
                 });
                 calculatedTotal += doctor.fees.newConsultation;
             }
@@ -525,62 +526,99 @@ router.post("/", async (req, res) => {
         financials.status = financials.dueAmount <= 0 ? "Paid" : "PartiallyPaid";
     }
 
-    // --- 7. DEPARTMENT GROUPING & IDs ---
-    const departmentGroups = {};
+// --- 7. DEPARTMENT & SMART QUEUE GROUPING ---
+    const QueueGroupings = {}; 
+    const Doctor = require('../models/Doctor'); // Ensure this is imported
+
     for (const item of orderItems) {
-        // Note: For doctors, itemType might be 'Consultation' in the future
-        if (item.itemType === 'Test' || item.itemType === 'Consultation') {
-            const testDef = await req.TenantTest.findById(item.itemId); // Will adapt for doctors later
-            const dept = testDef?.department || "Other";
+        if (item.itemType === 'Test' || item.itemType === 'Package') {
+            let dept = "Other";
+            if (item.itemType === 'Test') {
+                const testDef = await req.TenantTest.findById(item.itemId);
+                dept = testDef?.department || "Other";
+            }
             
-            if (!departmentGroups[dept]) departmentGroups[dept] = [];
-            departmentGroups[dept].push({ testId: item.itemId, name: item.name });
+            if (!QueueGroupings[dept]) {
+                QueueGroupings[dept] = { department: dept, prefix: null, items: [] };
+            }
+            QueueGroupings[dept].items.push({ testId: item.itemId, name: item.name });
+
+        } else if (item.itemType === 'Consultation') {
+            const doctor = await Doctor.findById(item.itemId);
+            if (doctor) {
+                // Isolate the queue mathematically by Doctor + Shift
+                const shiftKey = item.shiftName || "OPD";
+                const doctorQueueId = `${doctor._id}_${shiftKey}`;
+                
+                if (!QueueGroupings[doctorQueueId]) {
+                    // Generate a smart prefix: "DR" + First initial + First 3 letters of last name
+                    // e.g. Dr. Arnav Mukherjee -> DRAMUK
+                    const fName = doctor.personalInfo.firstName.toUpperCase().substring(0, 1);
+                    const lName = doctor.personalInfo.lastName.toUpperCase().substring(0, 3);
+                    
+                    QueueGroupings[doctorQueueId] = {
+                        department: "Consultation",
+                        doctorId: doctor._id.toString(),
+                        shiftName: shiftKey, 
+                        prefix: `DR${fName}${lName}`, 
+                        items: []
+                    };
+                }
+                QueueGroupings[doctorQueueId].items.push({ testId: doctor._id.toString(), name: item.name });
+            }
         }
     }
 
     const departmentOrders = [];
     const generatedTokens = [];
-    const tokenPrefixes = { "Pathology": "PAT", "Radiology": "RAD", "Cardiology": "CAR", "Consultation": "DOC", "Other": "OTH" };
+    const defaultPrefixes = { "Pathology": "PAT", "Radiology": "RAD", "Cardiology": "CAR", "Consultation": "DOC", "Other": "OTH" };
 
-    // Loop through departments to generate BOTH specific Order IDs and Queue Tokens
-    for (const [dept, tests] of Object.entries(departmentGroups)) {
+    for (const [groupId, groupData] of Object.entries(QueueGroupings)) {
+        const { department, doctorId, shiftName, prefix, items: groupItems } = groupData;
         
-        // A. Generate Department-Specific Order ID
-        const deptFormatObj = departmentOrderFormats.find(d => d.department === dept);
-        const deptFormatString = deptFormatObj ? deptFormatObj.format : orderFormat; // Fallback to global
+        // A. Generate Master Department Order ID (For billing / LIMS segregation)
+        const deptFormatObj = departmentOrderFormats.find(d => d.department === department);
+        const deptFormatString = deptFormatObj ? deptFormatObj.format : orderFormat; 
         
-        // We use a specific counter name so Order IDs don't clash with Queue Tokens
         const deptOrderCounter = await req.TenantDailyCounter.findOneAndUpdate(
-            { institutionId: instId, date: dateKey, department: `${dept}_ORDER` },
+            { institutionId: instId, date: dateKey, department: `${department}_ORDER` },
             { $inc: { sequence_value: 1 } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         const deptOrderId = generateFormattedId(deptFormatString, deptOrderCounter.sequence_value);
-        departmentOrders.push({ department: dept, orderId: deptOrderId });
+        
+        if (!departmentOrders.some(d => d.department === department)) {
+             departmentOrders.push({ department: department, orderId: deptOrderId });
+        }
 
         // B. Generate Physical Queue Token
+        // For doctors, the counter key MUST be unique to the specific shift and doctor!
+        const counterKey = doctorId ? `DOC_${doctorId}_${shiftName}` : department;
+        
         const queueCounter = await req.TenantDailyCounter.findOneAndUpdate(
-            { institutionId: instId, date: dateKey, department: dept },
+            { institutionId: instId, date: dateKey, department: counterKey },
             { $inc: { sequence_value: 1 } },
             { new: true, upsert: true, setDefaultsOnInsert: true }
         );
         
         const seq = queueCounter.sequence_value;
-        const prefix = tokenPrefixes[dept] || "GEN";
-        const tokenStr = `${prefix}-${String(seq).padStart(3, '0')}`;
+        const finalPrefix = prefix || defaultPrefixes[department] || "GEN";
+        const tokenStr = `${finalPrefix}-${String(seq).padStart(3, '0')}`; 
 
-        // C. Create Queue Entry linking to the specific Department Order ID
+        // C. Create Queue Entry
         const newToken = new req.TenantQueueToken({
             institutionId: instId,
             date: dateKey,
-            department: dept,
+            department: department,
+            doctorId: doctorId || null,
+            shiftName: shiftName || null,
             tokenNumber: tokenStr,
-            departmentOrderId: deptOrderId, // Storing it here for the technician UI
+            departmentOrderId: deptOrderId, 
             sequence: seq,
-            orderId: null, // Will link master order _id below
+            orderId: null, // Will map below
             patientId: finalPatientId,
             patientDetails: finalPatientDetails,
-            tests: tests,
+            tests: groupItems,
             status: 'WAITING'
         });
         generatedTokens.push(newToken);
@@ -590,8 +628,8 @@ router.post("/", async (req, res) => {
     const newOrder = new req.TenantOrder({
       institutionId: instId,
       orderId: uuidv4(),
-      displayId, // Master Financial ID
-      departmentOrders, // Array mapping departments to their clinical IDs
+      displayId,
+      departmentOrders, 
       patientId: finalPatientId, 
       isWalkIn: !!walkin,        
       patientDetails: finalPatientDetails, 
@@ -604,11 +642,9 @@ router.post("/", async (req, res) => {
 
     await newOrder.save();
 
-    // Now link the master Order ID to the newly created tokens and save them
     for (const token of generatedTokens) {
         token.orderId = newOrder._id;
         await token.save();
-        // Trigger SSE
         sendToBrand(brandCode, { type: 'NEW_TOKEN', token: token }, 'tests_queue_updated');
     }
 

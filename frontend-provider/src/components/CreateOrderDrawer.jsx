@@ -171,33 +171,45 @@ const CreateOrderDrawer = ({ open, onClose }) => {
       return name.includes(search) || alias.includes(search);
   };
 
-  const handleServicesChange = (values) => {
-      const newItems = [];
-      values.forEach(val => {
-          const testMatch = tests.find(t => t._id === val);
-          if (testMatch) {
-             newItems.push({ ...testMatch, type: 'Test' });
-          } else {
-             const pkgMatch = packages.find(p => p._id === val);
-             if (pkgMatch) {
-                newItems.push({ ...pkgMatch, price: pkgMatch.offerPrice, type: 'Package' });
-             } else {
-                 // --- NEW: Map Doctor to Cart Item ---
-                 const docMatch = doctors.find(d => d._id === val || d.doctorId === val);
-                 if (docMatch) {
-                     newItems.push({
-                         _id: docMatch._id,
-                         name: `Consultation: Dr. ${docMatch.personalInfo?.firstName} ${docMatch.personalInfo?.lastName}`,
-                         price: docMatch.fees?.newConsultation || 0,
-                         type: 'Consultation',
-                         department: 'Consultation', // Groups it cleanly
-                         homeCollectionAvailable: false
-                     });
-                 }
-             }
+const handleServicesChange = (values) => {
+    const newItems = [];
+    const selectedDayIndex = scheduleDate ? dayjs(scheduleDate).day() : dayjs().day();
+
+    values.forEach((val) => {
+      const testMatch = tests.find((t) => t._id === val);
+      if (testMatch) {
+        newItems.push({ ...testMatch, type: "Test" });
+      } else {
+        const pkgMatch = packages.find((p) => p._id === val);
+        if (pkgMatch) {
+          newItems.push({ ...pkgMatch, price: pkgMatch.offerPrice, type: "Package" });
+        } else {
+          // It's a Doctor!
+          const docMatch = doctors.find(d => d._id === val || d.doctorId === val);
+          if (docMatch) {
+            // Find shifts for the currently selected date
+            const daySchedule = docMatch.schedule?.find(s => s.dayOfWeek === selectedDayIndex);
+            const availableShifts = daySchedule?.isAvailable ? daySchedule.shifts : [];
+            
+            // Auto-select the first shift, if any exist
+            const defaultShift = availableShifts.length > 0 ? availableShifts[0].shiftName : "OPD";
+
+            newItems.push({
+                _id: docMatch._id,
+                name: `Consultation: Dr. ${docMatch.personalInfo?.firstName} ${docMatch.personalInfo?.lastName}`,
+                price: docMatch.fees?.newConsultation || 0,
+                type: 'Consultation',
+                department: 'Consultation',
+                homeCollectionAvailable: false,
+                // --- NEW: Attach Shift ---
+                shiftName: defaultShift,
+                availableShifts: availableShifts // Save for the dropdown UI
+            });
           }
-      });
-      setSelectedItems(newItems);
+        }
+      }
+    });
+    setSelectedItems(newItems);
   };
 
   const handleRemoveItem = (id) => {
@@ -265,7 +277,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
     const { discountAmount = 0, discountReason, paidAmount = 0, paymentMode, transactionId, notes, discountOverrideCode } = dataToSubmit;
 
     const orderData = {
-        items: selectedItems.map(i => ({ _id: i._id, type: i.type })),
+        items: selectedItems.map(i => ({ _id: i._id, type: i.type, shiftName: i.shiftName })),
         discountAmount, discountReason, paymentMode, discountOverrideCode,
         notes: notes || "", isHomeCollection, scheduleDate
     };
@@ -530,11 +542,37 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                                             actions={[<DeleteOutlined onClick={() => handleRemoveItem(item._id)} style={{color:'red', cursor: 'pointer'}} />]}
                                             style={{padding: '4px 0'}}
                                           >
-                                              <List.Item.Meta
-                                                  avatar={<Avatar size="small" icon={item.type === 'Consultation' ? <UserOutlined /> : <MedicineBoxOutlined />} style={{ backgroundColor: item.type === 'Package' ? '#87d068' : item.type === 'Consultation' ? '#722ed1' : '#1890ff' }} />}
-                                                  title={<span style={{fontSize: 13}}>{item.name}</span>}
-                                              />
-                                              <div>₹{item.price}</div>
+                                             <List.Item.Meta
+    avatar={<Avatar size="small" icon={item.type === 'Consultation' ? <UserOutlined /> : <MedicineBoxOutlined />} style={{ backgroundColor: item.type === 'Package' ? '#87d068' : item.type === 'Consultation' ? '#722ed1' : '#1890ff' }} />}
+/>
+<div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+    <div style={{ flex: 1 }}>
+        <Text style={{ fontWeight: 'bold', fontSize: 13 }}>{item.name}</Text>
+        {item.type === "Package" && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>PKG</Tag>}
+        
+        {/* NEW: Shift Selector for Doctors */}
+        {item.type === "Consultation" && item.availableShifts?.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+                <Select 
+                
+                    value={item.shiftName} 
+                    onChange={(val) => {
+                        const updated = selectedItems.map(i => i._id === item._id ? { ...i, shiftName: val } : i);
+                        setSelectedItems(updated);
+                    }}
+                    style={{ width: 200, fontSize: 11 }}
+                >
+                    {item.availableShifts.map(s => (
+                        <Option key={s.shiftName} value={s.shiftName}>{s.shiftName} ({moment(s.startTime,"HH").format("ha")}-{moment(s.endTime,"HH").format("ha")})</Option>
+                    ))}
+                </Select>
+            </div>
+        )}
+    </div>
+    <div style={{ width: 80, textAlign: "right", fontWeight: 500 }}>
+        ₹{item.price}
+    </div>
+</div>
                                           </List.Item>
                                       ))}
                                   </div>
