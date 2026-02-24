@@ -4,7 +4,7 @@ const queueTokenSchema = new mongoose.Schema({
   institutionId: { type: String, required: true, index: true },
   date: { type: String, required: true, index: true }, 
   department: { type: String, required: true, index: true }, 
-  
+  departmentOrderId: { type: String },
   tokenNumber: { type: String, required: true }, // e.g., "PAT-001"
   sequence: { type: Number, required: true },    // 1
   

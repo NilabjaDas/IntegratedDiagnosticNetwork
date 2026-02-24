@@ -8,7 +8,9 @@ import {
     IdcardOutlined, 
     CreditCardOutlined, 
     FilePdfOutlined,
-    CloudDownloadOutlined
+    CloudDownloadOutlined,
+    AppstoreOutlined,
+    SafetyCertificateOutlined
 } from '@ant-design/icons';
 
 import { fetchMyInstitutionSettings, updateMyInstitutionSettings } from '../redux/apiCalls';
@@ -20,6 +22,8 @@ import GeneralSettings from '../components/Configuration/GeneralSettings';
 import InfrastructureSettings from '../components/Configuration/InfrastructureSettings';
 import IdentitySettings from '../components/Configuration/IdentitySettings';
 import BillingSettings from '../components/Configuration/BillingSettings';
+import PatientPortalSettings from '../components/Configuration/PatientPortalSettings';
+import ComplianceSettings from '../components/Configuration/ComplianceSettings';
 
 const { Title, Text } = Typography;
 
@@ -146,7 +150,7 @@ const ConfigurationPage = () => {
         }
     ];
 
-    if (isPathology) {
+ if (isPathology) {
         tabItems.push({
             key: 'infrastructure',
             label: <span><BankOutlined /> Facilities & Rooms</span>,
@@ -155,6 +159,16 @@ const ConfigurationPage = () => {
     }
 
     tabItems.push(
+        {
+            key: 'portal',
+            label: <span><AppstoreOutlined /> Patient Portal</span>,
+            children: <PatientPortalSettings data={settingsData} onSave={handleSaveSettings} loading={saving} />,
+        },
+        {
+            key: 'compliance',
+            label: <span><SafetyCertificateOutlined /> Data & Compliance</span>,
+            children: <ComplianceSettings data={settingsData} onSave={handleSaveSettings} loading={saving} />,
+        },
         {
             key: 'billing',
             label: <span><CreditCardOutlined /> Billing & Taxes</span>,

@@ -45,9 +45,9 @@ const checkOwnership = (reqUser, targetId) => {
 // GET /api/institutions/my-settings
 router.get("/my-settings", authenticateUser, async (req, res) => {
     try {
-        // Explicitly SELECT the allowed fields + institutionType (for conditional rendering)
         const institution = await Institution.findOne({ institutionId: req.user.institutionId })
-            .select("institutionType loginPageImgUrl institutionLogoUrl institutionSymbolUrl favicon theme contact address billing outlets settings counters");
+            // ADDED NEW FIELDS TO SELECT: socialLinks, patientPortalSettings, compliance
+            .select("institutionName institutionType loginPageImgUrl institutionLogoUrl institutionSymbolUrl favicon theme contact address billing outlets settings counters socialLinks patientPortalSettings compliance");
         
         if (!institution) return res.status(404).json({ message: "Institution not found." });
         res.json(institution);
@@ -66,12 +66,12 @@ router.put("/my-settings", authenticateUser, upload.fields([
     try {
         const { 
             loginPageImgUrl, institutionLogoUrl, institutionSymbolUrl, favicon,
-            theme, contact, address, billing, outlets, settings, counters 
+            theme, contact, address, billing, outlets, settings, counters,
+            // NEW FIELDS:
+            socialLinks, patientPortalSettings, compliance
         } = req.body;
 
         const updateData = {};
-        
-        // Helper: FormData sends nested objects as JSON Strings. Normal JSON requests send actual objects.
         const parseSafely = (val) => (typeof val === 'string' ? JSON.parse(val) : val);
 
         if (theme !== undefined) updateData.theme = parseSafely(theme);
@@ -81,57 +81,52 @@ router.put("/my-settings", authenticateUser, upload.fields([
         if (outlets !== undefined) updateData.outlets = parseSafely(outlets);
         if (settings !== undefined) updateData.settings = parseSafely(settings);
         if (counters !== undefined) updateData.counters = parseSafely(counters);
+        
+        // NEW PARSERS
+        if (socialLinks !== undefined) updateData.socialLinks = parseSafely(socialLinks);
+        if (patientPortalSettings !== undefined) updateData.patientPortalSettings = parseSafely(patientPortalSettings);
+        if (compliance !== undefined) updateData.compliance = parseSafely(compliance);
 
-        // Map existing string URLs (if they weren't replaced by files)
+        // Map existing string URLs
         if (loginPageImgUrl !== undefined && !loginPageImgUrl.startsWith('blob:')) updateData.loginPageImgUrl = loginPageImgUrl;
         if (institutionLogoUrl !== undefined && !institutionLogoUrl.startsWith('blob:')) updateData.institutionLogoUrl = institutionLogoUrl;
         if (institutionSymbolUrl !== undefined && !institutionSymbolUrl.startsWith('blob:')) updateData.institutionSymbolUrl = institutionSymbolUrl;
         if (favicon !== undefined && !favicon.startsWith('blob:')) updateData.favicon = favicon;
 
-        // ---------------------------------------------------------
-        // IMAGE PROCESSING & FIREBASE UPLOAD
-        // ---------------------------------------------------------
+        // Image Processing (Keep your existing file upload block here)
         if (req.files) {
             const processAndUploadFile = async (fieldName) => {
                 if (req.files[fieldName] && req.files[fieldName][0]) {
                     const file = req.files[fieldName][0];
                     let buffer = file.buffer;
                     let mimetype = file.mimetype;
-                    let extension = ''; // Let uploader extract from original name if empty
-
-                    // Only compress if it is an image (skip SVGs or PDFs)
+                    let extension = ''; 
                     if (mimetype.startsWith('image/') && mimetype !== 'image/svg+xml' && mimetype !== 'image/gif') {
                         const compressed = await compressImage(file.buffer);
                         buffer = compressed.buffer;
                         mimetype = compressed.mimetype;
                         extension = compressed.extension;
                     }
-
                     const downloadUrl = await uploadToFirebase(buffer, file.originalname, mimetype, extension, "institutions/branding");
                     updateData[fieldName] = downloadUrl;
                 }
             };
-
             await processAndUploadFile('institutionLogoUrl');
             await processAndUploadFile('loginPageImgUrl');
             await processAndUploadFile('institutionSymbolUrl');
             await processAndUploadFile('favicon');
         }
 
-        // 3. Update Database
         const updatedInstitution = await Institution.findOneAndUpdate(
             { institutionId: req.user.institutionId },
             { $set: updateData },
             { new: true, runValidators: true }
-        ).select("institutionName institutionType loginPageImgUrl institutionLogoUrl institutionSymbolUrl favicon theme contact address billing outlets settings counters");
+        ).select("institutionName institutionType loginPageImgUrl institutionLogoUrl institutionSymbolUrl favicon theme contact address billing outlets settings counters socialLinks patientPortalSettings compliance");
 
-        if (!updatedInstitution) {
-            return res.status(404).json({ message: "Institution not found." });
-        }
-
+        if (!updatedInstitution) return res.status(404).json({ message: "Institution not found." });
         res.json(updatedInstitution);
     } catch (err) {
-        console.error("Institution Settings Update Error:", err);
+        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });

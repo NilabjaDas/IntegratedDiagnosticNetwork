@@ -11,15 +11,23 @@ const maintenanceSchema = new mongoose.Schema({
 
 const counterSchema = new mongoose.Schema({
   counterId: { type: String, default: () => uuidv4() },
-  name: { type: String, required: true }, // e.g., "Desk 1", "Room A"
+  name: { type: String, required: true }, 
+  roomName: { type: String, required: true }, // e.g., "Desk 1", "Room A"
   department: { type: String, required: true }, // e.g., "Pathology"
+  type: { type: String, enum: ["Collection", "Consultation", "Scanning", "Billing", "Other"], default: "Collection" },
   status: { 
     type: String, 
     enum: ["Online", "Paused", "Offline"], 
     default: "Offline" 
   },
   // Future Provision: To lock this counter to a specific logged-in user
-  currentStaffId: { type: String, default: null } 
+  currentStaffId: { type: String, default: null } ,
+  scheduling: {
+    slotDurationMinutes: { type: Number, default: 15 }, // E.g., MRI takes 30 mins
+    bufferTimeMinutes: { type: Number, default: 0 },    // E.g., 5 mins to clean the bed
+    maxPatientsPerSlot: { type: Number, default: 1 }    // E.g., Collection desk can handle 2 at a time
+  }
+
 }, { _id: false });
 
 const outletSchema = new mongoose.Schema({
@@ -112,7 +120,7 @@ const institutionsSchema = new mongoose.Schema({
   },
 
   outlets: [outletSchema],
-
+  counters: { type: [counterSchema], default: [] },
   features: {
     hasRadiology: { type: Boolean, default: false },
     hasPACS: { type: Boolean, default: false },
@@ -121,11 +129,22 @@ const institutionsSchema = new mongoose.Schema({
   },
 
   settings: {
+    formatting: {
+      dateFormat: { type: String, default: "DD/MM/YYYY" }, // vs MM/DD/YYYY
+      timeFormat: { type: String, enum: ["12h", "24h"], default: "12h" },
+      currencySymbol: { type: String, default: "₹" }, // e.g., ₹, $, €
+    },
+   
     timezone: { type: String, default: "Asia/Kolkata" },
     locale: { type: String, default: "en-IN" },
     defaultLanguage: { type: String, default: "en" },
     // Formatting & Identifiers
     orderFormat: { type: String, default: "ORD-{YYMMDD}-{SEQ}" },
+    departmentOrderFormats: [{
+        _id: false,
+        department: { type: String, required: true },
+        format: { type: String, required: true } // e.g., "PAT-{YYMMDD}-{SEQ}"
+    }],
     sampleBarcodePrefix: { type: String, default: "LAB" },
     barcodeFormat: { type: String, default: "{PREFIX}-{YYMMDD}-{SEQ}" },
     discountOverrideCode: { type: String, select: false },
@@ -139,6 +158,14 @@ const institutionsSchema = new mongoose.Schema({
     }
   },
 
+  socialLinks: {
+    website: { type: String, default: "" },
+    facebook: { type: String, default: "" },
+    instagram: { type: String, default: "" },
+    twitter: { type: String, default: "" },
+    linkedin: { type: String, default: "" }
+  },
+
   integrations: {
     firebaseBucketName: { type: String, default: "" },
     uploadUrlDomain: { type: String, default: "" },
@@ -150,6 +177,13 @@ const institutionsSchema = new mongoose.Schema({
     hl7: {
       enabled: { type: Boolean, default: false },
       listenerUrl: { type: String, default: "" }
+    },
+    sms: {
+      enabled: { type: Boolean, default: false },
+      provider: { type: String, enum: ["twilio", "msg91", "gupshup", "sns"], default: "msg91" },
+      apiKey: { type: String, select: false },
+      senderId: { type: String, select: false }, // e.g., "MYCLNC"
+      dltEntityId: { type: String, select: false } // Required for TRAI compliance in India
     },
     whatsapp: {
       enabled: { type: Boolean, default: false },
@@ -187,6 +221,31 @@ const institutionsSchema = new mongoose.Schema({
     user: { type: String, default: "" },
     password: { type: String, select: false }
   },
+  
+  patientPortalSettings: {
+    allowOnlineBooking: { type: Boolean, default: true },
+    allowRescheduling: { type: Boolean, default: true },
+    allowCancellations: { type: Boolean, default: false },
+    // Do appointments need manual staff approval before being confirmed?
+    autoApproveBookings: { type: Boolean, default: false }, 
+    // Sometimes B2B labs don't want patients seeing direct pricing
+    showTestPrices: { type: Boolean, default: true },
+    // Can patients download their own reports without a doctor's physical sign-off?
+    allowReportDownload: { type: Boolean, default: true }
+  },
+
+  compliance: {
+    // How long to retain patient records before archiving/deleting (Legal requirement in many countries)
+    patientRecordRetentionYears: { type: Number, default: 7 }, 
+    // Auto-delete system audit logs after X days to save DB space
+    auditLogRetentionDays: { type: Number, default: 90 },
+    // Strict compliance toggles that might enforce extra security steps on the frontend
+    hipaaCompliant: { type: Boolean, default: false }, 
+    gdprCompliant: { type: Boolean, default: false },
+    abdmCompliant: { type: Boolean, default: false } // For India (Ayushman Bharat)
+  },
+
+
 
   maintenance: { type: maintenanceSchema, default: () => ({}) },
   onboardingStatus: { type: String, enum: ["pending", "in_progress", "complete"], default: "pending" },

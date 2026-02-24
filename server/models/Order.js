@@ -27,6 +27,11 @@ const orderItemSchema = new mongoose.Schema({
 const orderSchema = new mongoose.Schema({
   institutionId: { type: String, required: true, index: true },
   orderId: { type: String, default: () => uuidv4(), unique: true, index: true },
+  departmentOrders: [{
+      _id: false,
+      department: { type: String },
+      orderId: { type: String } // e.g., PAT-240226-001
+  }],
   displayId: { type: String }, 
   
   // --- UPDATED PATIENT LOGIC ---

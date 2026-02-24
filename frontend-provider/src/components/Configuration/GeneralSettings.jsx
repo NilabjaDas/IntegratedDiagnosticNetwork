@@ -1,5 +1,6 @@
 import React from 'react';
-import { Form, Input, Select, Button, Row, Col, Typography, Divider, Switch } from 'antd';
+import { Form, Input, Select, Button, Row, Col, Typography, Divider, Switch, Card, Space } from 'antd';
+import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -59,26 +60,17 @@ const GeneralSettings = ({ data, onSave, loading }) => {
                 </Row>
                 
                 <Divider />
-                <Title level={4}>Global Formatting</Title>
+                <Title level={4}>Global & Department ID Formatting</Title>
                 <Text type="secondary">Use placeholders like {"{YYMMDD}"}, {"{SEQ}"}, and {"{PREFIX}"} to automatically generate IDs.</Text>
 
                 <Row gutter={32} style={{ marginTop: '24px' }}>
                     <Col span={12}>
                         <Form.Item 
-                            label="Order & Invoice ID Format" 
+                            label="Global Default Order Format" 
                             name="orderFormat" 
-                            extra="Example output: ORD-250320-001"
+                            extra="Fallback format if no department rule matches (e.g. ORD-{YYMMDD}-{SEQ})"
                         >
                             <Input size="large" placeholder="ORD-{YYMMDD}-{SEQ}" />
-                        </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                        <Form.Item 
-                            label="Sample Barcode Prefix" 
-                            name="sampleBarcodePrefix"
-                            extra="The specific alphabetic code prepended to lab samples."
-                        >
-                            <Input size="large" placeholder="LAB" />
                         </Form.Item>
                     </Col>
                     <Col span={12}>
@@ -90,7 +82,53 @@ const GeneralSettings = ({ data, onSave, loading }) => {
                             <Input size="large" placeholder="{PREFIX}-{YYMMDD}-{SEQ}" />
                         </Form.Item>
                     </Col>
+                    <Col span={12}>
+                        <Form.Item 
+                            label="Sample Barcode Prefix" 
+                            name="sampleBarcodePrefix"
+                            extra="The specific alphabetic code prepended to lab samples."
+                        >
+                            <Input size="large" placeholder="LAB" />
+                        </Form.Item>
+                    </Col>
                 </Row>
+
+                <Card size="small" title="Department-Specific Order IDs" style={{ marginBottom: '24px', background: '#fafafa' }}>
+                    <Form.List name="departmentOrderFormats">
+                        {(fields, { add, remove }) => (
+                            <>
+                                {fields.map(({ key, name, ...restField }) => (
+                                    <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                                        <Form.Item
+                                            {...restField}
+                                            name={[name, 'department']}
+                                            rules={[{ required: true, message: 'Missing department' }]}
+                                        >
+                                            <Select placeholder="Select Department" style={{ width: 200 }} size="large">
+                                                {data?.settings?.queue?.departments?.map(d => (
+                                                    <Select.Option key={d} value={d}>{d}</Select.Option>
+                                                ))}
+                                            </Select>
+                                        </Form.Item>
+                                        <Form.Item
+                                            {...restField}
+                                            name={[name, 'format']}
+                                            rules={[{ required: true, message: 'Missing format' }]}
+                                        >
+                                            <Input placeholder="e.g. PAT-{YYMMDD}-{SEQ}" style={{ width: 300 }} size="large" />
+                                        </Form.Item>
+                                        <MinusCircleOutlined onClick={() => remove(name)} style={{ color: 'red', fontSize: '18px', cursor: 'pointer' }} />
+                                    </Space>
+                                ))}
+                                <Form.Item style={{ marginBottom: 0 }}>
+                                    <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
+                                        Add Department Specific Rule
+                                    </Button>
+                                </Form.Item>
+                            </>
+                        )}
+                    </Form.List>
+                </Card>
 
                 <Divider />
                 <Title level={4}>Queue Management Defaults</Title>
