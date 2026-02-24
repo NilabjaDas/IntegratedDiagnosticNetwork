@@ -20,7 +20,7 @@ const { generateInvoicePayload, buildDynamicTableHtml } = require("../handlers/i
 const TemplateSchema = require("../models/Template");
 const { generatePdf } = require("../handlers/pdfHandler");
 const { sendToBrand,sendToClient } = require("../sseManager");
-
+const { calculateInitialETA } = require("../handlers/schedulingLogic");
 
 // --- HELPER: Merge Patient Info ---
 const mergePatientsWithOrders = async (orders) => {
@@ -574,7 +574,7 @@ router.post("/", async (req, res) => {
     const defaultPrefixes = { "Pathology": "PAT", "Radiology": "RAD", "Cardiology": "CAR", "Consultation": "DOC", "Other": "OTH" };
 
     for (const [groupId, groupData] of Object.entries(QueueGroupings)) {
-        const { department, doctorId, shiftName, prefix, items: groupItems } = groupData;
+        const { department, doctorId, doctorObj, shiftName, prefix, items: groupItems } = groupData;
         
         // A. Generate Master Department Order ID (For billing / LIMS segregation)
         const deptFormatObj = departmentOrderFormats.find(d => d.department === department);
@@ -605,6 +605,15 @@ router.post("/", async (req, res) => {
         const finalPrefix = prefix || defaultPrefixes[department] || "GEN";
         const tokenStr = `${finalPrefix}-${String(seq).padStart(3, '0')}`; 
 
+        // --- NEW: CALCULATE ETA FOR DOCTORS ---
+        let etaData = { etaFormatted: null, etaDate: null, isOverbooked: false };
+        if (doctorId && doctorObj) {
+            const calc = calculateInitialETA(doctorObj, dateKey, shiftName, seq);
+            if (calc && calc !== "CANCELLED") {
+                etaData = calc;
+            }
+        }
+
         // C. Create Queue Entry
         const newToken = new req.TenantQueueToken({
             institutionId: instId,
@@ -619,7 +628,10 @@ router.post("/", async (req, res) => {
             patientId: finalPatientId,
             patientDetails: finalPatientDetails,
             tests: groupItems,
-            status: 'WAITING'
+            status: 'WAITING',
+            estimatedStartTime: etaData.etaDate,
+            estimatedTimeFormatted: etaData.etaFormatted,
+            isOverbooked: etaData.isOverbooked
         });
         generatedTokens.push(newToken);
     }

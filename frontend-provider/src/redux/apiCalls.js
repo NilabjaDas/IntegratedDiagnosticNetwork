@@ -584,6 +584,7 @@ export const updateTokenStatus = async (dispatch, tokenId, action) => {
     dispatch(updateTokenSuccess(res.data)); 
   } catch (err) {
     dispatch(queueProcessFailure());
+    throw err; // <--- ADD THIS LINE so the UI's try/catch block actually catches it!
   }
 };
 
@@ -697,6 +698,25 @@ export const deleteDoctor = async (dispatch, id) => {
 export const addDoctorOverride = async (id, overrideData) => {
     try {
         const res = await userRequest.post(`/doctors/${id}/overrides`, overrideData);
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};
+
+// --- DOCTOR WORKSPACE API CALLS ---
+export const fetchDoctorQueue = async (date, doctorId) => {
+    try {
+        const res = await userRequest.get(`/queue-manager?date=${date}&doctorId=${doctorId}`);
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};
+
+export const completeConsultation = async (tokenId, prescriptionHtml) => {
+    try {
+        const res = await userRequest.put(`/queue-manager/${tokenId}/prescription`, { prescriptionHtml });
         return res.data;
     } catch (err) {
         throw err;

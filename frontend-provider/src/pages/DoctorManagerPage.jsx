@@ -8,10 +8,10 @@ import dayjs from 'dayjs';
 import { getDoctors, createDoctor, updateDoctor, deleteDoctor, addDoctorOverride, fetchMyInstitutionSettings } from '../redux/apiCalls';
 
 // Modular Components
-import DoctorProfileTab from '../components/DoctorManager/DoctorProfileTab';
-import DoctorScheduleTab from '../components/DoctorManager/DoctorScheduleTab';
-import DoctorLeavesTab from '../components/DoctorManager/DoctorLeavesTab';
-import DoctorOverrideModal from '../components/DoctorManager/DoctorOverrideModal';
+import DoctorProfileTab from '../components/Doctor Manager/DoctorProfileTab';
+import DoctorScheduleTab from '../components/Doctor Manager/DoctorScheduleTab';
+import DoctorLeavesTab from '../components/Doctor Manager/DoctorLeavesTab';
+import DoctorOverrideModal from '../components/Doctor Manager/DoctorOverrideModal';
 
 const { Title, Text } = Typography;
 

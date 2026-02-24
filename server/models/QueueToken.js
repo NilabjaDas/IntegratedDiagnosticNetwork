@@ -6,7 +6,7 @@ const queueTokenSchema = new mongoose.Schema({
   department: { type: String, required: true, index: true }, 
   departmentOrderId: { type: String },
   doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor', default: null },
-    shiftName: { type: String, default: null }, // e.g., "Morning OPD"
+  shiftName: { type: String, default: null }, // e.g., "Morning OPD"
   tokenNumber: { type: String, required: true }, // e.g., "PAT-001"
   sequence: { type: Number, required: true },    // 1
   
@@ -33,6 +33,11 @@ const queueTokenSchema = new mongoose.Schema({
       enum: ['WAITING', 'CALLED', 'IN_PROGRESS', 'COMPLETED', 'HOLD', 'SKIPPED'], 
       default: 'WAITING' 
   },
+    prescriptionHtml: { type: String, default: "" },
+  // --- NEW: SMART ETA FIELDS ---
+  estimatedStartTime: { type: Date }, // The raw Date object for future live recalculations
+  estimatedTimeFormatted: { type: String }, // "10:45 AM" - Pre-formatted for fast UI rendering
+  isOverbooked: { type: Boolean, default: false }, // To flag tokens injected beyond the shift limit
   
   // For Analytics and Display Boards
   calledAt: { type: Date },

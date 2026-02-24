@@ -106,17 +106,20 @@ const Sidebar = ({ collapsed }) => {
         <Menu.Item key="/" icon={<HomeOutlined />}>
           <Link to="/">Home</Link>
         </Menu.Item>
-          <Menu.Item key="/tests-management" icon={<ExperimentOutlined />}>
+          <Menu.Item key="tests-management" icon={<ExperimentOutlined />}>
           <Link to="/tests-management">Tests Management</Link>
         </Menu.Item>
-        <Menu.Item key="/orders-management" icon={<ProductOutlined />}>
+        <Menu.Item key="orders-management" icon={<ProductOutlined />}>
           <Link to="/orders-management">Orders Management</Link>
         </Menu.Item>
-         <Menu.Item key="/queue-management" icon={<SettingOutlined />}>
+         <Menu.Item key="queue-management" icon={<SettingOutlined />}>
           <Link to="/queue-management">QueueManagerPage</Link>
         </Menu.Item>
            <Menu.Item key="doctors" icon={<TeamOutlined />}>
           <Link to="/doctors">Manage Doctors</Link>
+        </Menu.Item>
+         <Menu.Item key="doctor-workspace" icon={<MedicineBoxOutlined />}>
+          <Link to="/doctor-workspace">Doctor EMR Workspace</Link>
         </Menu.Item>
         <Menu.Item key="/configuration" icon={<SettingOutlined />}>
           <Link to="/configuration">Configuration</Link>
