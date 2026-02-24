@@ -155,6 +155,13 @@ const institutionsSchema = new mongoose.Schema({
         type: [String], 
         default: ["Pathology", "Radiology", "Cardiology", "Consultation", "Billing"] 
       },
+    },
+    workflow: {
+      bookingMode: { 
+        type: String, 
+        enum: ["unified_cart", "department_isolated"], 
+        default: "unified_cart" 
+      }
     }
   },
 

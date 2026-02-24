@@ -13,7 +13,6 @@ import {
   Row,
   Col,
   Divider,
-  Statistic,
   Checkbox,
   Tag,
   Tooltip,
@@ -42,17 +41,18 @@ import {
   searchPatients,
   getOrders,
   getMyTests,
+  getDoctors // <-- NEW: Import getDoctors
 } from "../redux/apiCalls";
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
 import DiscountOverrideModal from "./DiscountOverrideModal";
-import OrderDetailsDrawer from "./OrderDetailsDrawer"; // Imported Drawer
+import OrderDetailsDrawer from "./OrderDetailsDrawer"; 
 import { patientSearchSuccess } from "../redux/orderRedux";
 import moment from "moment";
 import dayjs from "dayjs";
 
 const { Option } = Select;
-const { Text } = Typography;
+const { Title, Text } = Typography;
 
 const getDeptColor = (dept) => {
   const colors = [
@@ -89,6 +89,8 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
   const { searchResults, orders } = useSelector(
     (state) => state[process.env.REACT_APP_ORDERS_DATA_KEY] || state.order,
   );
+  // --- NEW: Doctors State ---
+  const doctors = useSelector((state) => state[process.env.REACT_APP_DOCTORS_KEY]?.doctors || []);
 
   // --- STATE ---
   const [selectedItems, setSelectedItems] = useState([]);
@@ -98,7 +100,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
 
   // Right Panel State
   const [orderSearchText, setOrderSearchText] = useState("");
-  const [detailOrderId, setDetailOrderId] = useState(null); // ID for Details Drawer
+  const [detailOrderId, setDetailOrderId] = useState(null); 
 
   // Patient
   const [patientId, setPatientId] = useState(null);
@@ -127,7 +129,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
 
   useEffect(() => {
     getMyTests(dispatch, scheduleDate);
-  }, [scheduleDate]);
+  }, [scheduleDate, dispatch]);
 
   const disabledDate = (current) => {
     return current && current < dayjs().startOf("day");
@@ -144,6 +146,8 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
   // --- 1. INITIALIZATION (Runs ONCE on mount) ---
   useEffect(() => {
     getOrders(dispatch);
+    getDoctors(dispatch); // <-- NEW: Fetch Doctors on load
+    
     // Only focus Patient Search once when the component loads
     setTimeout(() => {
       if (patientSearchRef.current) {
@@ -155,17 +159,14 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
   // --- SHORTCUTS & INIT ---
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Submit: Ctrl + Enter
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
         form.submit();
       }
-      // Focus Patient Search: F1
       if (e.key === "F1") {
         e.preventDefault();
         patientSearchRef.current?.focus();
       }
-      // Focus Walk-in Name: F2
       if (e.key === "F2") {
         e.preventDefault();
         if (walkinNameRef.current) {
@@ -174,19 +175,15 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
           message.warning("Clear selected patient to enter Walk-in details");
         }
       }
-      // Focus Test Search: F3
       if (e.key === "F3") {
         e.preventDefault();
         serviceSearchRef.current?.focus();
       }
-      // Pay Full: Alt + F
       if (e.altKey && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        const currentNet =
-          form.getFieldValue("paidAmount") === netAmount ? 0 : netAmount;
+        const currentNet = form.getFieldValue("paidAmount") === netAmount ? 0 : netAmount;
         form.setFieldsValue({ paidAmount: currentNet });
       }
-      // Reset: Alt + R
       if (e.altKey && e.key.toLowerCase() === "r") {
         e.preventDefault();
         resetForm();
@@ -200,27 +197,17 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
   // --- DERIVED STATE: FILTERED ORDERS ---
   const displayedOrders = useMemo(() => {
     if (!orders) return [];
-
     const today = dayjs();
-
     return orders.filter((order) => {
       const orderDate = dayjs(order.createdAt);
-
-      // Basic Text Matching
       const searchLower = orderSearchText.toLowerCase();
       const matchesSearch =
-        (order.patientDetails?.name || "")
-          .toLowerCase()
-          .includes(searchLower) ||
+        (order.patientDetails?.name || "").toLowerCase().includes(searchLower) ||
         (order.patient?.firstName || "").toLowerCase().includes(searchLower) ||
         (order.displayId || "").toLowerCase().includes(searchLower) ||
         (order.patientDetails?.mobile || "").includes(searchLower);
 
-      if (!orderSearchText) {
-        // If no search, ONLY show Today's orders
-        return orderDate.isSame(today, "day");
-      }
-      // If searching, show any match regardless of date
+      if (!orderSearchText) return orderDate.isSame(today, "day");
       return matchesSearch;
     });
   }, [orders, orderSearchText]);
@@ -229,22 +216,21 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
   const testsByDepartment = useMemo(() => {
     const groups = {};
     tests.forEach((t) => {
-      if (!t.isActive) return; // Skip inactive
+      if (!t.isActive) return;
       const dept = t.department || "Other";
       if (!groups[dept]) groups[dept] = [];
       groups[dept].push(t);
     });
-    return groups; // e.g., { Pathology: [...], Radiology: [...] }
+    return groups;
   }, [tests]);
 
-  const activePackages = useMemo(
-    () => packages.filter((p) => p.isActive),
-    [packages],
-  );
+  const activePackages = useMemo(() => packages.filter((p) => p.isActive), [packages]);
+  
+  // --- NEW: Active Doctors ---
+  const activeDoctors = useMemo(() => doctors.filter(d => d.isActive), [doctors]);
 
   const filterServices = (input, option) => {
     const search = input.toLowerCase();
-    // Access custom props 'name' and 'alias' passed to Option
     const name = String(option.name || "").toLowerCase();
     const alias = String(option.alias || "").toLowerCase();
     return name.includes(search) || alias.includes(search);
@@ -288,27 +274,14 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
   const handleHomeCollectionChange = (e) => {
     const checked = e.target.checked;
     if (checked) {
-      const invalidTests = selectedItems.filter(
-        (t) => t.homeCollectionAvailable === false,
-      );
+      const invalidTests = selectedItems.filter((t) => t.homeCollectionAvailable === false);
       if (invalidTests.length > 0) {
         Modal.confirm({
-          title: (
-            <>
-              <WarningOutlined style={{ color: "orange" }} /> Home Collection
-              Warning
-            </>
-          ),
+          title: <><WarningOutlined style={{ color: "orange" }} /> Home Collection Warning</>,
           content: (
             <div>
-              <p>
-                These tests are marked <b>Not Available</b> for Home Collection:
-              </p>
-              <ul>
-                {invalidTests.map((t) => (
-                  <li key={t._id}>{t.name}</li>
-                ))}
-              </ul>
+              <p>These tests are marked <b>Not Available</b> for Home Collection:</p>
+              <ul>{invalidTests.map((t) => <li key={t._id}>{t.name}</li>)}</ul>
               <p>Continue anyway?</p>
             </div>
           ),
@@ -371,15 +344,26 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
     const newItems = [];
     values.forEach((val) => {
       const testMatch = tests.find((t) => t._id === val);
-      if (testMatch) newItems.push({ ...testMatch, type: "Test" });
-      else {
+      if (testMatch) {
+        newItems.push({ ...testMatch, type: "Test" });
+      } else {
         const pkgMatch = packages.find((p) => p._id === val);
-        if (pkgMatch)
-          newItems.push({
-            ...pkgMatch,
-            price: pkgMatch.offerPrice,
-            type: "Package",
-          });
+        if (pkgMatch) {
+          newItems.push({ ...pkgMatch, price: pkgMatch.offerPrice, type: "Package" });
+        } else {
+          // --- NEW: Map Doctor to Cart Item ---
+          const docMatch = doctors.find(d => d._id === val || d.doctorId === val);
+          if (docMatch) {
+            newItems.push({
+                _id: docMatch._id,
+                name: `Consultation: Dr. ${docMatch.personalInfo?.firstName} ${docMatch.personalInfo?.lastName}`,
+                price: docMatch.fees?.newConsultation || 0,
+                type: 'Consultation',
+                department: 'Consultation', 
+                homeCollectionAvailable: false
+            });
+          }
+        }
       }
     });
     setSelectedItems(newItems);
@@ -402,10 +386,8 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
       : values;
 
     if (!pendingSubmission) {
-      if (!patientId && !patientForm.name)
-        return message.error("Patient details missing");
-      if (selectedItems.length === 0)
-        return message.error("No services selected");
+      if (!patientId && !patientForm.name) return message.error("Patient details missing");
+      if (selectedItems.length === 0) return message.error("No services selected");
     }
 
     setLoading(true);
@@ -425,9 +407,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
       orderData.patientId = patientId;
       orderData.walkin = false;
       if (selectedPatientOriginal) {
-        const hasChanged =
-          String(patientForm.age) !== String(selectedPatientOriginal.age) ||
-          patientForm.gender !== selectedPatientOriginal.gender;
+        const hasChanged = String(patientForm.age) !== String(selectedPatientOriginal.age) || patientForm.gender !== selectedPatientOriginal.gender;
         if (hasChanged) {
           orderData.updatedPatientData = true;
           orderData.age = patientForm.age;
@@ -441,10 +421,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
       orderData.gender = patientForm.gender;
     }
 
-    if (
-      dataToSubmit.paymentMode !== "Razorpay" &&
-      dataToSubmit.paidAmount > 0
-    ) {
+    if (dataToSubmit.paymentMode !== "Razorpay" && dataToSubmit.paidAmount > 0) {
       orderData.initialPayment = {
         mode: dataToSubmit.paymentMode,
         amount: dataToSubmit.paidAmount,
@@ -462,10 +439,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
       setPendingSubmission(null);
       resetForm();
 
-      if (
-        dataToSubmit.paymentMode === "Razorpay" &&
-        dataToSubmit.paidAmount > 0
-      ) {
+      if (dataToSubmit.paymentMode === "Razorpay" && dataToSubmit.paidAmount > 0) {
         setCreatedOrder({
           ...res.data,
           dueAmountForModal: dataToSubmit.paidAmount,
@@ -482,89 +456,35 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
   };
 
   const handleOrderSearch = (value) => {
-    // Trigger API search if local data isn't enough (Optional but recommended)
     if (value.length > 2) {
       getOrders(dispatch, { search: value });
     }
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100%",
-        background: "#f0f2f5",
-        overflow: "hidden",
-      }}
-    >
+    <div style={{ display: "flex", height: "100%", background: "#f0f2f5", overflow: "hidden" }}>
       {/* --- LEFT PANEL: 70vw --- */}
-      <div
-        style={{
-          width: "70vw",
-          display: "flex",
-          flexDirection: "column",
-          background: "#fff",
-          borderRight: "1px solid #d9d9d9",
-        }}
-      >
+      <div style={{ width: "70vw", display: "flex", flexDirection: "column", background: "#fff", borderRight: "1px solid #d9d9d9" }}>
         <Form
           form={form}
           layout="vertical"
           onFinish={onFinish}
-          initialValues={{
-            paymentMode: "Cash",
-            discountAmount: 0,
-            paidAmount: 0,
-          }}
+          initialValues={{ paymentMode: "Cash", discountAmount: 0, paidAmount: 0 }}
           style={{ height: "100%", display: "flex", flexDirection: "column" }}
         >
           {/* 1. TOP HEADER: Shortcuts & Reset */}
-          <div
-            style={{
-              padding: "8px 16px",
-              borderBottom: "1px solid #f0f0f0",
-              background: "#fff",
-            }}
-          >
-            {/* Shortcuts Strip */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 12,
-              }}
-            >
+          <div style={{ padding: "8px 16px", borderBottom: "1px solid #f0f0f0", background: "#fff" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <Space size={4}>
-                <Tag color="blue">
-                  <LaptopOutlined /> RAPID MODE
-                </Tag>
-                <Tag>
-                  <b>F1</b> Patient
-                </Tag>
-                <Tag>
-                  <b>F2</b> Walk-in
-                </Tag>
-                <Tag>
-                  <b>F3</b> Tests
-                </Tag>
-                <Tag>
-                  <b>Alt+F</b> Full Pay
-                </Tag>
-                <Tag>
-                  <b>Ctrl+Enter</b> Submit
-                </Tag>
+                <Tag color="blue"><LaptopOutlined /> RAPID MODE</Tag>
+                <Tag><b>F1</b> Patient</Tag>
+                <Tag><b>F2</b> Walk-in</Tag>
+                <Tag><b>F3</b> Tests</Tag>
+                <Tag><b>Alt+F</b> Full Pay</Tag>
+                <Tag><b>Ctrl+Enter</b> Submit</Tag>
               </Space>
               <Tooltip title="Reset Form (Alt + R)">
-                <Button
-                  size="small"
-                  type="dashed"
-                  danger
-                  icon={<ClearOutlined />}
-                  onClick={resetForm}
-                >
-                  Reset
-                </Button>
+                <Button size="small" type="dashed" danger icon={<ClearOutlined />} onClick={resetForm}>Reset</Button>
               </Tooltip>
             </div>
 
@@ -591,10 +511,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                       </Option>
                     ))}
                   </Select>
-                  <Button
-                    icon={<UserAddOutlined />}
-                    onClick={() => setIsPatientModalOpen(true)}
-                  />
+                  <Button icon={<UserAddOutlined />} onClick={() => setIsPatientModalOpen(true)} />
                 </Input.Group>
               </Col>
 
@@ -606,12 +523,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                         ref={walkinNameRef}
                         placeholder="Walk-in Name (F2)"
                         value={patientForm.name}
-                        onChange={(e) =>
-                          setPatientForm({
-                            ...patientForm,
-                            name: e.target.value,
-                          })
-                        }
+                        onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })}
                       />
                     </Col>
                     <Col span={6}>
@@ -620,17 +532,13 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                         min={1}
                         style={{ width: "100%" }}
                         value={patientForm.age}
-                        onChange={(v) =>
-                          setPatientForm({ ...patientForm, age: v })
-                        }
+                        onChange={(v) => setPatientForm({ ...patientForm, age: v })}
                       />
                     </Col>
                     <Col span={8}>
                       <Select
                         value={patientForm.gender}
-                        onChange={(v) =>
-                          setPatientForm({ ...patientForm, gender: v })
-                        }
+                        onChange={(v) => setPatientForm({ ...patientForm, gender: v })}
                         style={{ width: "100%" }}
                       >
                         <Option value="Male">Male</Option>
@@ -639,49 +547,17 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                     </Col>
                   </Row>
                 ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 12,
-                      alignItems: "center",
-                      height: 32,
-                    }}
-                  >
-                    <Tag color="blue" style={{ fontSize: 14 }}>
-                      {selectedPatientOriginal?.uhid}
-                    </Tag>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", height: 32 }}>
+                    <Tag color="blue" style={{ fontSize: 14 }}>{selectedPatientOriginal?.uhid}</Tag>
                     <Text strong>{patientForm.name}</Text>
-                    <Text type="secondary">
-                      {selectedPatientOriginal?.mobile}
-                    </Text>
+                    <Text type="secondary">{selectedPatientOriginal?.mobile}</Text>
                     <Divider type="vertical" />
-                    <InputNumber
-                      size="small"
-                      min={1}
-                      value={patientForm.age}
-                      onChange={(v) =>
-                        setPatientForm({ ...patientForm, age: v })
-                      }
-                      style={{ width: 60 }}
-                    />
-                    <Select
-                      size="small"
-                      value={patientForm.gender}
-                      onChange={(v) =>
-                        setPatientForm({ ...patientForm, gender: v })
-                      }
-                      style={{ width: 80 }}
-                    >
+                    <InputNumber size="small" min={1} value={patientForm.age} onChange={(v) => setPatientForm({ ...patientForm, age: v })} style={{ width: 60 }} />
+                    <Select size="small" value={patientForm.gender} onChange={(v) => setPatientForm({ ...patientForm, gender: v })} style={{ width: 80 }}>
                       <Option value="Male">M</Option>
                       <Option value="Female">F</Option>
                     </Select>
-                    <Button
-                      type="text"
-                      danger
-                      icon={<CloseCircleOutlined />}
-                      onClick={handleClearSelection}
-                      size="small"
-                    />
+                    <Button type="text" danger icon={<CloseCircleOutlined />} onClick={handleClearSelection} size="small" />
                   </div>
                 )}
               </Col>
@@ -689,40 +565,20 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
           </div>
 
           {/* 2. MIDDLE: Test List */}
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: "8px 16px",
-                background: "#fafafa",
-                borderBottom: "1px solid #f0f0f0",
-              }}
-            >
-              <Text
-                type="secondary"
-                style={{ fontSize: 11, display: "block", marginBottom: 4 }}
-              >
-                Add Tests or Packages (Search by Name or Alias)
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ padding: "8px 16px", background: "#fafafa", borderBottom: "1px solid #f0f0f0" }}>
+              <Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 4 }}>
+                Add Tests, Packages, or Doctor Consultations
               </Text>
-
-              {/* Flex Container for Side-by-Side Layout */}
-              <div
-                style={{ display: "flex", gap: "10px", alignItems: "center" }}
-              >
-                {/* 1. Search Bar (Takes remaining space) */}
+              <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                 <div style={{ flex: 1 }}>
                   <Form.Item name="serviceSelect" noStyle>
                     <Select
+                      ref={serviceSearchRef} // Allow F3 shortcut
                       mode="multiple"
                       showSearch
                       style={{ width: "100%" }}
-                      placeholder="Search Test / Package (Name or Alias)..."
+                      placeholder="Search Test, Package, or Doctor..."
                       filterOption={filterServices}
                       onChange={handleServicesChange}
                       value={selectedItems.map((i) => i._id)}
@@ -730,31 +586,35 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                       autoClearSearchValue={true}
                       listHeight={300}
                     >
+                      {/* --- NEW: DOCTORS GROUP --- */}
+                      {activeDoctors.length > 0 && (
+                        <Select.OptGroup label="Doctors / Consultations">
+                          {activeDoctors.map((d) => (
+                            <Option 
+                              key={d._id} 
+                              value={d._id} 
+                              name={`Dr. ${d.personalInfo?.firstName} ${d.personalInfo?.lastName}`}
+                              alias={d.professionalInfo?.specialization}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>
+                                  Dr. {d.personalInfo?.firstName} {d.personalInfo?.lastName} <span style={{fontSize: '0.85em', color: '#888'}}>({d.professionalInfo?.specialization})</span>
+                                </span>
+                                <span style={{ fontWeight: 500 }}>₹{d.fees?.newConsultation}</span>
+                              </div>
+                            </Option>
+                          ))}
+                        </Select.OptGroup>
+                      )}
+
                       {/* 1. PACKAGES GROUP */}
                       {activePackages.length > 0 && (
                         <Select.OptGroup label="Packages">
                           {activePackages.map((p) => (
-                            <Option
-                              key={p._id}
-                              value={p._id}
-                              name={p.name} // For search filter
-                              alias={p.alias} // For search filter
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                }}
-                              >
-                                <span>
-                                  {p.name}{" "}
-                                  {p.alias && p.alias !== "nil"
-                                    ? `(${p.alias})`
-                                    : ""}
-                                </span>
-                                <span style={{ fontWeight: 500 }}>
-                                  ₹{p.offerPrice}
-                                </span>
+                            <Option key={p._id} value={p._id} name={p.name} alias={p.alias}>
+                              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                <span>{p.name} {p.alias && p.alias !== "nil" ? `(${p.alias})` : ""}</span>
+                                <span style={{ fontWeight: 500 }}>₹{p.offerPrice}</span>
                               </div>
                             </Option>
                           ))}
@@ -762,93 +622,37 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                       )}
 
                       {/* 2. TESTS GROUPED BY DEPARTMENT */}
-                      {Object.keys(testsByDepartment)
-                        .sort()
-                        .map((dept) => (
-                          <Select.OptGroup key={dept} label={dept}>
-                            {testsByDepartment[dept].map((t) => {
-                              // Formatting Logic
-                              const showLimit = t.remainingSlots !== null;
-                              const limitText = showLimit
-                                ? ` [${t.scheduledCount}/${t.dailyLimit}]`
-                                : "";
-                              const isFull = t.isFullyBooked;
-                              const aliasText =
-                                t.alias && t.alias !== "nil"
-                                  ? `${t.alias}`
-                                  : "";
-
-                              return (
-                                <Option
-                                  key={t._id}
-                                  value={t._id}
-                                  name={t.name} // For search filter
-                                  alias={t.alias} // For search filter
-                                  disabled={isFull}
-                                  style={
-                                    isFull
-                                      ? { opacity: 0.5, fontStyle: "italic" }
-                                      : {}
-                                  }
-                                >
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      width: "100%",
-                                    }}
-                                  >
-                                    <span
-                                      style={{ flex: 1, whiteSpace: "normal" }}
-                                    >
-                                      {t.name}{" "}
-                                      {aliasText && (
-                                        <span
-                                          style={{
-                                            color: "#ffffff",
-                                            fontSize: "0.85em",
-                                            fontStyle: "italic",
-                                            padding: "0px 3px 0px 3px",
-                                            backgroundColor: "#a46500",
-                                            borderRadius: "2px",
-                                          }}
-                                        >
-                                          {String(aliasText).toUpperCase()}
-                                        </span>
-                                      )}
-                                      {showLimit && (
-                                        <span
-                                          style={{
-                                            color: isFull ? "red" : "#1890ff",
-                                            fontSize: "0.85em",
-                                            marginLeft: 6,
-                                          }}
-                                        >
-                                          {limitText}
-                                        </span>
-                                      )}
-                                    </span>
-                                    <span
-                                      style={{ fontWeight: 500, marginLeft: 8 }}
-                                    >
-                                      ₹{t.price}
-                                    </span>
-                                  </div>
-                                </Option>
-                              );
-                            })}
-                          </Select.OptGroup>
-                        ))}
+                      {Object.keys(testsByDepartment).sort().map((dept) => (
+                        <Select.OptGroup key={dept} label={dept}>
+                          {testsByDepartment[dept].map((t) => {
+                            const showLimit = t.remainingSlots !== null;
+                            const limitText = showLimit ? ` [${t.scheduledCount}/${t.dailyLimit}]` : "";
+                            const isFull = t.isFullyBooked;
+                            const aliasText = t.alias && t.alias !== "nil" ? `${t.alias}` : "";
+                            return (
+                              <Option key={t._id} value={t._id} name={t.name} alias={t.alias} disabled={isFull} style={isFull ? { opacity: 0.5, fontStyle: "italic" } : {}}>
+                                <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+                                  <span style={{ flex: 1, whiteSpace: "normal" }}>
+                                    {t.name}{" "}
+                                    {aliasText && (
+                                      <span style={{ color: "#ffffff", fontSize: "0.85em", fontStyle: "italic", padding: "0px 3px 0px 3px", backgroundColor: "#a46500", borderRadius: "2px" }}>
+                                        {String(aliasText).toUpperCase()}
+                                      </span>
+                                    )}
+                                    {showLimit && <span style={{ color: isFull ? "red" : "#1890ff", fontSize: "0.85em", marginLeft: 6 }}>{limitText}</span>}
+                                  </span>
+                                  <span style={{ fontWeight: 500, marginLeft: 8 }}>₹{t.price}</span>
+                                </div>
+                              </Option>
+                            );
+                          })}
+                        </Select.OptGroup>
+                      ))}
                     </Select>
                   </Form.Item>
                 </div>
-
-                {/* 2. Date Picker (Fixed width or natural width) */}
                 <DatePicker
-                  // style={{width: '100%'}}
-                  value={
-                    scheduleDate ? dayjs(scheduleDate, "YYYY-MM-DD") : null
-                  }
+                  value={scheduleDate ? dayjs(scheduleDate, "YYYY-MM-DD") : null}
                   onChange={onScheduleDateChange}
                   format="ddd, Do MMMM YYYY"
                   disabledDate={disabledDate}
@@ -858,32 +662,15 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
               </div>
             </div>
 
-            <div
-              style={{
-                flex: 1,
-                overflowY: "auto",
-                padding: "0 16px 16px 16px",
-              }}
-            >
+            <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px 16px" }}>
               {selectedItems.length === 0 ? (
-                <div
-                  style={{
-                    height: "100%",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    color: "#ccc",
-                  }}
-                >
+                <div style={{ height: "100%", display: "flex", justifyContent: "center", alignItems: "center", color: "#ccc" }}>
                   <Text type="secondary">No tests selected</Text>
                 </div>
               ) : (
                 groupedItems.map((group) => (
                   <div key={group.dept} style={{ marginTop: 16 }}>
-                    <Divider
-                      orientation="left"
-                      style={{ margin: "0 0 8px 0", fontSize: 12 }}
-                    >
+                    <Divider orientation="left" style={{ margin: "0 0 8px 0", fontSize: 12 }}>
                       <Tag color={group.color}>{group.dept}</Tag>
                     </Divider>
                     <List
@@ -891,23 +678,13 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                       dataSource={group.items}
                       renderItem={(item) => (
                         <List.Item
-                          style={{
-                            padding: "4px 8px",
-                            background: "#fff",
-                            marginBottom: 4,
-                            borderRadius: 4,
-                            border: "1px solid #f0f0f0",
-                          }}
+                          style={{ padding: "4px 8px", background: "#fff", marginBottom: 4, borderRadius: 4, border: "1px solid #f0f0f0" }}
                           actions={[
                             <DeleteOutlined
                               onClick={() => {
-                                const newItems = selectedItems.filter(
-                                  (i) => i._id !== item._id,
-                                );
+                                const newItems = selectedItems.filter((i) => i._id !== item._id);
                                 setSelectedItems(newItems);
-                                form.setFieldsValue({
-                                  serviceSelect: newItems.map((i) => i._id),
-                                });
+                                form.setFieldsValue({ serviceSelect: newItems.map((i) => i._id) });
                               }}
                               style={{ color: "red", cursor: "pointer" }}
                             />,
@@ -917,48 +694,19 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                             avatar={
                               <Avatar
                                 size="small"
-                                icon={<MedicineBoxOutlined />}
+                                icon={item.type === 'Consultation' ? <UserOutlined /> : <MedicineBoxOutlined />}
                                 style={{
-                                    backgroundColor:
-                                    item.type === "Package"
-                                      ? "#87d068"
-                                      : "#1890ff",
+                                  backgroundColor: item.type === "Package" ? "#87d068" : item.type === "Consultation" ? "#722ed1" : "#1890ff",
                                 }}
                               />
                             }
-                            
                           />
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              width: "100%",
-                            }}
-                          >
+                          <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
                             <div style={{ flex: 1 }}>
-                             
-                            
-                         
-
-                              <Text style={{fontWeight: 'bold', fontSize: 13 }}>{item.name}</Text>
-                              {item.type === "Package" && (
-                                <Tag
-                                  color="green"
-                                  style={{ marginLeft: 8, fontSize: 10 }}
-                                >
-                                  PKG
-                                </Tag>
-                              )}
+                              <Text style={{ fontWeight: 'bold', fontSize: 13 }}>{item.name}</Text>
+                              {item.type === "Package" && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>PKG</Tag>}
                             </div>
-                            <div
-                              style={{
-                                width: 80,
-                                textAlign: "right",
-                                fontWeight: 500,
-                              }}
-                            >
-                              ₹{item.price}
-                            </div>
+                            <div style={{ width: 80, textAlign: "right", fontWeight: 500 }}>₹{item.price}</div>
                           </div>
                         </List.Item>
                       )}
@@ -970,262 +718,72 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
           </div>
 
           {/* 3. BOTTOM: Billing Footer */}
-          <div
-            style={{
-              padding: "12px 16px",
-              background: "#fff",
-              borderTop: "1px solid #d9d9d9",
-              boxShadow: "0 -2px 10px rgba(0,0,0,0.05)",
-            }}
-          >
+          <div style={{ padding: "12px 16px", background: "#fff", borderTop: "1px solid #d9d9d9", boxShadow: "0 -2px 10px rgba(0,0,0,0.05)" }}>
             <Row gutter={16} align="middle">
               <Col span={6}>
-                <Checkbox
-                  checked={isHomeCollection}
-                  onChange={handleHomeCollectionChange}
-                >
+                <Checkbox checked={isHomeCollection} onChange={handleHomeCollectionChange}>
                   <HomeOutlined /> Home Collection
                 </Checkbox>
                 <Form.Item name="notes" noStyle>
-                  <Input
-                    placeholder="Internal Notes..."
-                    style={{ marginTop: 8 }}
-                    size="small"
-                  />
+                  <Input placeholder="Internal Notes..." style={{ marginTop: 8 }} size="small" />
                 </Form.Item>
               </Col>
 
               <Col span={12} style={{ padding: "0 12px" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    background: "#f9fafc",
-                    border: "1px solid #e8e8e8",
-                    borderRadius: 8,
-                    padding: "10px 16px",
-                    height: "100%",
-                  }}
-                >
-                  {/* 1. TOTAL BILL SECTION */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f9fafc", border: "1px solid #e8e8e8", borderRadius: 8, padding: "10px 16px", height: "100%" }}>
                   <div style={{ display: "flex", flexDirection: "column" }}>
-                    <Text
-                      type="secondary"
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 600,
-                        letterSpacing: "0.5px",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Total Bill
-                    </Text>
-                    <Text
-                      strong
-                      style={{
-                        fontSize: 18,
-                        color: "#262626",
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      ₹{totalAmount}
-                    </Text>
+                    <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase" }}>Total Bill</Text>
+                    <Text strong style={{ fontSize: 18, color: "#262626", lineHeight: 1.2 }}>₹{totalAmount}</Text>
                   </div>
 
-                  {/* MATH OPERATOR */}
-                  <div
-                    style={{
-                      fontSize: 24,
-                      color: "#d9d9d9",
-                      fontWeight: 300,
-                      paddingBottom: 4,
-                    }}
-                  >
-                    −
-                  </div>
+                  <div style={{ fontSize: 24, color: "#d9d9d9", fontWeight: 300, paddingBottom: 4 }}>−</div>
 
-                  {/* 2. DISCOUNT INPUT SECTION */}
-                  <div
-                    style={{
-                      width: 130,
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        marginBottom: 2,
-                      }}
-                    >
-                      <Text
-                        type="secondary"
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Discount
-                      </Text>
+                  <div style={{ width: 130, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                      <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase" }}>Discount</Text>
                     </div>
-
                     <Form.Item name="discountAmount" noStyle>
-                      <InputNumber
-                        style={{
-                          width: "100%",
-                          borderRadius: 4,
-                          border: "1px solid #d9d9d9",
-                          fontWeight: 500,
-                        }}
-                        size="small"
-                        min={0}
-                        max={totalAmount}
-                        placeholder="0"
-                        controls={false}
-                        formatter={(value) => (value ? `₹ ${value}` : "")}
-                        parser={(value) => value.replace(/₹\s?|(,*)/g, "")}
-                      />
+                      <InputNumber style={{ width: "100%", borderRadius: 4, border: "1px solid #d9d9d9", fontWeight: 500 }} size="small" min={0} max={totalAmount} placeholder="0" controls={false} formatter={(value) => (value ? `₹ ${value}` : "")} parser={(value) => value.replace(/₹\s?|(,*)/g, "")} />
                     </Form.Item>
-
-                    {/* Conditional Reason Input (Appears below discount amount) */}
-                    <Form.Item
-                      noStyle
-                      shouldUpdate={(prev, curr) =>
-                        prev.discountAmount !== curr.discountAmount
-                      }
-                    >
-                      {({ getFieldValue }) =>
-                        getFieldValue("discountAmount") > 0 && (
-                          <Form.Item
-                            name="discountReason"
-                            rules={[
-                              { required: true, message: "Reason required" },
-                            ]}
-                            style={{ marginBottom: 0, marginTop: 4 }}
-                          >
-                            <Input
-                              size="small"
-                              placeholder="Why? (e.g. Staff)"
-                              style={{
-                                fontSize: 10,
-                                background: "#fff1f0",
-                                borderColor: "#ffa39e",
-                                color: "#cf1322",
-                              }}
-                            />
-                          </Form.Item>
-                        )
-                      }
+                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev.discountAmount !== curr.discountAmount}>
+                      {({ getFieldValue }) => getFieldValue("discountAmount") > 0 && (
+                        <Form.Item name="discountReason" rules={[{ required: true, message: "Reason required" }]} style={{ marginBottom: 0, marginTop: 4 }}>
+                          <Input size="small" placeholder="Why? (e.g. Staff)" style={{ fontSize: 10, background: "#fff1f0", borderColor: "#ffa39e", color: "#cf1322" }} />
+                        </Form.Item>
+                      )}
                     </Form.Item>
                   </div>
 
-                  {/* MATH OPERATOR */}
-                  <div
-                    style={{
-                      fontSize: 24,
-                      color: "#d9d9d9",
-                      fontWeight: 300,
-                      paddingBottom: 4,
-                    }}
-                  >
-                    =
-                  </div>
+                  <div style={{ fontSize: 24, color: "#d9d9d9", fontWeight: 300, paddingBottom: 4 }}>=</div>
 
-                  {/* 3. NET PAYABLE HIGHLIGHT */}
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-end",
-                      background: "#e6f7ff",
-                      padding: "6px 12px",
-                      borderRadius: 6,
-                      border: "1px solid #bae7ff",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: "#0050b3",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      NET PAYABLE
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 22,
-                        fontWeight: "bold",
-                        color: "#1890ff",
-                        lineHeight: 1,
-                      }}
-                    >
-                      ₹{netAmount}
-                    </Text>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", background: "#e6f7ff", padding: "6px 12px", borderRadius: 6, border: "1px solid #bae7ff" }}>
+                    <Text style={{ fontSize: 10, fontWeight: 700, color: "#0050b3", textTransform: "uppercase" }}>NET PAYABLE</Text>
+                    <Text style={{ fontSize: 22, fontWeight: "bold", color: "#1890ff", lineHeight: 1 }}>₹{netAmount}</Text>
                   </div>
                 </div>
               </Col>
 
               <Col span={6}>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    marginBottom: 8,
-                    alignItems: "center",
-                  }}
-                >
+                <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
                   <Form.Item name="paidAmount" noStyle>
-                    <InputNumber
-                      placeholder="Advance"
-                      style={{ width: "100%" }}
-                      max={netAmount}
-                      addonBefore="Paid"
-                    />
+                    <InputNumber placeholder="Advance" style={{ width: "100%" }} max={netAmount} addonBefore="Paid" />
                   </Form.Item>
                   <Tooltip title="Pay Full (Alt + F)">
-                    <Checkbox
-                      checked={paidAmount === netAmount && netAmount > 0}
-                      onChange={(e) =>
-                        form.setFieldsValue({
-                          paidAmount: e.target.checked ? netAmount : 0,
-                        })
-                      }
-                    >
-                      Full
-                    </Checkbox>
+                    <Checkbox checked={paidAmount === netAmount && netAmount > 0} onChange={(e) => form.setFieldsValue({ paidAmount: e.target.checked ? netAmount : 0 })}>Full</Checkbox>
                   </Tooltip>
                 </div>
-
                 {paidAmount > 0 && (
                   <Form.Item name="paymentMode" noStyle>
-                    <Select
-                      style={{ width: "100%", marginBottom: 8 }}
-                      placeholder="Mode"
-                    >
+                    <Select style={{ width: "100%", marginBottom: 8 }} placeholder="Mode">
                       <Option value="Cash">Cash</Option>
                       <Option value="Razorpay">UPI / QR</Option>
                       <Option value="Card">Card</Option>
                     </Select>
                   </Form.Item>
                 )}
-
                 <Tooltip title="Ctrl + Enter">
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    loading={loading}
-                    block
-                    icon={<ThunderboltFilled />}
-                  >
-                    {paidAmount < netAmount
-                      ? `Book (Due: ₹${dueAmount})`
-                      : "Book & Paid"}
+                  <Button type="primary" htmlType="submit" loading={loading} block icon={<ThunderboltFilled />}>
+                    {paidAmount < netAmount ? `Book (Due: ₹${dueAmount})` : "Book & Paid"}
                   </Button>
                 </Tooltip>
               </Col>
@@ -1235,100 +793,38 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
       </div>
 
       {/* --- RIGHT PANEL: 30vw --- */}
-      <div
-        style={{
-          width: "30vw",
-          background: "#fafafa",
-          display: "flex",
-          flexDirection: "column",
-          borderLeft: "1px solid #eee",
-        }}
-      >
-        <div
-          style={{
-            padding: "10px 16px",
-            background: "#fff",
-            borderBottom: "1px solid #f0f0f0",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: 8,
-            }}
-          >
-            <Text strong>
-              <ClockCircleOutlined /> Orders (Today)
-            </Text>
-            <Button
-              type="text"
-              icon={<ReloadOutlined />}
-              size="small"
-              onClick={() => getOrders(dispatch)}
-            />
+      <div style={{ width: "30vw", background: "#fafafa", display: "flex", flexDirection: "column", borderLeft: "1px solid #eee" }}>
+        <div style={{ padding: "10px 16px", background: "#fff", borderBottom: "1px solid #f0f0f0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text strong><ClockCircleOutlined /> Orders (Today)</Text>
+            <Button type="text" icon={<ReloadOutlined />} size="small" onClick={() => getOrders(dispatch)} />
           </div>
-          {/* Search in Orders */}
-          <Input.Search
-            placeholder="Search Order / Patient..."
-            allowClear
-            onSearch={handleOrderSearch} // Trigger backend search on enter
-            onChange={(e) => setOrderSearchText(e.target.value)} // Local filter while typing
-            size="small"
-          />
+          <Input.Search placeholder="Search Order / Patient..." allowClear onSearch={handleOrderSearch} onChange={(e) => setOrderSearchText(e.target.value)} size="small" />
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
           <List
-            dataSource={displayedOrders} // Use Filtered List
+            dataSource={displayedOrders}
             locale={{ emptyText: "No orders found for today" }}
             renderItem={(item) => (
               <Card
                 size="small"
-                style={{
-                  marginBottom: 8,
-                  borderRadius: 4,
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
+                style={{ marginBottom: 8, borderRadius: 4, fontSize: 12, cursor: "pointer" }}
                 bodyStyle={{ padding: 8 }}
                 hoverable
-                onClick={() => setDetailOrderId(item._id)} // Open Details
+                onClick={() => setDetailOrderId(item._id)}
               >
-                <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
-                >
-                  <Text strong>
-                    {item.patientDetails?.name ||
-                      item.patient?.firstName ||
-                      "Walk-in"}
-                  </Text>
-                  <Tag
-                    color={
-                      item.financials?.status === "Paid"
-                        ? "green"
-                        : item.financials?.status === "Cancelled"
-                          ? "default"
-                          : "orange"
-                    }
-                  >
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <Text strong>{item.patientDetails?.name || item.patient?.firstName || "Walk-in"}</Text>
+                  <Tag color={item.financials?.status === "Paid" ? "green" : item.financials?.status === "Cancelled" ? "default" : "orange"}>
                     {item.financials?.status?.toUpperCase()}
                   </Tag>
                 </div>
-                <div
-                  style={{
-                    color: "#888",
-                    marginTop: 4,
-                    display: "flex",
-                    justifyContent: "space-between",
-                  }}
-                >
+                <div style={{ color: "#888", marginTop: 4, display: "flex", justifyContent: "space-between" }}>
                   <span>{item.displayId}</span>
                   <span>{dayjs(item.createdAt).format("hh:mm A")}</span>
                 </div>
                 <Divider style={{ margin: "6px 0" }} />
-                <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
-                >
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span>{item.items?.length} items</span>
                   <Text strong>₹{item.financials?.netAmount}</Text>
                 </div>
@@ -1339,50 +835,14 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
       </div>
 
       {/* --- MODALS --- */}
-      <CreatePatientModal
-        open={isPatientModalOpen}
-        onCancel={() => setIsPatientModalOpen(false)}
-        onSuccess={handleNewPatientCreated}
-        initialSearchTerm={searchTerm}
-      />
-      <DiscountOverrideModal
-        open={isOverrideModalOpen}
-        onCancel={() => {
-          setIsOverrideModalOpen(false);
-          setPendingSubmission(null);
-          setLoading(false);
-        }}
-        onSubmit={(code) =>
-          onFinish({ ...pendingSubmission, overrideCode: code })
-        }
-      />
-
-      {/* Payment Success Modal */}
+      <CreatePatientModal open={isPatientModalOpen} onCancel={() => setIsPatientModalOpen(false)} onSuccess={handleNewPatientCreated} initialSearchTerm={searchTerm} />
+      <DiscountOverrideModal open={isOverrideModalOpen} onCancel={() => { setIsOverrideModalOpen(false); setPendingSubmission(null); setLoading(false); }} onSubmit={(code) => onFinish({ ...pendingSubmission, overrideCode: code }) } />
+      
       {createdOrder && (
-        <PaymentModal
-          open={isPaymentModalOpen}
-          onCancel={() => {
-            setIsPaymentModalOpen(false);
-            resetForm();
-          }}
-          order={createdOrder}
-          initialAmount={createdOrder.dueAmountForModal}
-          onSuccess={() => {
-            setIsPaymentModalOpen(false);
-            resetForm();
-          }}
-        />
+        <PaymentModal open={isPaymentModalOpen} onCancel={() => { setIsPaymentModalOpen(false); resetForm(); }} order={createdOrder} initialAmount={createdOrder.dueAmountForModal} onSuccess={() => { setIsPaymentModalOpen(false); resetForm(); }} />
       )}
-
-      {/* Order Details Drawer */}
-      <OrderDetailsDrawer
-        open={!!detailOrderId}
-        orderId={detailOrderId}
-        onClose={() => {
-          setDetailOrderId(null);
-          getOrders(dispatch); // Refresh list on close
-        }}
-      />
+      
+      <OrderDetailsDrawer open={!!detailOrderId} orderId={detailOrderId} onClose={() => { setDetailOrderId(null); getOrders(dispatch); }} />
     </div>
   );
 };

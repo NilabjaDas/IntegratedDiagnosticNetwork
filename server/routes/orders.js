@@ -40,46 +40,43 @@ const mergePatientsWithOrders = async (orders) => {
 };
 
 // --- HELPER: Calculate Items & Total (Refactored) ---
-const calculateOrderItems = async (itemsInput, req) => {
-    let orderItems = [];
+const calculateOrderItems = async (items, req) => {
+    const orderItems = [];
     let calculatedTotal = 0;
+    
+    // We need the Doctor model for the lookup
+    const Doctor = require('../models/Doctor'); 
 
-    for (const item of itemsInput) {
+    for (let item of items) {
         if (item.type === 'Test') {
             const test = await req.TenantTest.findById(item._id);
             if (test) {
-                calculatedTotal += (test.price || 0);
-                orderItems.push({
-                    itemType: "Test",
-                    itemId: test._id,
-                    name: test.name,
-                    price: test.price || 0,
-                    status: "Pending",
-                    results: test.parameters?.map(p => ({ name: p.name, unit: p.unit, value: "" })) || []
-                });
+                orderItems.push({ itemId: test._id, name: test.name, price: test.price, itemType: 'Test' });
+                calculatedTotal += test.price;
             }
         } else if (item.type === 'Package') {
-            const pkg = await req.TenantPackage.findById(item._id).populate('tests');
+            const pkg = await req.TenantPackage.findById(item._id);
             if (pkg) {
-                calculatedTotal += (pkg.offerPrice || 0);
-                if (pkg.tests) {
-                    pkg.tests.forEach(t => {
-                        if (t._id) {
-                            orderItems.push({
-                                itemType: "Test",
-                                itemId: t._id,
-                                name: `${t.name} (Pkg)`,
-                                price: 0, // Package contents have 0 individual price
-                                parentPackageId: pkg._id,
-                                status: "Pending",
-                                results: t.parameters?.map(p => ({ name: p.name, unit: p.unit, value: "" })) || []
-                            });
-                        }
-                    });
-                }
+                orderItems.push({ itemId: pkg._id, name: pkg.name, price: pkg.offerPrice, itemType: 'Package' });
+                calculatedTotal += pkg.offerPrice;
+            }
+        } 
+        // --- NEW: Handle Doctor Consultations ---
+        else if (item.type === 'Consultation') {
+            // Find doctor ensuring tenant isolation
+            const doctor = await Doctor.findOne({ _id: item._id, institutionId: req.user.institutionId });
+            if (doctor) {
+                orderItems.push({ 
+                    itemId: doctor._id, 
+                    name: `Consultation: Dr. ${doctor.personalInfo.firstName} ${doctor.personalInfo.lastName}`, 
+                    price: doctor.fees.newConsultation, 
+                    itemType: 'Consultation' 
+                });
+                calculatedTotal += doctor.fees.newConsultation;
             }
         }
     }
+
     return { orderItems, calculatedTotal };
 };
 

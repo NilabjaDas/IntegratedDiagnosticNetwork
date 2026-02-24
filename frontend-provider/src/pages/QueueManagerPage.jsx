@@ -3,8 +3,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import styled from 'styled-components';
 import { Layout, Typography, Card, message } from 'antd';
 import { fetchDepartmentQueue, updateTokenStatus, fetchQueueCounters } from '../redux/apiCalls';
-import QueueControls from '../components/QueueControls';
-import QueueTable from '../components/QueueTable';
+import QueueControls from '../components/QueueManager/QueueControls';
+import QueueTable from '../components/QueueManager/QueueTable';
 
 const { Title } = Typography;
 

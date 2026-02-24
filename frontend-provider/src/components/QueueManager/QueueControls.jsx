@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { Select, Button, Space, Statistic, Divider, Radio, message } from 'antd';
 import { DesktopOutlined, NotificationOutlined } from '@ant-design/icons';
-import { callNextPatientInQueue, updateCounterStatus } from '../redux/apiCalls';
+import { callNextPatientInQueue, updateCounterStatus } from '../../redux/apiCalls';
 
 const { Option } = Select;
 
