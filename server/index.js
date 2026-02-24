@@ -12,6 +12,7 @@ const ConsumerAuthRoute = require("./routes/consumer-auth")
 const ConsumerBookingRoute = require("./routes/consumer-booking")
 const BookingsRoute = require("./routes/bookings")
 const CatalogRoute = require("./routes/catalog")
+const DoctorsRoute = require("./routes/doctors")
 const DoctorBookingRoute = require("./routes/doctor-bookings")
 const InstitutionRoute = require("./routes/institutions")
 const TestsRoute = require("./routes/tests")
@@ -58,6 +59,7 @@ app.use("/api/consumer/auth", ConsumerAuthRoute);
 app.use("/api/consumer/booking", ConsumerBookingRoute);
 app.use("/api/bookings", BookingsRoute);
 app.use("/api/catalog", CatalogRoute);
+app.use("/api/doctors", DoctorsRoute);
 app.use("/api/doctor-bookings", DoctorBookingRoute);
 app.use("/api/institutions", InstitutionRoute);
 app.use("/api/tests",TestsRoute);

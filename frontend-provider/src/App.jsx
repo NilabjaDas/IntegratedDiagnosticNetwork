@@ -38,6 +38,7 @@ import MainLayout from "./components/MainLayout";
 import TestsPage from "./pages/TestsPage";
 import OrdersPage from "./pages/OrdersPage";
 import ConfigurationPage from "./pages/ConfigurationPage";
+import DoctorManagerPage from './pages/DoctorManagerPage';
 import moment from "moment";
 import QueueManagerPage from "./pages/QueueManagerPage";
 import TvDisplayPage from "./components/TvDisplayPage";
@@ -392,6 +393,7 @@ function App() {
                     <Route path="/orders-management" element={<OrdersPage />} />
                     <Route path="/queue-management" element={<QueueManagerPage />} />
                     <Route path="/configuration" element={<ConfigurationPage />} />
+                    <Route path="/doctors" element={<DoctorManagerPage />} />
                     <Route path="/page2" element={<Page2 />} />
                     <Route path="/page3" element={<Page3 />} />
                     <Route path="/tv-display/:department" element={<TvDisplayPage />} />

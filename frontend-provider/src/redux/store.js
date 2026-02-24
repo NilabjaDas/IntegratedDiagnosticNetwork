@@ -8,6 +8,7 @@ import testsReducer from "./testRedux"
 import ordersReducer from "./orderRedux"
 import queueReducer from "./queueRedux";
 import templateLibraryReducer from "./templateLibraryRedux";
+import doctorReducer from "./doctorRedux";
 import { CLEAR_ALL_REDUCERS } from "./actionTypes";
 
 import CryptoJS from "crypto-js";
@@ -62,6 +63,7 @@ const appReducer = combineReducers({
   [process.env.REACT_APP_ORDERS_DATA_KEY] : ordersReducer,
   [process.env.REACT_APP_TEMPLATELIBRARY_DATA_KEY] : templateLibraryReducer,
   [process.env.REACT_APP_QUEUE_DATA_KEY] : queueReducer,
+  [process.env.REACT_APP_DOCTORS_KEY] : doctorReducer,
 });
 
 const rootReducer = (state, action) => {
@@ -74,7 +76,8 @@ const rootReducer = (state, action) => {
         [process.env.REACT_APP_UI_DATA_KEY]: undefined,
         [process.env.REACT_APP_TESTS_DATA_KEY] : undefined,
         [process.env.REACT_APP_ORDERS_DATA_KEY] : undefined,
-        [process.env.REACT_APP_QUEUE_DATA_KEY] : undefined
+        [process.env.REACT_APP_QUEUE_DATA_KEY] : undefined,
+        [process.env.REACT_APP_DOCTORS_KEY] : undefined,
       },
       action
     );

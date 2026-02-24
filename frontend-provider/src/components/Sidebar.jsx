@@ -10,6 +10,7 @@ import {
   UploadOutlined,
   ProductOutlined,
   SettingOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { setPageLocation } from "../redux/uiRedux";
@@ -113,6 +114,9 @@ const Sidebar = ({ collapsed }) => {
         </Menu.Item>
          <Menu.Item key="/queue-management" icon={<SettingOutlined />}>
           <Link to="/queue-management">QueueManagerPage</Link>
+        </Menu.Item>
+           <Menu.Item key="doctors" icon={<TeamOutlined />}>
+          <Link to="/doctors">Manage Doctors</Link>
         </Menu.Item>
         <Menu.Item key="/configuration" icon={<SettingOutlined />}>
           <Link to="/configuration">Configuration</Link>

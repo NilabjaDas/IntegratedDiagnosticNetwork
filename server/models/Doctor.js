@@ -1,71 +1,90 @@
 const mongoose = require("mongoose");
 const { v4: uuidv4 } = require("uuid");
 
+// 1. Breaks (Can happen inside a shift)
 const breakSchema = new mongoose.Schema({
-  name: { type: String }, // e.g., "Lunch", "Tea"
-  startTime: { type: String, required: true }, // "13:00" (24hr format)
-  endTime: { type: String, required: true }    // "14:00"
+    label: { type: String, default: "Break" }, // "Tea", "Ward Round"
+    startTime: { type: String, required: true }, // "13:00"
+    endTime: { type: String, required: true }    // "13:30"
 }, { _id: false });
 
-const scheduleSchema = new mongoose.Schema({
-  day: { 
-    type: String, 
-    enum: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] 
-  },
-  isAvailable: { type: Boolean, default: true },
-  startTime: { type: String }, // "09:00"
-  endTime: { type: String },   // "17:00"
-  breaks: [breakSchema]        // Specific breaks for this day
+// 2. Shifts (A doctor might have Morning OPD and Evening OPD)
+const shiftSchema = new mongoose.Schema({
+    shiftName: { type: String, required: true }, // "Morning OPD"
+    startTime: { type: String, required: true }, // "10:00"
+    endTime: { type: String, required: true },   // "14:00"
+    maxTokens: { type: Number, required: true }, // e.g., 20 patients
+    breaks: [breakSchema] // Breaks strictly within this shift
+}, { _id: false });
+
+// 3. Weekly Schedule (0 = Sunday, 1 = Monday...)
+const dayScheduleSchema = new mongoose.Schema({
+    dayOfWeek: { type: Number, required: true, min: 0, max: 6 }, 
+    isAvailable: { type: Boolean, default: true },
+    shifts: [shiftSchema] 
+}, { _id: false });
+
+// 4. Planned Leaves (Vacations / Conferences)
+const leaveSchema = new mongoose.Schema({
+    startDate: { type: String, required: true }, // "YYYY-MM-DD"
+    endDate: { type: String, required: true },   // "YYYY-MM-DD"
+    reason: { type: String }
+}, { _id: false });
+
+// 5. Daily Overrides (For Real-World Delays & Sick Days)
+const overrideSchema = new mongoose.Schema({
+    date: { type: String, required: true }, // "YYYY-MM-DD"
+    shiftName: { type: String }, // Which shift is delayed?
+    delayMinutes: { type: Number, default: 0 }, // Doctor is 45 mins late
+    isCancelled: { type: Boolean, default: false }, // Doctor suddenly cancelled today's OPD
+    note: { type: String } // e.g., "Stuck in emergency surgery"
 }, { _id: false });
 
 const doctorSchema = new mongoose.Schema({
-  institutionId: { type: String, required: true, index: true },
-  doctorId: { type: String, default: () => uuidv4(), unique: true },
-  userId: { type: String }, // Link to User login if they have dashboard access
+    institutionId: { type: String, required: true, index: true },
+    doctorId: { type: String, default: () => uuidv4(), unique: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Optional dashboard login
 
-  // === PUBLIC PROFILE ===
-  name: { type: String, required: true },
-  specialization: { type: String, required: true }, // e.g., "Cardiologist"
-  qualifications: { type: String }, // e.g., "MBBS, MD"
-  registrationNumber: { type: String }, // Medical Council ID
-  bio: { type: String }, 
-  
-  contact: {
-    email: { type: String },
-    phone: { type: String, required: true }, // Public booking number
-  },
+    // --- Profile ---
+    personalInfo: {
+        firstName: { type: String, required: true },
+        lastName: { type: String, required: true },
+        gender: { type: String, enum: ["Male", "Female", "Other"] },
+        phone: { type: String },
+        email: { type: String }
+    },
+    professionalInfo: {
+        specialization: { type: String, required: true },
+        qualifications: [{ type: String }],
+        registrationNumber: { type: String, required: true }, 
+        experienceYears: { type: Number }
+    },
 
-  // === PRIVATE OPERATIONAL DATA (The "Admin" section) ===
-  consultationFee: { type: Number, required: true }, // e.g., 1000
-  avgTimePerPatient: { type: Number, default: 15 }, // in minutes
-  
-  // Weekly Schedule & Breaks
-  weeklySchedule: [scheduleSchema], 
-  
-  // Leave Management (Date Ranges)
-  leaves: [{
-    startDate: Date,
-    endDate: Date,
-    reason: String
-  }],
+    // --- Financials ---
+    fees: {
+        newConsultation: { type: Number, required: true, default: 500 },
+        followUpConsultation: { type: Number, required: true, default: 0 }
+    },
 
-  // === FINANCIAL MODEL (Type 2 Support) ===
-  employmentType: { 
-    type: String, 
-    enum: ["Salaried", "RevenueShare", "PrivatePractice"], 
-    required: true 
-  },
-  
-  // If Salaried
-  baseSalary: { type: Number }, // e.g., 100000 (Monthly)
-  
-  // If Revenue Share
-  shareConfig: {
-    doctorPercentage: { type: Number }, // e.g., 70
-    institutionPercentage: { type: Number }, // e.g., 30
-  },
+    // --- Serial & Queue Rules ---
+    consultationRules: {
+        avgTimePerPatientMinutes: { type: Number, default: 15 }, // Critical for Live ETA Math!
+        followUpValidityDays: { type: Number, default: 7 }, 
+        allowOverbooking: { type: Boolean, default: false } 
+    },
 
-  isActive: { type: Boolean, default: true }
+    // --- Infrastructure ---
+    assignedCounterId: { type: String }, // E.g., Physical "Cabin 1"
+    prescriptionTemplateId: { type: mongoose.Schema.Types.ObjectId, ref: 'Template' }, 
+
+    // --- Availability & Time Management ---
+    schedule: [dayScheduleSchema], 
+    leaves: [leaveSchema],
+    dailyOverrides: [overrideSchema],
+
+    isActive: { type: Boolean, default: true }
 }, { timestamps: true });
 
-module.exports = doctorSchema;
+doctorSchema.index({ institutionId: 1, 'personalInfo.firstName': 1 });
+
+module.exports = mongoose.model("Doctor", doctorSchema);

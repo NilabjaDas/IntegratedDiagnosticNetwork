@@ -49,6 +49,12 @@ import {
   updateTokenSuccess
 } from "./queueRedux";
 
+import { 
+    getDoctorsStart, getDoctorsSuccess, getDoctorsFailure,
+    createDoctorStart, createDoctorSuccess, createDoctorFailure,
+    updateDoctorStart, updateDoctorSuccess, updateDoctorFailure,
+    deleteDoctorStart, deleteDoctorSuccess, deleteDoctorFailure
+} from "./doctorRedux";
 
 import { getInstitutionSuccess, setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
 
@@ -638,6 +644,61 @@ export const updateMyInstitutionSettings = async (payload) => {
         return res.data;
     } catch (err) {
         console.error("Failed to update settings", err);
+        throw err;
+    }
+};
+
+
+export const getDoctors = async (dispatch) => {
+    dispatch(getDoctorsStart());
+    try {
+        const res = await userRequest.get("/doctors");
+        dispatch(getDoctorsSuccess(res.data));
+    } catch (err) {
+        dispatch(getDoctorsFailure());
+    }
+};
+
+export const createDoctor = async (dispatch, doctorData) => {
+    dispatch(createDoctorStart());
+    try {
+        const res = await userRequest.post("/doctors", doctorData);
+        dispatch(createDoctorSuccess(res.data));
+        return res.data;
+    } catch (err) {
+        dispatch(createDoctorFailure());
+        throw err;
+    }
+};
+
+export const updateDoctor = async (dispatch, id, doctorData) => {
+    dispatch(updateDoctorStart());
+    try {
+        const res = await userRequest.put(`/doctors/${id}`, doctorData);
+        dispatch(updateDoctorSuccess(res.data));
+        return res.data;
+    } catch (err) {
+        dispatch(updateDoctorFailure());
+        throw err;
+    }
+};
+
+export const deleteDoctor = async (dispatch, id) => {
+    dispatch(deleteDoctorStart());
+    try {
+        await userRequest.delete(`/doctors/${id}`);
+        dispatch(deleteDoctorSuccess(id));
+    } catch (err) {
+        dispatch(deleteDoctorFailure());
+        throw err;
+    }
+};
+
+export const addDoctorOverride = async (id, overrideData) => {
+    try {
+        const res = await userRequest.post(`/doctors/${id}/overrides`, overrideData);
+        return res.data;
+    } catch (err) {
         throw err;
     }
 };
