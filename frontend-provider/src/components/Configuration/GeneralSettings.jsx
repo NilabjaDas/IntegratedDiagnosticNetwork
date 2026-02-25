@@ -154,6 +154,37 @@ const GeneralSettings = ({ data, onSave, loading }) => {
                         </Form.Item>
                     </Col>
                 </Row>
+                <Card title="Queue & Cancellation Policies" size="small" style={{ marginBottom: 24 }}>
+        <Row gutter={16}>
+            <Col span={8}>
+                <Form.Item name={['queuePolicies', 'shiftCancelPolicy']} label="Shift Cancellation Policy" initialValue="MANUAL_ALLOCATION" tooltip="If a doctor cancels a specific shift, what happens to the patients?">
+                    <Select>
+                        <Option value="MANUAL_ALLOCATION">Manual Allocation (Front Desk)</Option>
+                        <Option value="AUTO_NEXT_AVAILABLE">Auto-Shift to Next Available</Option>
+                        <Option value="CANCEL_ALL">Cancel Entire Queue</Option>
+                    </Select>
+                </Form.Item>
+            </Col>
+            <Col span={8}>
+                <Form.Item name={['queuePolicies', 'dayCancelPolicy']} label="Full Day Cancellation Policy" initialValue="MANUAL_ALLOCATION" tooltip="If a doctor cancels the whole day, what happens?">
+                    <Select>
+                        <Option value="MANUAL_ALLOCATION">Manual Allocation (Front Desk)</Option>
+                        <Option value="AUTO_NEXT_AVAILABLE">Auto-Shift to Next Available</Option>
+                        <Option value="CANCEL_ALL">Cancel Entire Queue</Option>
+                    </Select>
+                </Form.Item>
+            </Col>
+            <Col span={8}>
+                <Form.Item name={['queuePolicies', 'spilloverPolicy']} label="Queue Spillover Policy" initialValue="MANUAL_ALLOCATION" tooltip="If a shift ends but patients are still waiting?">
+                    <Select>
+                        <Option value="MANUAL_ALLOCATION">Manual Allocation (Front Desk)</Option>
+                        <Option value="AUTO_NEXT_AVAILABLE">Auto-Shift to Next Day</Option>
+                        <Option value="CANCEL_ALL">Cancel Unattended Queue</Option>
+                    </Select>
+                </Form.Item>
+            </Col>
+        </Row>
+    </Card>
                 
                 <Button type="primary" htmlType="submit" size="large" loading={loading}>
                     Save General Formats

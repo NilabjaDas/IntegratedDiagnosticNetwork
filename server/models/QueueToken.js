@@ -9,7 +9,9 @@ const queueTokenSchema = new mongoose.Schema({
   shiftName: { type: String, default: null }, // e.g., "Morning OPD"
   tokenNumber: { type: String, required: true }, // e.g., "PAT-001"
   sequence: { type: Number, required: true },    // 1
-  
+  priority: { type: Number, default: 0 }, // 1 = Priority (Front of queue), 0 = Normal
+  isRescheduled: { type: Boolean, default: false },
+  originalDate: { type: String }, // To track when they originally booked
   orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
   patientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' }, // Null if walk-in
   

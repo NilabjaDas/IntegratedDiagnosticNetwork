@@ -73,6 +73,25 @@ const doctorSchema = new mongoose.Schema({
         allowOverbooking: { type: Boolean, default: false } 
     },
 
+    leaveSettings: {
+        leaveLimitPerYear: { type: Number, default: 20 }
+    },
+
+    metrics: {
+        leavesTaken: { type: Number, default: 0 },
+        cancellationsCount: { type: Number, default: 0 }, // Shift cancellations
+        lateCount: { type: Number, default: 0 }
+    },
+
+    specialShifts: [{
+        date: { type: String, required: true }, // "YYYY-MM-DD"
+        shiftName: { type: String, required: true },
+        startTime: { type: String, required: true },
+        endTime: { type: String, required: true },
+        maxTokens: { type: Number, required: true },
+        notes: { type: String }
+    }],
+
     // --- Infrastructure ---
     assignedCounterId: { type: String }, // E.g., Physical "Cabin 1"
     prescriptionTemplateId: { type: mongoose.Schema.Types.ObjectId, ref: 'Template' }, 

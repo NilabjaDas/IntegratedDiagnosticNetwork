@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useDispatch, useSelector } from 'react-redux';
-import { Row, Col, message } from 'antd';
+import { Row, Col, message, Form, Button, Modal, Input, TimePicker, InputNumber, DatePicker } from 'antd';
 import dayjs from 'dayjs';
 
 // API Calls
-import { getDoctors, fetchDoctorQueue, updateTokenStatus, completeConsultation } from '../redux/apiCalls';
+import { getDoctors, fetchDoctorQueue, updateTokenStatus, completeConsultation, createSpecialShift } from '../redux/apiCalls';
 
 // Modular Components
 import WorkspaceHeader from '../components/Doctor EMR/WorkspaceHeader';
@@ -29,7 +29,8 @@ const DoctorWorkspacePage = () => {
     const [selectedDate, setSelectedDate] = useState(dayjs().format("YYYY-MM-DD"));
     const [queue, setQueue] = useState([]);
     const [loadingQueue, setLoadingQueue] = useState(false);
-    
+
+
     // Active Consultation State
     const [activeToken, setActiveToken] = useState(null);
     const [prescriptionContent, setPrescriptionContent] = useState("");
@@ -125,6 +126,10 @@ const DoctorWorkspacePage = () => {
 
     return (
         <PageContainer>
+
+
+
+
             <WorkspaceHeader 
                 doctors={doctors}
                 selectedDoctorId={selectedDoctorId}
@@ -135,6 +140,7 @@ const DoctorWorkspacePage = () => {
 
             {selectedDoctorId && (
                 <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
+                    
                     <Col span={8} style={{ display: 'flex', flexDirection: 'column' }}>
                         <WorkspaceQueueList 
                             queue={queue}

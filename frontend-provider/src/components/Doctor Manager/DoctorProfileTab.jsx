@@ -1,5 +1,5 @@
 import React from 'react';
-import { Form, Input, Select, InputNumber, Row, Col, Typography, Divider, Switch } from 'antd';
+import { Form, Input, Select, InputNumber, Row, Col, Typography, Divider, Switch, Card } from 'antd';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -60,6 +60,21 @@ const DoctorProfileTab = ({ rooms }) => {
                     </Form.Item>
                 </Col>
             </Row>
+            <Card size="small" title="Leave & Operational Settings" style={{ marginBottom: 16 }}>
+        <Row gutter={16}>
+            <Col span={8}>
+                <Form.Item 
+                    name={['leaveSettings', 'leaveLimitPerYear']} 
+                    label="Yearly Leave Limit" 
+                    initialValue={20}
+                    rules={[{ required: true, message: 'Please set a limit' }]}
+                    tooltip="Maximum full-day cancellations allowed per year before system blocks requests."
+                >
+                    <InputNumber min={0} style={{ width: '100%' }} addonAfter="Days" />
+                </Form.Item>
+            </Col>
+        </Row>
+    </Card>
         </div>
     );
 };

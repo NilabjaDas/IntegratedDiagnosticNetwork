@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useDispatch, useSelector } from 'react-redux';
 import { Table, Button, Drawer, Form, Typography, message, Space, Popconfirm, Tag, Tabs } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ClockCircleOutlined, AlertOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ClockCircleOutlined, AlertOutlined, PlusSquareOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 import { getDoctors, createDoctor, updateDoctor, deleteDoctor, addDoctorOverride, fetchMyInstitutionSettings } from '../redux/apiCalls';
@@ -12,6 +12,7 @@ import DoctorProfileTab from '../components/Doctor Manager/DoctorProfileTab';
 import DoctorScheduleTab from '../components/Doctor Manager/DoctorScheduleTab';
 import DoctorLeavesTab from '../components/Doctor Manager/DoctorLeavesTab';
 import DoctorOverrideModal from '../components/Doctor Manager/DoctorOverrideModal';
+import DoctorSpecialShiftModal from '../components/Doctor Manager/DoctorSpecialShiftModal';
 
 const { Title, Text } = Typography;
 
@@ -32,7 +33,8 @@ const DoctorManagerPage = () => {
     const [overrideModalVisible, setOverrideModalVisible] = useState(false);
     const [editingDoctor, setEditingDoctor] = useState(null);
     const [rooms, setRooms] = useState([]);
-    
+    const [specialShiftModalVisible, setSpecialShiftModalVisible] = useState(false);
+    const [selectedDoctorForSpecialShift, setSelectedDoctorForSpecialShift] = useState(null);
     const [form] = Form.useForm();
 
     useEffect(() => {
@@ -62,6 +64,11 @@ const DoctorManagerPage = () => {
             return { dayOfWeek: index, isAvailable: false, shifts: [] };
         });
     };
+
+    const handleOpenSpecialShift = (doc) => {
+    setSelectedDoctorForSpecialShift(doc);
+    setSpecialShiftModalVisible(true);
+};
 
     const openDrawer = (doctor = null) => {
         setEditingDoctor(doctor);
@@ -184,6 +191,9 @@ const DoctorManagerPage = () => {
             <Space size="middle">
                 <Button type="primary" size="small" icon={<AlertOutlined />} danger onClick={() => { setEditingDoctor(record); setOverrideModalVisible(true); }}>Delay/Leave</Button>
                 <Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => openDrawer(record)} />
+                <Button size="small" type="dashed" onClick={() => handleOpenSpecialShift(record)} icon={<PlusSquareOutlined />} style={{ color: '#722ed1', borderColor: '#722ed1' }}>
+                Special Shift
+                </Button>
                 <Popconfirm title="Remove this doctor?" onConfirm={() => handleDelete(record.doctorId)}>
                     <Button type="text" danger icon={<DeleteOutlined />} />
                 </Popconfirm>
@@ -226,6 +236,17 @@ const DoctorManagerPage = () => {
                 onSave={handleSaveOverride} 
                 doctor={editingDoctor} 
             />
+            <DoctorSpecialShiftModal 
+        visible={specialShiftModalVisible}
+        onCancel={() => { setSpecialShiftModalVisible(false); setSelectedDoctorForSpecialShift(null); }}
+        onSuccess={() => {
+            setSpecialShiftModalVisible(false);
+            setSelectedDoctorForSpecialShift(null);
+            // Refresh your table data here, assuming you have a loadData() or getDoctors() function
+            getDoctors(dispatch); 
+        }}
+        doctor={selectedDoctorForSpecialShift}
+    />
         </PageContainer>
     );
 };

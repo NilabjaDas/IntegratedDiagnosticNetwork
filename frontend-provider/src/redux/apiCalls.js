@@ -722,3 +722,30 @@ export const completeConsultation = async (tokenId, prescriptionHtml) => {
         throw err;
     }
 };
+
+
+// --- RESCHEDULING & ACTION REQUIRED ---
+export const fetchActionRequiredTokens = async () => {
+    try {
+        // Fetch all tokens that are CANCELLED and haven't been rescheduled yet
+        const res = await userRequest.get(`/queue-manager?status=CANCELLED&isRescheduled=false`);
+        return res.data;
+    } catch (err) {
+        console.error("Failed to fetch action required tokens", err);
+        return [];
+    }
+};
+
+export const reschedulePatientToken = async (tokenId, newDate, newShiftName) => {
+    try {
+        const res = await userRequest.put(`/queue-manager/token/${tokenId}/reschedule`, { newDate, newShiftName });
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};
+
+export const createSpecialShift = async (doctorId, shiftData) => {
+    const res = await userRequest.post(`/doctors/${doctorId}/special-shifts`, shiftData);
+    return res.data;
+};

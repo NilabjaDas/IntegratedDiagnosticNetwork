@@ -41,14 +41,17 @@ router.use(authenticateUser, getTenantContext);
 // GET ALL TOKENS (WITH FILTERS) - Used by Doctor Workspace
 router.get("/", async (req, res) => {
     try {
-        const { date, department, doctorId } = req.query;
+        const { date, department, doctorId, status, isRescheduled } = req.query;
         let query = { institutionId: req.user.institutionId };
 
         if (date) query.date = date;
         if (department) query.department = department;
         if (doctorId) query.doctorId = doctorId; 
-
-        const tokens = await req.TenantQueueToken.find(query).sort({ sequence: 1 });
+        if (status) query.status = status;
+        if (isRescheduled !== undefined) query.isRescheduled = isRescheduled === 'true';
+        const tokens = await req.TenantQueueToken.find(query)
+            .sort({ priority: -1, sequence: 1 }) // Priority first!
+            .populate('doctorId', 'personalInfo professionalInfo');
         res.status(200).json(tokens);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -216,6 +219,48 @@ router.put("/:id/prescription", async (req, res) => {
         // Trigger SSE to remove the patient from "In Progress" TV screens
         sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token }, 'tests_queue_updated');
 
+        res.status(200).json(token);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+
+// ==========================================
+// 6. EMERGENCY RESCHEDULING 
+// ==========================================
+router.put("/token/:tokenId/reschedule", async (req, res) => {
+    try {
+        const { newDate, newShiftName } = req.body;
+        const instId = req.user.institutionId;
+
+        const token = await req.TenantQueueToken.findOne({ _id: req.params.tokenId, institutionId: instId });
+        if (!token) return res.status(404).json({ message: "Token not found" });
+
+        // 1. Generate a new sequence number for the NEW date & shift
+        const counterKey = `DOC_${token.doctorId}_${newShiftName}`;
+        const queueCounter = await req.TenantDailyCounter.findOneAndUpdate(
+            { institutionId: instId, date: newDate, department: counterKey },
+            { $inc: { sequence_value: 1 } },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+        
+        // 2. Re-format the Token String (e.g. DRSMI-001)
+        const prefix = token.tokenNumber.split('-')[0]; // Keep original prefix
+        const newTokenNumber = `${prefix}-${String(queueCounter.sequence_value).padStart(3, '0')}`;
+
+        // 3. Update the token!
+        token.originalDate = token.originalDate || token.date; // Preserve first booking date
+        token.date = newDate;
+        token.shiftName = newShiftName;
+        token.sequence = queueCounter.sequence_value;
+        token.tokenNumber = newTokenNumber;
+        token.status = 'WAITING'; // Back into the live queue
+        token.priority = 1;       // Priority treatment!
+        token.isRescheduled = true;
+        token.notes = token.notes + ` | Rescheduled to ${newDate}`;
+
+        await token.save();
         res.status(200).json(token);
     } catch (err) {
         res.status(500).json({ error: err.message });

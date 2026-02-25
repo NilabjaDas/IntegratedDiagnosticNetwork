@@ -20,6 +20,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { getOrders } from "../redux/apiCalls";
 import CreateOrderDrawer from "../components/CreateOrderDrawer";
 import OrderDetailsDrawer from "../components/OrderDetailsDrawer";
+import ActionRequiredDashboard from '../components/ActionRequiredDashboard';
 import styled from "styled-components";
 import moment from "moment";
 
@@ -203,15 +204,7 @@ const OrdersPage = () => {
   };
   return (
     <PageContainer>
-        {/* <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 16,
-          }}
-        >
-          <h2>Order Management</h2>
-        </div> */}
+<ActionRequiredDashboard />
         <Row gutter={16} style={{ marginBottom: 16 }}>
           <Col span={8}>
             {/* 1. Search on Key Press (onChange) */}

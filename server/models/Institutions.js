@@ -44,6 +44,18 @@ const outletSchema = new mongoose.Schema({
     autoToken: { type: Boolean, default: false },
     tokenPrefix: { type: String, default: "TKN" },
     openingHours: { type: [Object], default: [] },
+    clinical: {
+        emergencyLeavePolicy: {
+            type: String,
+            enum: ['MANUAL_REBOOK', 'AUTO_FRONT_OF_QUEUE', 'AUTO_INTERLEAVED'],
+            default: 'MANUAL_REBOOK' // Default to manual so front desk retains control
+        },
+        queuePolicies: {
+        shiftCancelPolicy: { type: String, enum: ['AUTO_NEXT_AVAILABLE', 'CANCEL_ALL', 'MANUAL_ALLOCATION'], default: 'MANUAL_ALLOCATION' },
+        dayCancelPolicy: { type: String, enum: ['AUTO_NEXT_AVAILABLE', 'CANCEL_ALL', 'MANUAL_ALLOCATION'], default: 'MANUAL_ALLOCATION' },
+        spilloverPolicy: { type: String, enum: ['AUTO_NEXT_AVAILABLE', 'CANCEL_ALL', 'MANUAL_ALLOCATION'], default: 'MANUAL_ALLOCATION' }
+    }
+    },
   },
 }, { _id: false });
 
