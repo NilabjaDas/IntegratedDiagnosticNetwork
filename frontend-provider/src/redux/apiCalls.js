@@ -272,6 +272,7 @@ export const getOrders = async (dispatch, filters = {}) => {
 export const createOrder = async (dispatch, orderData) => {
   dispatch(orderProcessStart());
   try {
+    console.log(orderData)
     const res = await userRequest.post("/orders", orderData);
     dispatch(createOrderSuccess(res.data));
     return { status: 201, data: res.data };

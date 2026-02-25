@@ -53,6 +53,8 @@ const orderSchema = new mongoose.Schema({
   appointment: {
     doctorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
     date: { type: Date },
+    shiftName: { type: String }, // Required to know exactly which queue to put them in
+    isFollowUp: { type: Boolean, default: false },
     status: { type: String, default: "Scheduled" } 
   },
   

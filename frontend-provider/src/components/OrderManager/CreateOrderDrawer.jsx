@@ -7,10 +7,9 @@ import {
   UserAddOutlined, MedicineBoxOutlined, DeleteOutlined, CalculatorOutlined,
   CreditCardOutlined, QrcodeOutlined, DollarCircleOutlined, SearchOutlined,
   CloseCircleOutlined, ThunderboltFilled, HomeOutlined, WarningOutlined,
-  ClearOutlined, UserOutlined // <-- Added UserOutlined for Doctor Icon
+  ClearOutlined, UserOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-// --- IMPORT getDoctors ---
 import { createOrder, searchPatients, getOrders, getMyTests, getDoctors } from "../../redux/apiCalls"; 
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
@@ -42,8 +41,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   // Redux Data
   const { tests, packages } = useSelector((state) => state[process.env.REACT_APP_TESTS_DATA_KEY] || state.test);
   const { searchResults } = useSelector((state) => state[process.env.REACT_APP_ORDERS_DATA_KEY] || state.order); 
-  
-  // --- NEW: Fetch Doctors from Redux ---
   const doctors = useSelector((state) => state[process.env.REACT_APP_DOCTORS_KEY]?.doctors || []);
   
   const [selectedItems, setSelectedItems] = useState([]);
@@ -67,14 +64,13 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   const paidAmount = Form.useWatch("paidAmount", form);
   const [scheduleDate, setScheduleDate] = useState(moment().format("YYYY-MM-DD"));
 
-  // --- INITIALIZATION ---
   useEffect(() => {
     getMyTests(dispatch, scheduleDate);
   }, [scheduleDate, dispatch]);
 
   useEffect(() => {
     if (open) {
-       getDoctors(dispatch); // Fetch Doctors when drawer opens
+       getDoctors(dispatch);
        if(!isRapidMode) {
          setTimeout(() => patientSearchRef.current?.focus(), 100);
        }
@@ -83,8 +79,73 @@ const CreateOrderDrawer = ({ open, onClose }) => {
 
   const disabledDate = (current) => current && current < dayjs().startOf('day');
 
+  // --- NEW: SMART DOCTOR AVAILABILITY HELPER ---
+  const getDoctorAvailability = (doctor, dateStr) => {
+      const dayIndex = dayjs(dateStr).day();
+      const daySchedule = doctor.schedule?.find(s => s.dayOfWeek === dayIndex);
+      if (!daySchedule || !daySchedule.isAvailable) return [];
+
+      let availableShifts = [...daySchedule.shifts];
+
+      // Block Planned Leaves
+      const plannedLeave = doctor.leaves?.find(l => dateStr >= l.startDate && dateStr <= l.endDate);
+      if (plannedLeave) {
+          if (!plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0) return [];
+          availableShifts = availableShifts.filter(s => !plannedLeave.shiftNames.includes(s.shiftName));
+      }
+
+      // Block Ad-Hoc Cancellations
+      const override = doctor.dailyOverrides?.find(o => o.date === dateStr);
+      if (override && override.isCancelled) {
+          if (!override.shiftNames || override.shiftNames.length === 0) return [];
+          availableShifts = availableShifts.filter(s => !override.shiftNames.includes(s.shiftName));
+      }
+
+      return availableShifts;
+  };
+
   const onScheduleDateChange = (date) => {
-      setScheduleDate(date ? date.format("YYYY-MM-DD") : null);
+      const newDateStr = date ? date.format("YYYY-MM-DD") : null;
+      setScheduleDate(newDateStr);
+
+      // --- RE-EVALUATE CART FOR CANCELLED DOCTORS ON NEW DATE ---
+      if (newDateStr && selectedItems.length > 0) {
+          let hasChanges = false;
+          let droppedDocs = [];
+
+          const updatedItems = selectedItems.map(item => {
+              if (item.type !== 'Consultation') return item;
+              const doc = doctors.find(d => d._id === item._id);
+              if (!doc) return item;
+
+              const availableShifts = getDoctorAvailability(doc, newDateStr);
+              if (availableShifts.length === 0) {
+                  hasChanges = true;
+                  droppedDocs.push(doc.personalInfo.lastName);
+                  return null; // Drop from cart
+              }
+
+              let newShiftName = item.shiftName;
+              if (!availableShifts.find(s => s.shiftName === item.shiftName)) {
+                  newShiftName = availableShifts[0].shiftName;
+                  hasChanges = true;
+              }
+
+              if (availableShifts.length !== item.availableShifts?.length || newShiftName !== item.shiftName) {
+                  hasChanges = true;
+                  return { ...item, availableShifts, shiftName: newShiftName };
+              }
+              return item;
+          }).filter(Boolean);
+
+          if (hasChanges) {
+              setSelectedItems(updatedItems);
+              form.setFieldsValue({ serviceSelect: updatedItems.map(i => i._id) });
+              if (droppedDocs.length > 0) {
+                  message.warning(`Removed doctor(s) from cart due to unavailability on selected date: Dr. ${droppedDocs.join(', ')}`);
+              }
+          }
+      }
   };
 
   const groupedItems = useMemo(() => {
@@ -161,7 +222,6 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   }, [tests]);
 
   const activePackages = useMemo(() => packages.filter(p => p.isActive), [packages]);
-  // --- NEW: Filter Active Doctors ---
   const activeDoctors = useMemo(() => doctors.filter(d => d.isActive), [doctors]);
 
   const filterServices = (input, option) => {
@@ -171,9 +231,9 @@ const CreateOrderDrawer = ({ open, onClose }) => {
       return name.includes(search) || alias.includes(search);
   };
 
-const handleServicesChange = (values) => {
+  const handleServicesChange = (values) => {
     const newItems = [];
-    const selectedDayIndex = scheduleDate ? dayjs(scheduleDate).day() : dayjs().day();
+    const dateStr = scheduleDate ? dayjs(scheduleDate).format("YYYY-MM-DD") : dayjs().format("YYYY-MM-DD");
 
     values.forEach((val) => {
       const testMatch = tests.find((t) => t._id === val);
@@ -184,27 +244,25 @@ const handleServicesChange = (values) => {
         if (pkgMatch) {
           newItems.push({ ...pkgMatch, price: pkgMatch.offerPrice, type: "Package" });
         } else {
-          // It's a Doctor!
+          // --- DOCTOR SELECTED ---
           const docMatch = doctors.find(d => d._id === val || d.doctorId === val);
           if (docMatch) {
-            // Find shifts for the currently selected date
-            const daySchedule = docMatch.schedule?.find(s => s.dayOfWeek === selectedDayIndex);
-            const availableShifts = daySchedule?.isAvailable ? daySchedule.shifts : [];
+            const availableShifts = getDoctorAvailability(docMatch, dateStr);
             
-            // Auto-select the first shift, if any exist
-            const defaultShift = availableShifts.length > 0 ? availableShifts[0].shiftName : "OPD";
-
-            newItems.push({
-                _id: docMatch._id,
-                name: `Consultation: Dr. ${docMatch.personalInfo?.firstName} ${docMatch.personalInfo?.lastName}`,
-                price: docMatch.fees?.newConsultation || 0,
-                type: 'Consultation',
-                department: 'Consultation',
-                homeCollectionAvailable: false,
-                // --- NEW: Attach Shift ---
-                shiftName: defaultShift,
-                availableShifts: availableShifts // Save for the dropdown UI
-            });
+            if (availableShifts.length > 0) {
+                const defaultShift = availableShifts[0].shiftName;
+                newItems.push({
+                    _id: docMatch._id,
+                    name: `Consultation: Dr. ${docMatch.personalInfo?.firstName} ${docMatch.personalInfo?.lastName}`,
+                    price: docMatch.fees?.newConsultation || 0,
+                    type: 'Consultation',
+                    department: 'Consultation',
+                    homeCollectionAvailable: false,
+                    shiftName: defaultShift,
+                    availableShifts: availableShifts,
+                    isFollowUp: false
+                });
+            }
           }
         }
       }
@@ -273,11 +331,20 @@ const handleServicesChange = (values) => {
     }
 
     setLoading(true);
-
     const { discountAmount = 0, discountReason, paidAmount = 0, paymentMode, transactionId, notes, discountOverrideCode } = dataToSubmit;
 
+    // --- NEW: INJECT APPOINTMENT PAYLOAD ---
+    const consultationItem = selectedItems.find(i => i.type === 'Consultation');
+    const appointmentData = consultationItem ? {
+        doctorId: consultationItem._id,
+        date: scheduleDate,
+        shiftName: consultationItem.shiftName,
+        isFollowUp: consultationItem.isFollowUp || false
+    } : null;
+
     const orderData = {
-        items: selectedItems.map(i => ({ _id: i._id, type: i.type, shiftName: i.shiftName })),
+        items: selectedItems.map(i => ({ _id: i._id, type: i.type, shiftName: i.shiftName, isFollowUp: i.isFollowUp })),
+        appointment: appointmentData,
         discountAmount, discountReason, paymentMode, discountOverrideCode,
         notes: notes || "", isHomeCollection, scheduleDate
     };
@@ -345,6 +412,7 @@ const handleServicesChange = (values) => {
         width={isRapidMode ? "100%" : 800}
         onClose={() => handleClose(true)}
         open={open}
+        keyboard = {isRapidMode ? false :true}
         destroyOnClose
         bodyStyle={isRapidMode ? { padding: 0 } : {}}
         extra={!isRapidMode && (
@@ -464,24 +532,33 @@ const handleServicesChange = (values) => {
                             autoClearSearchValue={true}
                             listHeight={300}
                         >
-                            {/* --- NEW: DOCTORS GROUP --- */}
+                            {/* DOCTORS GROUP WITH SMART DISABLING */}
                             {activeDoctors.length > 0 && (
                                 <Select.OptGroup label="Doctors / Consultations">
-                                    {activeDoctors.map((d) => (
-                                        <Option 
-                                            key={d._id} 
-                                            value={d._id} 
-                                            name={`Dr. ${d.personalInfo?.firstName} ${d.personalInfo?.lastName}`}
-                                            alias={d.professionalInfo?.specialization}
-                                        >
-                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span>
-                                                    Dr. {d.personalInfo?.firstName} {d.personalInfo?.lastName} <span style={{fontSize: '0.85em', color: '#888'}}>({d.professionalInfo?.specialization})</span>
-                                                </span>
-                                                <span style={{ fontWeight: 500 }}>₹{d.fees?.newConsultation}</span>
-                                            </div>
-                                        </Option>
-                                    ))}
+                                    {activeDoctors.map((d) => {
+                                        const availShifts = getDoctorAvailability(d, scheduleDate || dayjs().format("YYYY-MM-DD"));
+                                        const isDisabled = availShifts.length === 0;
+
+                                        return (
+                                            <Option 
+                                                key={d._id} 
+                                                value={d._id} 
+                                                name={`Dr. ${d.personalInfo?.firstName} ${d.personalInfo?.lastName}`}
+                                                alias={d.professionalInfo?.specialization}
+                                                disabled={isDisabled}
+                                            >
+                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span style={isDisabled ? { color: '#ccc', textDecoration: 'line-through' } : {}}>
+                                                        Dr. {d.personalInfo?.firstName} {d.personalInfo?.lastName} 
+                                                        <span style={{fontSize: '0.85em', color: isDisabled ? '#ccc' : '#888'}}> ({d.professionalInfo?.specialization})</span>
+                                                    </span>
+                                                    <span style={{ fontWeight: 500, color: isDisabled ? '#ccc' : 'inherit' }}>
+                                                        {isDisabled ? "Unavailable" : `₹${d.fees?.newConsultation}`}
+                                                    </span>
+                                                </div>
+                                            </Option>
+                                        );
+                                    })}
                                 </Select.OptGroup>
                             )}
 
@@ -543,36 +620,51 @@ const handleServicesChange = (values) => {
                                             style={{padding: '4px 0'}}
                                           >
                                              <List.Item.Meta
-    avatar={<Avatar size="small" icon={item.type === 'Consultation' ? <UserOutlined /> : <MedicineBoxOutlined />} style={{ backgroundColor: item.type === 'Package' ? '#87d068' : item.type === 'Consultation' ? '#722ed1' : '#1890ff' }} />}
-/>
-<div style={{ display: "flex", alignItems: "center", width: "100%" }}>
-    <div style={{ flex: 1 }}>
-        <Text style={{ fontWeight: 'bold', fontSize: 13 }}>{item.name}</Text>
-        {item.type === "Package" && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>PKG</Tag>}
-        
-        {/* NEW: Shift Selector for Doctors */}
-        {item.type === "Consultation" && item.availableShifts?.length > 0 && (
-            <div style={{ marginTop: 4 }}>
-                <Select 
-                
-                    value={item.shiftName} 
-                    onChange={(val) => {
-                        const updated = selectedItems.map(i => i._id === item._id ? { ...i, shiftName: val } : i);
-                        setSelectedItems(updated);
-                    }}
-                    style={{ width: 200, fontSize: 11 }}
-                >
-                    {item.availableShifts.map(s => (
-                        <Option key={s.shiftName} value={s.shiftName}>{s.shiftName} ({moment(s.startTime,"HH").format("ha")}-{moment(s.endTime,"HH").format("ha")})</Option>
-                    ))}
-                </Select>
-            </div>
-        )}
-    </div>
-    <div style={{ width: 80, textAlign: "right", fontWeight: 500 }}>
-        ₹{item.price}
-    </div>
-</div>
+                                                avatar={<Avatar size="small" icon={item.type === 'Consultation' ? <UserOutlined /> : <MedicineBoxOutlined />} style={{ backgroundColor: item.type === 'Package' ? '#87d068' : item.type === 'Consultation' ? '#722ed1' : '#1890ff' }} />}
+                                            />
+                                            <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
+                                                <div style={{ flex: 1 }}>
+                                                    <Text style={{ fontWeight: 'bold', fontSize: 13 }}>{item.name}</Text>
+                                                    {item.type === "Package" && <Tag color="green" style={{ marginLeft: 8, fontSize: 10 }}>PKG</Tag>}
+                                                    
+                                                    {/* NEW: Follow-up & Shift Controls */}
+                                                    {item.type === "Consultation" && item.availableShifts?.length > 0 && (
+                                                        <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
+                                                            <Select 
+                                                                size="small"
+                                                                value={item.shiftName} 
+                                                                onChange={(val) => {
+                                                                    const updated = selectedItems.map(i => i._id === item._id ? { ...i, shiftName: val } : i);
+                                                                    setSelectedItems(updated);
+                                                                }}
+                                                                style={{ width: 180, fontSize: 11 }}
+                                                            >
+                                                                {item.availableShifts.map(s => (
+                                                                    <Option key={s.shiftName} value={s.shiftName}>
+                                                                        {s.shiftName} ({moment(s.startTime,"HH:mm").format("h:mm a")}-{moment(s.endTime,"HH:mm").format("h:mm a")})
+                                                                    </Option>
+                                                                ))}
+                                                            </Select>
+                                                            <Checkbox 
+                                                                checked={item.isFollowUp}
+                                                                onChange={(e) => {
+                                                                    const isFup = e.target.checked;
+                                                                    const docData = doctors.find(d => d._id === item._id);
+                                                                    const newPrice = isFup ? (docData?.fees?.followUpConsultation || 0) : (docData?.fees?.newConsultation || 0);
+                                                                    const updated = selectedItems.map(i => i._id === item._id ? { ...i, isFollowUp: isFup, price: newPrice } : i);
+                                                                    setSelectedItems(updated);
+                                                                }}
+                                                                style={{ fontSize: 12 }}
+                                                            >
+                                                                Follow-up Visit
+                                                            </Checkbox>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div style={{ width: 80, textAlign: "right", fontWeight: 500 }}>
+                                                    ₹{item.price}
+                                                </div>
+                                            </div>
                                           </List.Item>
                                       ))}
                                   </div>

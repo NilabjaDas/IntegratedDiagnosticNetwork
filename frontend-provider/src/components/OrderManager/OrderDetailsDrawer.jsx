@@ -1,39 +1,12 @@
 import React, { useEffect, useState } from "react";
 import {
-  Drawer,
-  Descriptions,
-  Table,
-  Tag,
-  Button,
-  Tabs,
-  Card,
-  Statistic,
-  Row,
-  Col,
-  Space,
-  Spin,
-  Alert,
-  Input,
-  message,
-  Popconfirm,
-  Modal,
-  Divider,
-  Typography,
-  Avatar
+  Drawer, Descriptions, Table, Tag, Button, Tabs, Card, Statistic, 
+  Row, Col, Space, Spin, Alert, Input, message, Modal, Typography, Avatar
 } from "antd";
 import { 
-  PrinterOutlined, 
-  DollarCircleOutlined, 
-  HistoryOutlined, 
-  FileTextOutlined,
-  EditOutlined,
-  StopOutlined,
-  SaveOutlined,
-  UserOutlined,
-  MedicineBoxOutlined,
-  BankOutlined,
-  CalendarOutlined,
-  WarningOutlined
+  PrinterOutlined, DollarCircleOutlined, HistoryOutlined, FileTextOutlined,
+  EditOutlined, StopOutlined, SaveOutlined, UserOutlined, MedicineBoxOutlined,
+  BankOutlined, CalendarOutlined, WarningOutlined, IdcardOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { getOrderDetails, updateOrderNotes, cancelOrder, fetchBillPdf } from "../../redux/apiCalls";
@@ -44,7 +17,7 @@ import moment from "moment";
 import BillRenderer from "./BillRenderer";
 
 const { TextArea } = Input;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
   const [order, setOrder] = useState(null);
@@ -123,7 +96,12 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
 
   // --- RENDER HELPERS ---
   const renderStatusTag = (status) => {
-    const colors = { Pending: "orange", Completed: "green", Cancelled: "default", Reported: "blue", Paid: "green", PartiallyPaid: "orange" };
+    const colors = { 
+        Pending: "orange", Completed: "green", Cancelled: "default", 
+        Reported: "blue", Paid: "green", PartiallyPaid: "orange",
+        WAITING: "blue", CALLED: "magenta", IN_PROGRESS: "cyan",
+        DOC_UNVAILABLE: "red", HOLD: "warning"
+    };
     return <Tag color={colors[status] || "default"}>{status}</Tag>;
   };
 
@@ -139,7 +117,7 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                 {isCancelled && <Tag color="error">CANCELLED</Tag>}
             </Space>
         }
-        width={900}
+        width={'100%'}
         onClose={onClose}
         open={open}
         extra={
@@ -150,12 +128,7 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                 </Button>
              )}
              {!isCancelled && (
-               <Button 
-                 type="primary"
-                 icon={<PrinterOutlined />} 
-                 loading={printing} 
-                 onClick={handlePrintServer}
-               >
+               <Button type="primary" icon={<PrinterOutlined />} loading={printing} onClick={handlePrintServer}>
                  Print Invoice
              </Button>
              )}
@@ -170,7 +143,7 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
             items={[
               {
                 key: "1",
-                label: <span><FileTextOutlined /> Clinical Overview</span>,
+                label: <span><FileTextOutlined /> Clinical & Queue Overview</span>,
                 children: (
                   <Space direction="vertical" style={{ width: "100%" }} size="middle">
                     
@@ -179,55 +152,83 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                         <Alert 
                             message="Order Cancelled" 
                             description={`Reason: ${order.cancellation?.reason || "No reason provided"} | Date: ${moment(order.cancellation?.date).format("DD MMM YY, hh:mm A")}`}
-                            type="error" 
-                            showIcon 
-                            style={{ marginBottom: 8 }}
+                            type="error" showIcon style={{ marginBottom: 8 }}
                         />
                     )}
 
                     <Row gutter={16}>
-                        <Col span={14}>
+                        <Col span={12}>
                             {/* Patient Info */}
                             <Card size="small" title={<><UserOutlined /> Patient Information</>} style={{ height: '100%' }}>
                                 <Descriptions column={2} size="small" layout="vertical">
                                     <Descriptions.Item label="Patient Name">
-                                        <b style={{ color: '#1890ff', fontSize: '1.1em' }}>{order.patientDetails?.name}</b>
+                                        <b style={{ color: '#1890ff', fontSize: '1.1em' }}>{order.patient?.firstName} {order.patient?.lastName}</b>
                                     </Descriptions.Item>
                                     <Descriptions.Item label="UHID">
                                         {order.patient?.uhid ? <Tag color="blue">{order.patient.uhid}</Tag> : <Tag>Walk-In</Tag>}
                                     </Descriptions.Item>
-                                    <Descriptions.Item label="Mobile">{order.patientDetails?.mobile || "N/A"}</Descriptions.Item>
-                                    <Descriptions.Item label="Age / Gender">{order.patientDetails?.age} Y / {order.patientDetails?.gender}</Descriptions.Item>
+                                    <Descriptions.Item label="Mobile">{order.patient?.mobile || "N/A"}</Descriptions.Item>
+                                    <Descriptions.Item label="Age / Gender">{order.patient?.age} Y / {order.patient?.gender}</Descriptions.Item>
                                 </Descriptions>
                             </Card>
                         </Col>
-                        <Col span={10}>
+                        <Col span={12}>
                             {/* Appointment Info */}
-                            <Card size="small" title={<><CalendarOutlined /> Appointment Date</>} style={{ height: '100%' }}>
-                                <div style={{ fontSize: '1.2em', fontWeight: 500, color: '#333' }}>
+                            <Card size="small" title={<><CalendarOutlined /> Appointment Details</>} style={{ height: '100%' }}>
+                                <div style={{ fontSize: '1.1em', fontWeight: 500, color: '#333' }}>
                                     {moment(order.appointment?.date).format("dddd, Do MMMM YYYY")}
                                 </div>
-                                <div style={{ marginTop: 8 }}>
-                                    Status: {renderStatusTag(order.appointment?.status || 'Scheduled')}
-                                </div>
+                                <Descriptions column={2} size="small" layout="vertical" style={{ marginTop: 12 }}>
+                                    {order.appointment?.doctorId && (
+                                        <Descriptions.Item label="Doctor">
+                                            <b>{order.appointment.doctorName}</b>
+                                        </Descriptions.Item>
+                                    )}
+                                    <Descriptions.Item label="Shift / Time">
+                                        {order.appointment?.shiftName ? (
+                                            <Tag color="purple">{order.appointment.shiftName} ({order.appointment.shiftTime})</Tag>
+                                        ) : "N/A"}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="Type">
+                                        {order.appointment?.isFollowUp ? <Tag color="orange">Follow-Up</Tag> : <Tag color="green">New Visit</Tag>}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="Status">
+                                        {renderStatusTag(order.appointment?.status || 'Scheduled')}
+                                    </Descriptions.Item>
+                                </Descriptions>
                             </Card>
                         </Col>
                     </Row>
 
-                    {/* NEW: Segregated Department Orders */}
+                    {/* LIVE QUEUE TOKENS */}
+                    <Card size="small" title={<><IdcardOutlined /> Live Queue Tokens</>} style={{ borderColor: '#91d5ff' }}>
+                        <Table 
+                            columns={[
+                                { title: "Token No.", dataIndex: "tokenNumber", render: t => <Tag color="blue" style={{ fontSize: 14 }}>{t}</Tag> },
+                                { title: "Department", dataIndex: "department" },
+                                { title: "Shift / Doc", render: (_, r) => r.shiftName || "-" },
+                                { title: "Est. Time", dataIndex: "estimatedTimeFormatted", render: t => t ? <b>{t}</b> : "-" },
+                                { title: "Status", dataIndex: "status", render: s => renderStatusTag(s) },
+                                { title: "Notes", dataIndex: "notes", render: n => <Text type="secondary">{n || "-"}</Text> }
+                            ]}
+                            dataSource={order.queueTokens || []}
+                            rowKey="_id"
+                            pagination={false}
+                            size="small"
+                            locale={{ emptyText: "No queue tokens generated for this order." }}
+                        />
+                    </Card>
+
+                    {/* Segregated Department Orders */}
                     {order.departmentOrders && order.departmentOrders.length > 0 && (
                         <Card size="small" title={<><BankOutlined /> Department Sub-Orders</>} style={{ background: '#f0f5ff', borderColor: '#adc6ff' }}>
                             <Space wrap>
                                 {order.departmentOrders.map(dept => (
                                     <Tag key={dept.department} color="geekblue" style={{ fontSize: 13, padding: '4px 8px' }}>
-                                        <b style={{ marginRight: 6 }}>{dept.department}:</b> 
-                                        {dept.orderId}
+                                        <b style={{ marginRight: 6 }}>{dept.department}:</b> {dept.orderId}
                                     </Tag>
                                 ))}
                             </Space>
-                            <div style={{ marginTop: 8, fontSize: 11, color: '#666' }}>
-                                * These are the specific IDs routed to individual departments (Lab, Radiology, Doctor's Queue).
-                            </div>
                         </Card>
                     )}
 
@@ -235,18 +236,7 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                     <Card 
                         size="small" 
                         title={<><MedicineBoxOutlined /> Booked Services</>}
-                        extra={
-                            !isCancelled && (
-                                <Button 
-                                    type="dashed" 
-                                    icon={<EditOutlined />} 
-                                    size="small"
-                                    onClick={() => setModifyModalVisible(true)}
-                                >
-                                    Modify Items
-                                </Button>
-                            )
-                        }
+                        extra={!isCancelled && (<Button type="dashed" icon={<EditOutlined />} size="small" onClick={() => setModifyModalVisible(true)}>Modify Items</Button>)}
                     >
                         <Table 
                             columns={[
@@ -255,11 +245,7 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                                     dataIndex: "name", 
                                     render: (text, record) => (
                                         <Space>
-                                            {record.itemType === 'Consultation' ? (
-                                                <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: '#722ed1' }} />
-                                            ) : (
-                                                <Avatar size="small" icon={<MedicineBoxOutlined />} style={{ backgroundColor: '#1890ff' }} />
-                                            )}
+                                            {record.itemType === 'Consultation' ? <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: '#722ed1' }} /> : <Avatar size="small" icon={<MedicineBoxOutlined />} style={{ backgroundColor: '#1890ff' }} />}
                                             <span style={{ fontWeight: 500 }}>{text}</span>
                                         </Space>
                                     ) 
@@ -267,10 +253,16 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                                 { 
                                     title: "Type", 
                                     dataIndex: "itemType", 
-                                    render: (t) => <Tag color={t === 'Consultation' ? 'purple' : 'blue'}>{t?.toUpperCase()}</Tag> 
+                                    render: (t, record) => (
+                                        <Space>
+                                            <Tag color={t === 'Consultation' ? 'purple' : 'blue'}>{t?.toUpperCase()}</Tag>
+                                            {record.isFollowUp && <Tag color="orange">FOLLOW-UP</Tag>}
+                                        </Space>
+                                    )
                                 },
-                                { title: "Price", dataIndex: "price", render: (p) => `₹${p}` },
-                                { title: "Status", dataIndex: "status", render: (s) => renderStatusTag(s) },
+                                { title: "Shift Opted", dataIndex: "shiftName", render: s => s || "-" },
+                                { title: "Price", dataIndex: "price", render: p => `₹${p}` },
+                                { title: "Status", dataIndex: "status", render: s => renderStatusTag(s) },
                             ]}
                             dataSource={order.items} 
                             rowKey="_id" 
@@ -282,24 +274,10 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
 
                     {/* Notes */}
                     <Card size="small" title="Internal Notes">
-                        <TextArea 
-                            rows={2} 
-                            value={notes} 
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Add notes about this order..."
-                            disabled={isCancelled}
-                        />
+                        <TextArea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isCancelled} />
                         {!isCancelled && (
                             <div style={{ marginTop: 8, textAlign: 'right' }}>
-                                <Button 
-                                    type="primary" 
-                                    size="small" 
-                                    icon={<SaveOutlined />} 
-                                    onClick={handleSaveNotes} 
-                                    loading={savingNotes}
-                                >
-                                    Save Note
-                                </Button>
+                                <Button type="primary" size="small" icon={<SaveOutlined />} onClick={handleSaveNotes} loading={savingNotes}>Save Note</Button>
                             </div>
                         )}
                     </Card>
@@ -311,79 +289,45 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
                 label: <span><DollarCircleOutlined /> Financial Ledger</span>,
                 children: (
                   <Space direction="vertical" style={{ width: "100%" }} size="middle">
-                    
-                    {/* Financial Summary */}
                    <Row gutter={16}>
                       <Col span={6}>
                         <Card size="small" style={{ background: '#fafafa' }}>
-                          <Statistic 
-                             title="Total Bill" 
-                             value={order.financials?.totalAmount || 0} 
-                             prefix="₹" 
-                             valueStyle={{ fontSize: 20 }} 
-                          />
+                          <Statistic title="Total Bill" value={order.financials?.totalAmount || 0} prefix="₹" valueStyle={{ fontSize: 20 }} />
                         </Card>
                       </Col>
                       <Col span={6}>
                         <Card size="small" style={{ background: '#fffbe6', borderColor: '#ffe58f' }}>
-                          <Statistic 
-                             title="Total Discount" 
-                             value={order.financials?.discountAmount || 0} 
-                             prefix="₹" 
-                             valueStyle={{ fontSize: 20, color: '#faad14' }} 
-                          />
-                          {order.financials?.discountReason && (
-                              <div style={{ fontSize: 11, color: '#d46b08', marginTop: 4 }}>
-                                Reason: {order.financials.discountReason}
-                              </div>
-                          )}
+                          <Statistic title="Total Discount" value={order.financials?.discountAmount || 0} prefix="₹" valueStyle={{ fontSize: 20, color: '#faad14' }} />
+                          {order.financials?.discountReason && (<div style={{ fontSize: 11, color: '#d46b08', marginTop: 4 }}>Reason: {order.financials.discountReason}</div>)}
                         </Card>
                       </Col>
                       <Col span={6}>
                         <Card size="small" style={{ background: '#f6ffed', borderColor: '#b7eb8f' }}>
-                          <Statistic 
-                             title="Paid Amount" 
-                             value={order.financials?.paidAmount || 0} 
-                             prefix="₹" 
-                             valueStyle={{ fontSize: 20, color: '#3f8600' }} 
-                          />
+                          <Statistic title="Paid Amount" value={order.financials?.paidAmount || 0} prefix="₹" valueStyle={{ fontSize: 20, color: '#3f8600' }} />
                         </Card>
                       </Col>
                       <Col span={6}>
                         <Card size="small" style={{ background: order.financials?.dueAmount > 0 ? '#fff1f0' : '#f0f5ff', borderColor: order.financials?.dueAmount > 0 ? '#ffa39e' : '#adc6ff' }}>
-                          <Statistic 
-                             title="Balance Due" 
-                             value={order.financials?.dueAmount || 0} 
-                             prefix="₹" 
-                             valueStyle={{ fontSize: 20, color: order.financials?.dueAmount > 0 ? '#cf1322' : '#096dd9' }} 
-                          />
+                          <Statistic title="Balance Due" value={order.financials?.dueAmount || 0} prefix="₹" valueStyle={{ fontSize: 20, color: order.financials?.dueAmount > 0 ? '#cf1322' : '#096dd9' }} />
                         </Card>
                       </Col>
                     </Row>
 
-                    {/* Action Button */}
                     {order.financials?.dueAmount > 0 && !isCancelled ? (
-                      <Button 
-                        type="primary" 
-                        block 
-                        size="large" 
-                        icon={<DollarCircleOutlined />}
-                        onClick={() => setPaymentModalVisible(true)}
-                      >
+                      <Button type="primary" block size="large" icon={<DollarCircleOutlined />} onClick={() => setPaymentModalVisible(true)}>
                         Collect Balance: ₹{order.financials.dueAmount}
                       </Button>
                     ) : (
                       isCancelled ? <Alert message="Order is Cancelled. No payment required." type="info" showIcon /> : <Alert message="Payment Complete. No dues remaining." type="success" showIcon />
                     )}
 
-                    {/* Ledger History */}
                     <Card size="small" title={<span><HistoryOutlined /> Transaction History</span>}>
                       <Table 
                         columns={[
-                            { title: "Date & Time", dataIndex: "date", render: (d) => moment(d).format("DD/MM/YY hh:mm A") },
-                            { title: "Payment Mode", dataIndex: "paymentMode", render: (m) => <Tag color={m === 'Cash' ? 'green' : 'blue'}>{m}</Tag> },
+                            { title: "Date & Time", dataIndex: "date", render: d => moment(d).format("DD/MM/YY hh:mm A") },
+                            { title: "Payment Mode", dataIndex: "paymentMode", render: m => <Tag color={m === 'Cash' ? 'green' : 'blue'}>{m}</Tag> },
                             { title: "Notes / Ref", render: (_,r) => <Text type="secondary">{r.notes || r.transactionId || "-"}</Text> },
-                            { title: "Amount", dataIndex: "amount", align: 'right', render: (a) => <b style={{ color: "#3f8600" }}>+ ₹{a}</b> },
+                            { title: "Amount", dataIndex: "amount", align: 'right', render: a => <b style={{ color: "#3f8600" }}>+ ₹{a}</b> },
                         ]}
                         dataSource={order.transactions || []} 
                         rowKey="_id" 
@@ -399,45 +343,18 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
           />
         )}
         <div style={{ display: "none" }}>
-            {/* Hidden renderer for printing */}
-            <BillRenderer 
-                ref={componentRef} 
-                order={order} 
-                template={defaultTemplate} 
-                institution={brandDetails}
-            />
+            <BillRenderer ref={componentRef} order={order} template={defaultTemplate} institution={brandDetails} />
         </div>
       </Drawer>
 
       {/* --- MODALS --- */}
-      
-      {/* Payment */}
       {order && (
-        <PaymentModal 
-          open={paymentModalVisible}
-          onCancel={() => setPaymentModalVisible(false)}
-          order={order}
-          onSuccess={() => {
-            setPaymentModalVisible(false);
-            fetchDetails();
-          }}
-        />
+        <PaymentModal open={paymentModalVisible} onCancel={() => setPaymentModalVisible(false)} order={order} onSuccess={() => { setPaymentModalVisible(false); fetchDetails(); }} />
+      )}
+      {order && (
+        <ModifyItemsModal open={modifyModalVisible} onCancel={() => setModifyModalVisible(false)} order={order} onSuccess={() => { setModifyModalVisible(false); fetchDetails(); }} />
       )}
 
-      {/* Modify Items */}
-      {order && (
-        <ModifyItemsModal 
-            open={modifyModalVisible}
-            onCancel={() => setModifyModalVisible(false)}
-            order={order}
-            onSuccess={() => {
-                setModifyModalVisible(false);
-                fetchDetails();
-            }}
-        />
-      )}
-
-      {/* Cancel Order Modal */}
       <Modal
         title={<span><WarningOutlined style={{ color: 'red' }}/> Cancel Order</span>}
         open={cancelModalVisible}
@@ -449,12 +366,7 @@ const OrderDetailsDrawer = ({ open, onClose, orderId }) => {
           <p>Are you sure you want to cancel this order? This will void all sub-orders and remove patients from their respective queues. <b>This action cannot be undone.</b></p>
           <div style={{ marginTop: 16 }}>
               <label>Reason for cancellation (Required)</label>
-              <Input 
-                placeholder="e.g. Patient requested, Duplicate entry..." 
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                style={{ marginTop: 4 }}
-              />
+              <Input placeholder="e.g. Patient requested, Duplicate entry..." value={cancelReason} onChange={e => setCancelReason(e.target.value)} style={{ marginTop: 4 }} />
           </div>
       </Modal>
     </>

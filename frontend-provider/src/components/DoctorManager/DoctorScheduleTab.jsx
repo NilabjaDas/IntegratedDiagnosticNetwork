@@ -1,6 +1,6 @@
 import React from 'react';
-import { Form, Input, InputNumber, Row, Button, Space, Typography, Card, Switch, TimePicker, Dropdown, message } from 'antd';
-import { PlusOutlined, MinusCircleOutlined, CopyOutlined } from '@ant-design/icons';
+import { Form, Input, InputNumber, Row, Button, Space, Typography, Card, Switch, TimePicker, Dropdown, message, Divider } from 'antd';
+import { PlusOutlined, MinusCircleOutlined, CopyOutlined, CoffeeOutlined } from '@ant-design/icons';
 
 const { Title, Text } = Typography;
 const DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -24,7 +24,11 @@ const DoctorScheduleTab = ({ form }) => {
                     isAvailable: sourceDay.isAvailable,
                     shifts: sourceDay.shifts ? sourceDay.shifts.map(shift => ({
                         ...shift,
-                        timeRange: shift.timeRange ? [...shift.timeRange] : undefined
+                        timeRange: shift.timeRange ? [...shift.timeRange] : undefined,
+                        breaks: shift.breaks ? shift.breaks.map(b => ({
+                            ...b,
+                            timeRange: b.timeRange ? [...b.timeRange] : undefined
+                        })) : []
                     })) : []
                 };
             }
@@ -35,25 +39,13 @@ const DoctorScheduleTab = ({ form }) => {
         message.success(`Schedule copied to ${targetType === 'all' ? 'All 7 Days' : 'Monday - Friday'}!`);
     };
 
-    // --- OVERLAP VALIDATOR ---
     const checkOverlappingShifts = async (_, shifts) => {
         if (!shifts || shifts.length < 2) return Promise.resolve();
-
-        // Filter out shifts that don't have a timeRange selected yet
         const validShifts = shifts.filter(s => s && s.timeRange && s.timeRange.length === 2);
         if (validShifts.length < 2) return Promise.resolve();
-
-        // Sort shifts by Start Time
-        const sortedShifts = [...validShifts].sort((a, b) => {
-            return a.timeRange[0].valueOf() - b.timeRange[0].valueOf();
-        });
-
-        // Check for overlaps
+        const sortedShifts = [...validShifts].sort((a, b) => a.timeRange[0].valueOf() - b.timeRange[0].valueOf());
         for (let i = 0; i < sortedShifts.length - 1; i++) {
-            const currentEndTime = sortedShifts[i].timeRange[1].valueOf();
-            const nextStartTime = sortedShifts[i + 1].timeRange[0].valueOf();
-
-            if (currentEndTime > nextStartTime) {
+            if (sortedShifts[i].timeRange[1].valueOf() > sortedShifts[i + 1].timeRange[0].valueOf()) {
                 return Promise.reject(new Error('Shifts cannot overlap in time.'));
             }
         }
@@ -72,50 +64,66 @@ const DoctorScheduleTab = ({ form }) => {
                             <Card key={key} size="small" style={{ marginBottom: 16, background: '#fafafa' }}>
                                 <Row align="middle" justify="space-between" style={{ marginBottom: 8 }}>
                                     <Title level={5} style={{ margin: 0 }}>{DAYS_OF_WEEK[index]}</Title>
-                                    
                                     <Space size="large">
-                                        <Dropdown 
-                                            menu={{
-                                                items: [
-                                                    { key: 'weekdays', label: 'Copy to Mon - Fri', onClick: () => handleCopySchedule(index, 'weekdays') },
-                                                    { key: 'all', label: 'Copy to All 7 Days', onClick: () => handleCopySchedule(index, 'all') }
-                                                ]
-                                            }}
-                                        >
+                                        <Dropdown menu={{ items: [
+                                            { key: 'weekdays', label: 'Copy to Mon - Fri', onClick: () => handleCopySchedule(index, 'weekdays') },
+                                            { key: 'all', label: 'Copy to All 7 Days', onClick: () => handleCopySchedule(index, 'all') }
+                                        ]}}>
                                             <Button type="link" size="small" icon={<CopyOutlined />}>Copy...</Button>
                                         </Dropdown>
-
                                         <Form.Item name={[name, 'isAvailable']} valuePropName="checked" style={{ margin: 0 }}>
                                             <Switch checkedChildren="Working" unCheckedChildren="Off" />
                                         </Form.Item>
                                     </Space>
                                 </Row>
                                 
-                                <Form.Item noStyle shouldUpdate={(prev, curr) => prev.schedule[index]?.isAvailable !== curr.schedule[index]?.isAvailable}>
+                                <Form.Item noStyle shouldUpdate={(prev, curr) => prev?.schedule?.[index]?.isAvailable !== curr.schedule?.[index]?.isAvailable}>
                                     {() => (
                                         form.getFieldValue(['schedule', index, 'isAvailable']) ? (
-                                            // ADDED VALIDATOR RULES HERE
                                             <Form.List name={[name, 'shifts']} rules={[{ validator: checkOverlappingShifts }]}>
                                                 {(shiftFields, { add: addShift, remove: removeShift }, { errors }) => (
                                                     <div style={{ marginTop: 16 }}>
                                                         {shiftFields.map((shiftField) => (
-                                                            <Space key={shiftField.key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                                                                <Form.Item {...shiftField} name={[shiftField.name, 'shiftName']} rules={[{ required: true, message: 'Name required' }]}>
-                                                                    <Input placeholder="Shift Name" style={{ width: 160 }} />
-                                                                </Form.Item>
-                                                                <Form.Item {...shiftField} name={[shiftField.name, 'timeRange']} rules={[{ required: true, message: 'Time required' }]}>
-                                                                    <TimePicker.RangePicker format="HH:mm" style={{ width: 220 }} />
-                                                                </Form.Item>
-                                                                <Form.Item {...shiftField} name={[shiftField.name, 'maxTokens']} rules={[{ required: true, message: 'Required' }]}>
-                                                                    <InputNumber placeholder="Max Tokens" min={1} style={{ width: 120 }} />
-                                                                </Form.Item>
-                                                                <MinusCircleOutlined onClick={() => removeShift(shiftField.name)} style={{ color: 'red', cursor: 'pointer' }} />
-                                                            </Space>
+                                                            <div key={shiftField.key} style={{ padding: 12, background: '#fff', border: '1px solid #e8e8e8', borderRadius: 6, marginBottom: 12 }}>
+                                                                <Space style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                                                                    <Form.Item {...shiftField} name={[shiftField.name, 'shiftName']} rules={[{ required: true, message: 'Name required' }]}>
+                                                                        <Input placeholder="Shift Name (e.g. Morning)" style={{ width: 180 }} />
+                                                                    </Form.Item>
+                                                                    <Form.Item {...shiftField} name={[shiftField.name, 'timeRange']} rules={[{ required: true, message: 'Time required' }]}>
+                                                                        <TimePicker.RangePicker format="HH:mm" style={{ width: 220 }} />
+                                                                    </Form.Item>
+                                                                    <Form.Item {...shiftField} name={[shiftField.name, 'maxTokens']} rules={[{ required: true, message: 'Required' }]}>
+                                                                        <InputNumber placeholder="Max Tokens" min={1} style={{ width: 120 }} />
+                                                                    </Form.Item>
+                                                                    <Button type="text" danger icon={<MinusCircleOutlined />} onClick={() => removeShift(shiftField.name)}>Remove Shift</Button>
+                                                                </Space>
+
+                                                                {/* NEW: NESTED BREAKS ARRAY */}
+                                                                <Form.List name={[shiftField.name, 'breaks']}>
+                                                                    {(breakFields, { add: addBreak, remove: removeBreak }) => (
+                                                                        <div style={{ marginLeft: 24, paddingLeft: 12, borderLeft: '2px dashed #d9d9d9' }}>
+                                                                            {breakFields.map(breakField => (
+                                                                                <Space key={breakField.key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                                                                                    <Form.Item {...breakField} name={[breakField.name, 'label']} initialValue="Break">
+                                                                                        <Input placeholder="Label (e.g. Lunch)" size="small" style={{ width: 140 }} />
+                                                                                    </Form.Item>
+                                                                                    <Form.Item {...breakField} name={[breakField.name, 'timeRange']} rules={[{ required: true }]}>
+                                                                                        <TimePicker.RangePicker format="HH:mm" size="small" style={{ width: 200 }} />
+                                                                                    </Form.Item>
+                                                                                    <MinusCircleOutlined onClick={() => removeBreak(breakField.name)} style={{ color: 'red', cursor: 'pointer' }} />
+                                                                                </Space>
+                                                                            ))}
+                                                                            <Button type="dashed" size="small" onClick={() => addBreak()} icon={<CoffeeOutlined />}>
+                                                                                Add Break
+                                                                            </Button>
+                                                                        </div>
+                                                                    )}
+                                                                </Form.List>
+                                                            </div>
                                                         ))}
                                                         <Button type="dashed" onClick={() => addShift()} icon={<PlusOutlined />} size="small">
                                                             Add Shift to {DAYS_OF_WEEK[index]}
                                                         </Button>
-                                                        {/* RENDER THE OVERLAP ERROR MESSAGE HERE */}
                                                         <Form.ErrorList errors={errors} />
                                                     </div>
                                                 )}

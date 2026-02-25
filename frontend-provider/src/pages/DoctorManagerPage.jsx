@@ -105,40 +105,54 @@ const DoctorManagerPage = () => {
     };
 
  const handleSaveDoctor = async (values) => {
-        // 1. Format the schedule back to DB strings
+        // 1. Format the schedule back to DB strings (Now including nested breaks)
         const formattedSchedule = (values.schedule || []).map((day, index) => ({
-            // FIX: Use the array index (0-6) since AntD strips unrendered fields like dayOfWeek
             dayOfWeek: index, 
             isAvailable: !!day.isAvailable, // Force boolean
             shifts: day.shifts?.map(shift => ({
                 shiftName: shift.shiftName,
-                // Safely format time ranges in case user left them blank
                 startTime: shift.timeRange && shift.timeRange[0] ? shift.timeRange[0].format('HH:mm') : "00:00",
                 endTime: shift.timeRange && shift.timeRange[1] ? shift.timeRange[1].format('HH:mm') : "00:00",
-                maxTokens: shift.maxTokens
+                maxTokens: shift.maxTokens,
+                // --- NEW: Map nested breaks ---
+                breaks: shift.breaks?.map(b => ({
+                    label: b.label || "Break",
+                    startTime: b.timeRange && b.timeRange[0] ? b.timeRange[0].format('HH:mm') : "00:00",
+                    endTime: b.timeRange && b.timeRange[1] ? b.timeRange[1].format('HH:mm') : "00:00"
+                })) || []
             })) || []
         }));
 
-        // 2. Format leaves safely
-        const formattedLeaves = (values.leaves || []).map(leave => ({
-            startDate: leave.dateRange && leave.dateRange[0] ? leave.dateRange[0].format('YYYY-MM-DD') : null,
-            endDate: leave.dateRange && leave.dateRange[1] ? leave.dateRange[1].format('YYYY-MM-DD') : null,
-            reason: leave.reason
-        })).filter(l => l.startDate && l.endDate); // Filter out empty ones
-
+        // 2. Build the comprehensive payload
         const payload = {
-            personalInfo: { firstName: values.firstName, lastName: values.lastName, phone: values.phone, email: values.email },
-            professionalInfo: { specialization: values.specialization, registrationNumber: values.registrationNumber },
-            fees: { newConsultation: values.newConsultation, followUpConsultation: values.followUpConsultation },
+            personalInfo: { 
+                firstName: values.firstName, 
+                lastName: values.lastName, 
+                gender: values.gender, // Added
+                phone: values.phone, 
+                email: values.email 
+            },
+            professionalInfo: { 
+                specialization: values.specialization, 
+                registrationNumber: values.registrationNumber,
+                qualifications: values.qualifications, // Added
+                experienceYears: values.experienceYears // Added
+            },
+            fees: { 
+                newConsultation: values.newConsultation, 
+                followUpConsultation: values.followUpConsultation 
+            },
             consultationRules: { 
                 avgTimePerPatientMinutes: values.avgTimePerPatientMinutes,
                 followUpValidityDays: values.followUpValidityDays,
                 allowOverbooking: values.allowOverbooking
             },
+            leaveSettings: values.leaveSettings, // Added (e.g., leaveLimitPerYear)
+            prescriptionTemplateId: values.prescriptionTemplateId, // Added
             assignedCounterId: values.assignedCounterId,
             schedule: formattedSchedule,
+            // Note: 'leaves' are intentionally omitted here to prevent overwriting the Leave Ledger tab
         };
-
         try {
             if (editingDoctor) {
                 await updateDoctor(dispatch, editingDoctor.doctorId, payload);

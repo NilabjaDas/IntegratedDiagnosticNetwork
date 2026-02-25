@@ -13,6 +13,7 @@ const TestSchema = require("../models/Test");
 const PackageSchema = require("../models/Package");
 const UserSchema = require("../models/User");
 const DailyCounterSchema = require("../models/DailyCounter");
+const Doctor = require("../models/Doctor");
 const QueueTokenSchema = require("../models/QueueToken");
 const getModel = require("../middleware/getModelsHandler");
 const { verifyToken } = require("../middleware/verifyToken");
@@ -134,7 +135,8 @@ router.post("/", async (req, res) => {
     const { 
         items, discountAmount = 0, discountReason, discountOverrideCode, 
         initialPayment, notes, scheduleDate, walkin, patientId, 
-        patientName, age, gender, updatedPatientData 
+        patientName, age, gender, updatedPatientData,
+        appointment
     } = req.body;
     
     const instId = req.user.institutionId;
@@ -142,11 +144,10 @@ router.post("/", async (req, res) => {
     let finalPatientId = null;
     let finalPatientDetails = {};
 
-    // --- 1. FETCH INSTITUTION SETTINGS (NEW) ---
+    // --- 1. FETCH INSTITUTION SETTINGS ---
     const institution = await Institution.findOne({ institutionId: instId }).select("+settings.discountOverrideCode");
     const { orderFormat = "ORD-{YYMMDD}-{SEQ}", departmentOrderFormats = [] } = institution.settings || {};
 
-    // Helper to generate dynamic IDs
     const generateFormattedId = (formatStr, sequence) => {
         return formatStr
             .replace('{YYMMDD}', moment().format("YYMMDD"))
@@ -182,14 +183,71 @@ router.post("/", async (req, res) => {
         }
     }
 
+    const finalAppointmentDate = scheduleDate ? scheduleDate : moment().format("YYYY-MM-DD");
+    const dateKey = finalAppointmentDate;
+
+    // --- 2.5 STRICT DOCTOR AVAILABILITY VALIDATION ---
+    if (appointment && appointment.doctorId) {
+        const { doctorId, shiftName } = appointment;
+        const doctor = await Doctor.findOne({ _id: doctorId, institutionId: instId });
+        
+        if (!doctor) return res.status(404).json({ message: "Doctor not found." });
+        if (!shiftName) return res.status(400).json({ message: "A specific shift must be selected for the consultation." });
+
+        const targetDateStr = moment(dateKey).format("YYYY-MM-DD");
+        const dayOfWeek = moment(dateKey).day();
+
+        // A. Check Standard Schedule
+        const daySchedule = doctor.schedule.find(s => s.dayOfWeek === dayOfWeek);
+        if (!daySchedule || !daySchedule.isAvailable) {
+            return res.status(400).json({ message: "Doctor does not work on this day of the week." });
+        }
+        const shiftExists = daySchedule.shifts.find(s => s.shiftName === shiftName);
+        if (!shiftExists) {
+            return res.status(400).json({ message: `Doctor does not have a '${shiftName}' shift on this day.` });
+        }
+
+        // B. Check Planned Leaves
+        const plannedLeave = doctor.leaves.find(l => targetDateStr >= l.startDate && targetDateStr <= l.endDate);
+        if (plannedLeave) {
+            const isFullDayLeave = !plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0;
+            const isShiftLeave = plannedLeave.shiftNames?.includes(shiftName);
+            if (isFullDayLeave || isShiftLeave) {
+                return res.status(400).json({ message: "Cannot book: Doctor is on planned leave for this shift." });
+            }
+        }
+
+        // C. Check Ad-Hoc Overrides / Cancellations
+        const adHocOverride = doctor.dailyOverrides.find(o => o.date === targetDateStr);
+        if (adHocOverride && adHocOverride.isCancelled) {
+            const isFullDayCancel = !adHocOverride.shiftNames || adHocOverride.shiftNames.length === 0;
+            const isShiftCancel = adHocOverride.shiftNames?.includes(shiftName);
+            if (isFullDayCancel || isShiftCancel) {
+                return res.status(400).json({ message: "Cannot book: This shift has been cancelled due to doctor unavailability." });
+            }
+        }
+
+        // D. Check Token Capacity (Block overbooking if disabled)
+        if (!doctor.consultationRules?.allowOverbooking) {
+            const existingTokensCount = await req.TenantQueueToken.countDocuments({
+                doctorId: doctor._id,
+                date: targetDateStr,
+                shiftName: shiftName,
+                status: { $nin: ['CANCELLED', 'DOC_UNVAILABLE'] }
+            });
+            
+            if (existingTokensCount >= shiftExists.maxTokens) {
+                return res.status(400).json({ message: `Cannot book: The ${shiftName} shift has reached its maximum patient limit.` });
+            }
+        }
+    }
+
     // --- 3. CALCULATE ITEMS & LIMITS ---
     const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
     if (orderItems.length === 0) return res.status(400).json({ message: "No valid items." });
 
     const itemIds = orderItems.map(i => i.itemId);
     const dbTests = await req.TenantTest.find({ _id: { $in: itemIds } });
-    const finalAppointmentDate = scheduleDate ? scheduleDate : moment().format("YYYY-MM-DD");
-    const dateKey = finalAppointmentDate;
 
     for (const dbTest of dbTests) {
         if (dbTest.dailyLimit !== null && dbTest.dailyLimit !== undefined && dbTest.dailyLimit > 0) {
@@ -256,9 +314,8 @@ router.post("/", async (req, res) => {
         financials.status = financials.dueAmount <= 0 ? "Paid" : "PartiallyPaid";
     }
 
-// --- 7. DEPARTMENT & SMART QUEUE GROUPING ---
+    // --- 7. DEPARTMENT & SMART QUEUE GROUPING ---
     const QueueGroupings = {}; 
-    const Doctor = require('../models/Doctor'); // Ensure this is imported
 
     for (const item of orderItems) {
         if (item.itemType === 'Test' || item.itemType === 'Package') {
@@ -276,19 +333,18 @@ router.post("/", async (req, res) => {
         } else if (item.itemType === 'Consultation') {
             const doctor = await Doctor.findById(item.itemId);
             if (doctor) {
-                // Isolate the queue mathematically by Doctor + Shift
-                const shiftKey = item.shiftName || "OPD";
+                // Ensure shiftKey respects the globally passed appointment shift or falls back
+                const shiftKey = appointment?.shiftName || item.shiftName || "OPD";
                 const doctorQueueId = `${doctor._id}_${shiftKey}`;
                 
                 if (!QueueGroupings[doctorQueueId]) {
-                    // Generate a smart prefix: "DR" + First initial + First 3 letters of last name
-                    // e.g. Dr. Arnav Mukherjee -> DRAMUK
                     const fName = doctor.personalInfo.firstName.toUpperCase().substring(0, 1);
                     const lName = doctor.personalInfo.lastName.toUpperCase().substring(0, 3);
                     
                     QueueGroupings[doctorQueueId] = {
                         department: "Consultation",
                         doctorId: doctor._id.toString(),
+                        doctorObj: doctor, // <--- Needed for ETA Math!
                         shiftName: shiftKey, 
                         prefix: `DR${fName}${lName}`, 
                         items: []
@@ -306,7 +362,7 @@ router.post("/", async (req, res) => {
     for (const [groupId, groupData] of Object.entries(QueueGroupings)) {
         const { department, doctorId, doctorObj, shiftName, prefix, items: groupItems } = groupData;
         
-        // A. Generate Master Department Order ID (For billing / LIMS segregation)
+        // A. Generate Master Department Order ID
         const deptFormatObj = departmentOrderFormats.find(d => d.department === department);
         const deptFormatString = deptFormatObj ? deptFormatObj.format : orderFormat; 
         
@@ -322,7 +378,6 @@ router.post("/", async (req, res) => {
         }
 
         // B. Generate Physical Queue Token
-        // For doctors, the counter key MUST be unique to the specific shift and doctor!
         const counterKey = doctorId ? `DOC_${doctorId}_${shiftName}` : department;
         
         const queueCounter = await req.TenantDailyCounter.findOneAndUpdate(
@@ -335,9 +390,9 @@ router.post("/", async (req, res) => {
         const finalPrefix = prefix || defaultPrefixes[department] || "GEN";
         const tokenStr = `${finalPrefix}-${String(seq).padStart(3, '0')}`; 
 
-        // --- NEW: CALCULATE ETA FOR DOCTORS ---
+        // --- CALCULATE ETA FOR DOCTORS ---
         let etaData = { etaFormatted: null, etaDate: null, isOverbooked: false };
-        if (doctorId && doctorObj) {
+        if (doctorId && doctorObj && typeof calculateInitialETA === 'function') {
             const calc = calculateInitialETA(doctorObj, dateKey, shiftName, seq);
             if (calc && calc !== "CANCELLED") {
                 etaData = calc;
@@ -354,7 +409,7 @@ router.post("/", async (req, res) => {
             tokenNumber: tokenStr,
             departmentOrderId: deptOrderId, 
             sequence: seq,
-            orderId: null, // Will map below
+            orderId: null, 
             patientId: finalPatientId,
             patientDetails: finalPatientDetails,
             tests: groupItems,
@@ -375,7 +430,14 @@ router.post("/", async (req, res) => {
       patientId: finalPatientId, 
       isWalkIn: !!walkin,        
       patientDetails: finalPatientDetails, 
-      appointment: { date: finalAppointmentDate, status: "Scheduled" },
+      // --- NEW: INJECT APPOINTMENT DATA ---
+      appointment: { 
+          doctorId: appointment?.doctorId || null,
+          date: finalAppointmentDate, 
+          shiftName: appointment?.shiftName || null,
+          isFollowUp: appointment?.isFollowUp || false,
+          status: "Scheduled" 
+      },
       items: orderItems,
       financials,
       transactions,
@@ -390,7 +452,6 @@ router.post("/", async (req, res) => {
         sendToBrand(brandCode, { type: 'NEW_TOKEN', token: token }, 'tests_queue_updated');
     }
 
-    // Notify clients to refresh test availability
     sendToBrand(brandCode, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
     
     res.status(201).json({ order: newOrder, tokens: generatedTokens });
@@ -502,23 +563,24 @@ router.get("/:id", async (req, res) => {
     const order = await req.TenantOrder.findById(req.params.id);
     if (!order) return res.status(404).json({ message: "Order not found" });
 
-    // Convert Mongoose document to plain object so we can attach 'patient'
+    // Convert Mongoose document to plain object so we can attach custom properties
     const orderObj = order.toObject();
 
     if (order.isWalkIn) {
-        // --- SCENARIO 1: WALK-IN (Use Snapshot Data) ---
+        // --- SCENARIO 1: WALK-IN ---
         orderObj.patient = {
             _id: "WALK-IN",
             firstName: order.patientDetails?.name || "Walk-in Patient",
             lastName: "", 
             age: order.patientDetails?.age,
             gender: order.patientDetails?.gender,
-            mobile: "N/A", // Fixed for Walk-in
+            mobile: order.patientDetails?.mobile || "N/A", 
             isWalkIn: true
         };
     } else {
-        // --- SCENARIO 2: REGISTERED (Fetch Linked DB Record) ---
+        // --- SCENARIO 2: REGISTERED ---
         if (order.patientId) {
+            const Patient = require("../models/Patient");
             const p = await Patient.findById(order.patientId);
             
             if (p) {
@@ -533,17 +595,36 @@ router.get("/:id", async (req, res) => {
                     isWalkIn: false
                 };
             } else {
-                // Handle case where patient was deleted
-                orderObj.patient = {
-                    firstName: "Unknown",
-                    lastName: "Patient",
-                    mobile: "N/A",
-                    isUnknown: true
-                };
+                orderObj.patient = { firstName: "Unknown", lastName: "Patient", mobile: "N/A", isUnknown: true };
             }
         } else {
-             // Fallback for legacy data without ID or Walkin flag
              orderObj.patient = { firstName: "Unknown", lastName: "Patient" };
+        }
+    }
+
+    // --- NEW: FETCH ALL LIVE QUEUE TOKENS ---
+    const tokens = await req.TenantQueueToken.find({ orderId: order._id });
+    orderObj.queueTokens = tokens;
+
+    // --- NEW: DYNAMICALLY FETCH DOCTOR SHIFT TIMINGS ---
+    if (orderObj.appointment && orderObj.appointment.doctorId) {
+        const Doctor = require("../models/Doctor");
+        const doc = await Doctor.findById(orderObj.appointment.doctorId);
+        
+        if (doc) {
+            orderObj.appointment.doctorName = `Dr. ${doc.personalInfo.firstName} ${doc.personalInfo.lastName}`;
+            
+            if (orderObj.appointment.shiftName) {
+                const dayIndex = moment(orderObj.appointment.date).day();
+                const daySch = doc.schedule?.find(s => s.dayOfWeek === dayIndex);
+                const shift = daySch?.shifts?.find(s => s.shiftName === orderObj.appointment.shiftName);
+                
+                if (shift) {
+                    orderObj.appointment.shiftTime = `${moment(shift.startTime, "HH:mm").format("hh:mm A")} - ${moment(shift.endTime, "HH:mm").format("hh:mm A")}`;
+                } else {
+                     orderObj.appointment.shiftTime = "Time Not Available";
+                }
+            }
         }
     }
 
