@@ -5,14 +5,14 @@ import { Table, Button, Drawer, Form, Typography, message, Space, Popconfirm, Ta
 import { PlusOutlined, EditOutlined, DeleteOutlined, ClockCircleOutlined, AlertOutlined, PlusSquareOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
-import { getDoctors, createDoctor, updateDoctor, deleteDoctor, addDoctorOverride, fetchMyInstitutionSettings } from '../redux/apiCalls';
+import { getDoctors, createDoctor, updateDoctor, deleteDoctor, addDoctorOverride, fetchMyInstitutionSettings,revokeDoctorAbsence } from '../redux/apiCalls';
 
 // Modular Components
-import DoctorProfileTab from '../components/Doctor Manager/DoctorProfileTab';
-import DoctorScheduleTab from '../components/Doctor Manager/DoctorScheduleTab';
-import DoctorLeavesTab from '../components/Doctor Manager/DoctorLeavesTab';
-import DoctorOverrideModal from '../components/Doctor Manager/DoctorOverrideModal';
-import DoctorSpecialShiftModal from '../components/Doctor Manager/DoctorSpecialShiftModal';
+import DoctorProfileTab from '../components/DoctorManager/DoctorProfileTab';
+import DoctorScheduleTab from '../components/DoctorManager/DoctorScheduleTab';
+import DoctorLeavesTab from '../components/DoctorManager/DoctorLeavesTab';
+import DoctorOverrideModal from '../components/DoctorManager/DoctorOverrideModal';
+import DoctorSpecialShiftModal from '../components/DoctorManager/DoctorSpecialShiftModal';
 
 const { Title, Text } = Typography;
 
@@ -137,7 +137,6 @@ const DoctorManagerPage = () => {
             },
             assignedCounterId: values.assignedCounterId,
             schedule: formattedSchedule,
-            leaves: formattedLeaves
         };
 
         try {
@@ -168,12 +167,13 @@ const DoctorManagerPage = () => {
 
     const handleSaveOverride = async (values) => {
         try {
-            const formattedValues = { ...values, date: values.date.format('YYYY-MM-DD') };
+            const formattedValues = { ...values, date: values.date};
             await addDoctorOverride(editingDoctor.doctorId, formattedValues);
             message.success("Schedule override applied successfully!");
             setOverrideModalVisible(false);
             getDoctors(dispatch); 
         } catch (error) {
+            console.log(error)
             message.error("Failed to apply override.");
         }
     };
@@ -181,31 +181,136 @@ const DoctorManagerPage = () => {
     const columns = [
         { title: 'Doctor Name', key: 'name', render: (_, record) => <strong>Dr. {record.personalInfo?.firstName} {record.personalInfo?.lastName}</strong> },
         { title: 'Specialization', dataIndex: ['professionalInfo', 'specialization'], key: 'specialization' },
+        { title: 'Today\'s Status', key: 'todayStatus', render: (_, record) => {
+            const status = getTodayStatus(record);
+            return <Tag color={status.color}>{status.text}</Tag>;
+        }},
         { title: 'Fees (New / Follow-up)', key: 'fees', render: (_, record) => `₹${record.fees?.newConsultation} / ₹${record.fees?.followUpConsultation}` },
         { title: 'Assigned Cabin', dataIndex: 'assignedCounterId', key: 'cabin', render: (id) => {
             const room = rooms.find(r => r.counterId === id);
             return room ? <Tag color="blue">{room.name}</Tag> : <Text type="secondary">Unassigned</Text>;
         }},
         { title: 'Avg Time/Pt', dataIndex: ['consultationRules', 'avgTimePerPatientMinutes'], key: 'time', render: (time) => <Tag icon={<ClockCircleOutlined />}>{time} mins</Tag> },
-        { title: 'Actions', key: 'action', render: (_, record) => (
-            <Space size="middle">
-                <Button type="primary" size="small" icon={<AlertOutlined />} danger onClick={() => { setEditingDoctor(record); setOverrideModalVisible(true); }}>Delay/Leave</Button>
-                <Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => openDrawer(record)} />
-                <Button size="small" type="dashed" onClick={() => handleOpenSpecialShift(record)} icon={<PlusSquareOutlined />} style={{ color: '#722ed1', borderColor: '#722ed1' }}>
-                Special Shift
-                </Button>
-                <Popconfirm title="Remove this doctor?" onConfirm={() => handleDelete(record.doctorId)}>
-                    <Button type="text" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-            </Space>
-        )}
+        { title: 'Actions', key: 'action', render: (_, record) => {
+            const status = getTodayStatus(record);
+            return (
+                <Space size="middle">
+                    <Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => openDrawer(record)} />
+                    
+                    {/* SHOW REVOKE IF THERE IS AN OVERRIDE */}
+                    {status.canRevoke ? (
+                        <Popconfirm title="Revoke absence/delay and restore schedule?" onConfirm={() => handleRevokeAbsence(record.doctorId)}>
+                            <Button size="small" type="primary" style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}>Revoke Status</Button>
+                        </Popconfirm>
+                    ) : null}
+
+                    {/* HIDE DELAY BUTTON IF ALREADY FULLY CANCELLED */}
+                    {!status.fullyCancelled && (
+                        <Button type="primary" size="small" icon={<AlertOutlined />} danger onClick={() => { setEditingDoctor(record); setOverrideModalVisible(true); }}>
+                            Delay / Leave
+                        </Button>
+                    )}
+                    
+                    <Button size="small" type="dashed" onClick={() => handleOpenSpecialShift(record)} icon={<PlusSquareOutlined />} style={{ color: '#722ed1', borderColor: '#722ed1' }}>
+                        Special Shift
+                    </Button>
+                </Space>
+            );
+        }}
     ];
 
     const tabItems = [
-        { key: '1', label: 'Profile & Fees', children: <DoctorProfileTab rooms={rooms} /> },
-        { key: '2', label: 'Weekly Schedule', children: <DoctorScheduleTab form={form} /> },
-        { key: '3', label: 'Planned Leaves', children: <DoctorLeavesTab /> }
+        { key: '1', label: 'Profile & Fees', children: <DoctorProfileTab rooms={rooms} /> , forceRender: true},
+        { key: '2', label: 'Weekly Schedule', children: <DoctorScheduleTab form={form} /> , forceRender: true},
+        { 
+            key: '3', 
+            label: 'Leave Ledger', 
+            children: <DoctorLeavesTab 
+                doctor={editingDoctor} 
+                refreshData={(updatedDoctorFromServer) => {
+                    // 1. Refresh the background table data
+                    getDoctors(dispatch); 
+                    
+                    // 2. FIX: Instantly update the current Drawer's state!
+                    if (updatedDoctorFromServer) {
+                        setEditingDoctor(updatedDoctorFromServer);
+                    }
+                }}
+                
+            /> 
+        }
     ];
+
+const getTodayStatus = (doc) => {
+        const todayStr = dayjs().format('YYYY-MM-DD');
+        const todayIndex = dayjs().day();
+        const totalShifts = doc.schedule?.find(s => s.dayOfWeek === todayIndex)?.shifts || [];
+        const totalShiftCount = totalShifts.length;
+
+        // 1. Gather all Planned Leave cancellations for today
+        const todayLeaves = doc.leaves?.filter(l => todayStr >= l.startDate && todayStr <= l.endDate) || [];
+        let plannedCancelledShifts = [];
+        let isFullDayLeave = false;
+
+        todayLeaves.forEach(l => {
+            if (!l.shiftNames || l.shiftNames.length === 0) {
+                isFullDayLeave = true;
+            } else {
+                plannedCancelledShifts.push(...l.shiftNames);
+            }
+        });
+
+        // 2. Gather all Overrides for today
+        const overrides = doc.dailyOverrides?.filter(o => o.date === todayStr) || [];
+        const overrideCancelledShifts = overrides.filter(o => o.isCancelled).flatMap(o => o.shiftNames || []);
+        const overridesDelays = overrides.filter(o => o.delayMinutes > 0);
+
+        // Merge all cancelled shifts
+        const allCancelledShifts = [...new Set([...plannedCancelledShifts, ...overrideCancelledShifts])];
+
+        // If Full day leave, OR all shifts are cancelled
+        if (isFullDayLeave || (totalShiftCount > 0 && allCancelledShifts.length >= totalShiftCount)) {
+            return { text: isFullDayLeave ? 'On Planned Leave' : 'Cancelled (Full Day)', color: 'red', canRevoke: true, fullyCancelled: true };
+        }
+
+        const details = [];
+
+        // Build string for Planned Leaves
+        if (plannedCancelledShifts.length > 0) {
+            details.push(`${plannedCancelledShifts.join(', ')}: Planned Leave`);
+        }
+
+        // Build string for Override Cancels (excluding ones already in planned leave)
+        const pureOverrideCancels = overrideCancelledShifts.filter(s => !plannedCancelledShifts.includes(s));
+        if (pureOverrideCancels.length > 0) {
+            details.push(`${pureOverrideCancels.join(', ')}: Cancelled`);
+        }
+
+        // Build string for Delays
+        overridesDelays.forEach(o => {
+            const activeDelays = (o.shiftNames || []).filter(s => !allCancelledShifts.includes(s));
+            if (activeDelays.length > 0) {
+                details.push(`${activeDelays.join(', ')}: Late (${o.delayMinutes}m)`);
+            }
+        });
+
+        if (details.length > 0) {
+            return { text: details.join(' | '), color: 'orange', canRevoke: true, fullyCancelled: false };
+        }
+
+        return { text: 'Active / Normal', color: 'green', canRevoke: false, fullyCancelled: false };
+    };
+
+    const handleRevokeAbsence = async (doctorId) => {
+        try {
+            const todayStr = dayjs().format('YYYY-MM-DD');
+            await revokeDoctorAbsence(doctorId, todayStr);
+            message.success("Schedule restored successfully!");
+            getDoctors(dispatch); // Refresh table
+        } catch (error) {
+            message.error("Failed to revoke absence.");
+        }
+    };
 
     return (
         <PageContainer>
@@ -219,8 +324,8 @@ const DoctorManagerPage = () => {
             <Table columns={columns} dataSource={doctors} rowKey="doctorId" loading={isFetching} style={{ background: '#fff', borderRadius: '8px' }} />
 
             <Drawer
-                title={editingDoctor ? "Edit Doctor Profile" : "Add New Doctor"}
-                width={800}
+                title={editingDoctor ? `Dr. ${editingDoctor.personalInfo.firstName + " " + editingDoctor.personalInfo.lastName + "'s"} Profile` : "Add New Doctor"}
+                width={'100%'}
                 onClose={() => setDrawerVisible(false)}
                 open={drawerVisible}
                 extra={<Button type="primary" onClick={() => form.submit()}>Save Doctor</Button>}

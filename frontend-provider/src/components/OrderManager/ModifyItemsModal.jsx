@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Modal, Button, Select, List, Avatar, message, Typography, Empty, Tag } from "antd";
 import { DeleteOutlined, MedicineBoxOutlined } from "@ant-design/icons";
 import { useSelector } from "react-redux";
-import { modifyOrderItems } from "../redux/apiCalls";
+import { modifyOrderItems } from "../../redux/apiCalls";
 
 const { Option } = Select;
 const { Text } = Typography;

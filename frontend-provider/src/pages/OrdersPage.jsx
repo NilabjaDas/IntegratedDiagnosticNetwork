@@ -18,9 +18,9 @@ import {
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { getOrders } from "../redux/apiCalls";
-import CreateOrderDrawer from "../components/CreateOrderDrawer";
-import OrderDetailsDrawer from "../components/OrderDetailsDrawer";
-import ActionRequiredDashboard from '../components/ActionRequiredDashboard';
+import CreateOrderDrawer from "../components/OrderManager/CreateOrderDrawer";
+import OrderDetailsDrawer from "../components/OrderManager/OrderDetailsDrawer";
+import ActionRequiredDashboard from '../components/OrderManager/ActionRequiredDashboard';
 import styled from "styled-components";
 import moment from "moment";
 

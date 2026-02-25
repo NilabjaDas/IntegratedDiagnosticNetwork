@@ -696,6 +696,7 @@ export const deleteDoctor = async (dispatch, id) => {
 };
 
 export const addDoctorOverride = async (id, overrideData) => {
+  console.log(overrideData)
     try {
         const res = await userRequest.post(`/doctors/${id}/overrides`, overrideData);
         return res.data;
@@ -748,4 +749,30 @@ export const reschedulePatientToken = async (tokenId, newDate, newShiftName) => 
 export const createSpecialShift = async (doctorId, shiftData) => {
     const res = await userRequest.post(`/doctors/${doctorId}/special-shifts`, shiftData);
     return res.data;
+};
+
+export const revokeDoctorAbsence = async (doctorId, date) => {
+    try {
+        const res = await userRequest.delete(`/doctors/${doctorId}/absence/${date}`);
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// --- LEAVE MANAGEMENT ---
+export const addDoctorLeave = async (doctorId, leaveData) => {
+  console.log(leaveData)
+    try {
+        const res = await userRequest.post(`/doctors/${doctorId}/leaves`, leaveData);
+        return res.data;
+    } catch (err) { throw err; }
+};
+
+export const revokeDoctorLeave = async (doctorId, leaveId, datesToRevoke) => {
+    try {
+        const res = await userRequest.put(`/doctors/${doctorId}/leaves/${leaveId}/revoke`, { datesToRevoke });
+        return res.data;
+    } catch (err) { throw err; }
 };

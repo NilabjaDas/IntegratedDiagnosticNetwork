@@ -5,12 +5,12 @@ import { Row, Col, message, Form, Button, Modal, Input, TimePicker, InputNumber,
 import dayjs from 'dayjs';
 
 // API Calls
-import { getDoctors, fetchDoctorQueue, updateTokenStatus, completeConsultation, createSpecialShift } from '../redux/apiCalls';
+import { getDoctors, fetchDoctorQueue, updateTokenStatus, completeConsultation } from '../redux/apiCalls';
 
 // Modular Components
-import WorkspaceHeader from '../components/Doctor EMR/WorkspaceHeader';
-import WorkspaceQueueList from '../components/Doctor EMR/WorkspaceQueueList';
-import WorkspaceEditor from '../components/Doctor EMR/WorkspaceEditor';
+import WorkspaceHeader from '../components/DoctorEMR/WorkspaceHeader';
+import WorkspaceQueueList from '../components/DoctorEMR/WorkspaceQueueList';
+import WorkspaceEditor from '../components/DoctorEMR/WorkspaceEditor';
 
 const PageContainer = styled.div`
   padding: 24px;

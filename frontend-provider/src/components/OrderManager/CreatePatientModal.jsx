@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Modal, Form, Input, Select, Row, Col, InputNumber, Button, message } from "antd";
-import { createGlobalPatient } from "../redux/apiCalls";
+import { createGlobalPatient } from "../../redux/apiCalls";
 
 const { Option } = Select;
 

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Modal, Form, Input, Select, InputNumber, Button, message, Divider, Alert, Space, Tabs } from "antd";
 import { DollarCircleOutlined, CreditCardOutlined, QrcodeOutlined, SendOutlined, CheckCircleOutlined, ReloadOutlined } from "@ant-design/icons";
-import { recordManualPayment, createRazorpayOrder, verifyOnlinePayment, sendPaymentLink,verifyPaymentStatus, checkPaymentStatus } from "../redux/apiCalls";
+import { recordManualPayment, createRazorpayOrder, verifyOnlinePayment, sendPaymentLink,verifyPaymentStatus, checkPaymentStatus } from "../../redux/apiCalls";
 
 const { Option } = Select;
 

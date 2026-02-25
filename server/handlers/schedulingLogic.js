@@ -89,43 +89,42 @@ const estimateTimeForSerialNumber = (dateString, doctor, serialNumber) => {
  * average patient time, and ad-hoc delays.
  */
 const calculateInitialETA = (doctor, dateString, shiftName, sequence) => {
-    // 1. Get the day index (0 = Sunday, 1 = Monday)
     const dayOfWeek = moment(dateString).day();
-
-    // 2. Find the schedule for this day
     const daySchedule = doctor.schedule?.find(s => s.dayOfWeek === dayOfWeek);
     if (!daySchedule || !daySchedule.isAvailable) return null;
 
-    // 3. Find the specific shift (e.g. "Morning OPD")
     const shift = daySchedule.shifts?.find(s => s.shiftName === shiftName);
     if (!shift) return null;
 
-    // 4. Check for Ad-Hoc Overrides (Is the doctor late today?)
+    // --- FIX: CHECK GRANULAR SHIFT OVERRIDES ---
     let delayMinutes = 0;
-    const override = doctor.dailyOverrides?.find(o => o.date === dateString);
-    if (override && (!override.shiftNames || override.shiftNames.includes(shiftName))) {
-        if (override.isCancelled) return "CANCELLED";
-        delayMinutes = override.delayMinutes || 0;
+    const overridesForToday = doctor.dailyOverrides?.filter(o => o.date === dateString);
+    
+    if (overridesForToday && overridesForToday.length > 0) {
+        // Find the override that specifically targets THIS shift (or targets all shifts)
+        const shiftOverride = overridesForToday.find(o => 
+            !o.shiftNames || o.shiftNames.length === 0 || o.shiftNames.includes(shiftName)
+        );
+
+        if (shiftOverride) {
+            if (shiftOverride.isCancelled) return "CANCELLED";
+            delayMinutes = shiftOverride.delayMinutes || 0;
+        }
     }
 
-    // 5. Base math: Shift Start Time
     const [startHour, startMinute] = shift.startTime.split(':').map(Number);
     const shiftStart = moment(dateString).set({ hour: startHour, minute: startMinute, second: 0, millisecond: 0 });
     
-    // 6. Apply Delay (if any)
     shiftStart.add(delayMinutes, 'minutes');
 
-    // 7. Add waiting time for the patients AHEAD of this one (sequence - 1)
     const avgTime = doctor.consultationRules?.avgTimePerPatientMinutes || 15;
     const minutesToWait = (sequence - 1) * avgTime;
-
-    // 8. Final Estimated Time
     const estimatedTime = shiftStart.add(minutesToWait, 'minutes');
 
     return {
-        etaFormatted: estimatedTime.format("hh:mm A"), // e.g. "10:45 AM"
+        etaFormatted: estimatedTime.format("hh:mm A"),
         etaDate: estimatedTime.toDate(),
-        isOverbooked: sequence > shift.maxTokens // Flags if admin bypassed the limit
+        isOverbooked: sequence > shift.maxTokens
     };
 };
 

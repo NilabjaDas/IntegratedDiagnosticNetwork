@@ -7,9 +7,9 @@ import { userRequest } from '../requestMethods';
 import dayjs from 'dayjs';
 
 // Import Modular Components
-import TvHeader from '../components/Tv Display/TvHeader';
-import TvSingleDepartmentLayout from '../components/Tv Display/TvSingleDepartmentLayout';
-import TvCombinedLayout from '../components/Tv Display/TvCombinedLayout';
+import TvHeader from '../components/TvDisplay/TvHeader';
+import TvSingleDepartmentLayout from '../components/TvDisplay/TvSingleDepartmentLayout';
+import TvCombinedLayout from '../components/TvDisplay/TvCombinedLayout';
 
 const PageContainer = styled.div`
   min-height: 100vh;

@@ -25,7 +25,8 @@ const decryptBody = async (req, res, next) => {
       url.endsWith("/test-api") ||
       url.includes("/admin-master/institutions/delete") ||
       url.includes("/admin-master") ||
-      url.includes("/institutions/my-settings")
+      url.includes("/institutions/my-settings") ||
+      url.includes("/doctors")
     ) {
       return next();
     } else {

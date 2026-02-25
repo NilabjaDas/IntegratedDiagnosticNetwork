@@ -28,16 +28,23 @@ const dayScheduleSchema = new mongoose.Schema({
 const leaveSchema = new mongoose.Schema({
     startDate: { type: String, required: true }, // "YYYY-MM-DD"
     endDate: { type: String, required: true },   // "YYYY-MM-DD"
-    reason: { type: String }
+    shiftNames: [{ type: String }], // <-- NEW: Empty array means Full Day. 
+    reason: { type: String },
+    leaveDaysCount: { type: Number, default: 0 } // Tracks actual working days consumed (can be a decimal like 0.5)
+});
+const leaveAuditSchema = new mongoose.Schema({
+    action: { type: String, required: true }, // e.g., "GRANTED", "REVOKED", "PARTIALLY_REVOKED"
+    timestamp: { type: Date, default: Date.now },
+    byUserName: { type: String }, // Who did it
+    details: { type: String }
 }, { _id: false });
-
 // 5. Daily Overrides (For Real-World Delays & Sick Days)
 const overrideSchema = new mongoose.Schema({
     date: { type: String, required: true }, // "YYYY-MM-DD"
-    shiftName: { type: String }, // Which shift is delayed?
-    delayMinutes: { type: Number, default: 0 }, // Doctor is 45 mins late
-    isCancelled: { type: Boolean, default: false }, // Doctor suddenly cancelled today's OPD
-    note: { type: String } // e.g., "Stuck in emergency surgery"
+    shiftNames: [{ type: String }], 
+    delayMinutes: { type: Number, default: 0 }, 
+    isCancelled: { type: Boolean, default: false }, 
+    note: { type: String } 
 }, { _id: false });
 
 const doctorSchema = new mongoose.Schema({
@@ -99,6 +106,7 @@ const doctorSchema = new mongoose.Schema({
     // --- Availability & Time Management ---
     schedule: [dayScheduleSchema], 
     leaves: [leaveSchema],
+    leaveAuditLogs: [leaveAuditSchema],
     dailyOverrides: [overrideSchema],
 
     isActive: { type: Boolean, default: true }

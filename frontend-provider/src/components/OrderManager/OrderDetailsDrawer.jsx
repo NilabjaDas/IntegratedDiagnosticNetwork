@@ -36,7 +36,7 @@ import {
   WarningOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-import { getOrderDetails, updateOrderNotes, cancelOrder, fetchBillPdf } from "../redux/apiCalls";
+import { getOrderDetails, updateOrderNotes, cancelOrder, fetchBillPdf } from "../../redux/apiCalls";
 import PaymentModal from "./PaymentModal";
 import ModifyItemsModal from "./ModifyItemsModal";
 import moment from "moment";

@@ -41,13 +41,13 @@ import {
   searchPatients,
   getOrders,
   getMyTests,
-  getDoctors // <-- NEW: Import getDoctors
-} from "../redux/apiCalls";
+  getDoctors 
+} from "../../redux/apiCalls";
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
 import DiscountOverrideModal from "./DiscountOverrideModal";
 import OrderDetailsDrawer from "./OrderDetailsDrawer"; 
-import { patientSearchSuccess } from "../redux/orderRedux";
+import { patientSearchSuccess } from "../../redux/orderRedux";
 import moment from "moment";
 import dayjs from "dayjs";
 

@@ -3,7 +3,7 @@ import { Card, Table, Tag, Button, Modal, Select, DatePicker, message, Alert, Ty
 import { ExclamationCircleOutlined, CalendarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useSelector } from 'react-redux';
-import { fetchActionRequiredTokens, reschedulePatientToken } from '../redux/apiCalls';
+import { fetchActionRequiredTokens, reschedulePatientToken } from '../../redux/apiCalls';
 
 const { Text } = Typography;
 const { Option } = Select;

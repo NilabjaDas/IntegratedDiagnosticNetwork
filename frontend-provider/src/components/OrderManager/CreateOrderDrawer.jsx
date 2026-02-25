@@ -11,11 +11,11 @@ import {
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 // --- IMPORT getDoctors ---
-import { createOrder, searchPatients, getOrders, getMyTests, getDoctors } from "../redux/apiCalls"; 
+import { createOrder, searchPatients, getOrders, getMyTests, getDoctors } from "../../redux/apiCalls"; 
 import CreatePatientModal from "./CreatePatientModal";
 import PaymentModal from "./PaymentModal";
 import DiscountOverrideModal from "./DiscountOverrideModal"; 
-import { patientSearchSuccess } from "../redux/orderRedux";
+import { patientSearchSuccess } from "../../redux/orderRedux";
 import RapidOrderLayout from "./RapidOrderLayout"; 
 import moment from "moment";
 import dayjs from 'dayjs';
