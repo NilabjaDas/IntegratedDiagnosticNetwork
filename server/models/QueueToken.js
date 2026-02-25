@@ -19,6 +19,7 @@ const queueTokenSchema = new mongoose.Schema({
   patientDetails: {
       name: String,
       age: Number,
+      mobile: String,
       gender: String
   },
   
@@ -29,13 +30,18 @@ const queueTokenSchema = new mongoose.Schema({
   assignedCounterId: { type: String },
   assignedCounterName: { type: String },
   assignedStaffId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  // The Lifecycle of a Token
+  
+  // --- FIX: ADD CANCELLED TO ENUM ---
   status: { 
       type: String, 
-      enum: ['WAITING', 'CALLED', 'IN_PROGRESS', 'COMPLETED', 'HOLD', 'SKIPPED'], 
+      enum: ['WAITING', 'CALLED', 'IN_PROGRESS', 'COMPLETED', 'HOLD', 'SKIPPED', 'CANCELLED', 'DOC_UNVAILABLE'], 
       default: 'WAITING' 
   },
-    prescriptionHtml: { type: String, default: "" },
+  
+  // --- FIX: ADD NOTES FIELD ---
+  notes: { type: String, default: "" }, 
+
+  prescriptionHtml: { type: String, default: "" },
   // --- NEW: SMART ETA FIELDS ---
   estimatedStartTime: { type: Date }, // The raw Date object for future live recalculations
   estimatedTimeFormatted: { type: String }, // "10:45 AM" - Pre-formatted for fast UI rendering

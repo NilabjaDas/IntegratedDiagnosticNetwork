@@ -729,7 +729,7 @@ export const completeConsultation = async (tokenId, prescriptionHtml) => {
 export const fetchActionRequiredTokens = async () => {
     try {
         // Fetch all tokens that are CANCELLED and haven't been rescheduled yet
-        const res = await userRequest.get(`/queue-manager?status=CANCELLED&isRescheduled=false`);
+        const res = await userRequest.get(`/queue-manager?status=DOC_UNVAILABLE&isRescheduled=false`);
         return res.data;
     } catch (err) {
         console.error("Failed to fetch action required tokens", err);

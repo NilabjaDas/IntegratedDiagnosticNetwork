@@ -5,6 +5,23 @@ const mongoose = require("mongoose");
 const getModel = require("../middleware/getModelsHandler");
 const QueueTokenSchema = require("../models/QueueToken");
 const moment = require("moment-timezone");
+const { sendToBrand } = require("../sseManager");
+
+// --- NEW HELPER: Finds the actual next working day for a specific shift ---
+const getNextWorkingDayForShift = (doctor, startDateStr, shiftName) => {
+    let current = moment(startDateStr).add(1, 'days');
+    // Look up to 14 days ahead
+    for(let i = 0; i < 14; i++) {
+        const dayIndex = current.day();
+        const daySch = doctor.schedule.find(s => s.dayOfWeek === dayIndex);
+        if (daySch && daySch.isAvailable) {
+            const shiftExists = daySch.shifts.some(s => s.shiftName === shiftName);
+            if (shiftExists) return current.format("YYYY-MM-DD");
+        }
+        current.add(1, 'days');
+    }
+    return null; 
+};
 
 const hasOverlappingShifts = (schedule) => {
     if (!schedule) return false;
@@ -29,7 +46,6 @@ const hasOverlappingShifts = (schedule) => {
 // 1. CREATE DOCTOR
 router.post("/", authenticateUser, async (req, res) => {
     try {
-        // --- NEW: Backend Overlap Validation ---
         const overlapError = hasOverlappingShifts(req.body.schedule);
         if (overlapError) {
             return res.status(400).json({ error: overlapError });
@@ -62,7 +78,6 @@ router.get("/", authenticateUser, async (req, res) => {
 // 3. GET SINGLE DOCTOR BY ID
 router.put("/:doctorId", authenticateUser, async (req, res) => {
     try {
-        // --- NEW: Backend Overlap Validation ---
         if (req.body.schedule) {
             const overlapError = hasOverlappingShifts(req.body.schedule);
             if (overlapError) {
@@ -82,20 +97,6 @@ router.put("/:doctorId", authenticateUser, async (req, res) => {
     }
 });
 
-// 4. UPDATE DOCTOR PROFILE / SCHEDULE
-router.put("/:doctorId", authenticateUser, async (req, res) => {
-    try {
-        const updatedDoctor = await Doctor.findOneAndUpdate(
-            { doctorId: req.params.doctorId, institutionId: req.user.institutionId },
-            { $set: req.body },
-            { new: true, runValidators: true }
-        );
-        if (!updatedDoctor) return res.status(404).json({ message: "Doctor not found" });
-        res.status(200).json(updatedDoctor);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
 
 // ==========================================
 // 5. ADD DAILY OVERRIDE (Synced with Leave Ledger)
@@ -115,7 +116,7 @@ router.post("/:doctorId/overrides", authenticateUser, async (req, res) => {
         // 1. Remove existing overrides for this exact date
         doctor.dailyOverrides = doctor.dailyOverrides.filter(o => o.date !== date);
 
-        // --- NEW: LEAVE LEDGER MATH ---
+        // --- LEAVE LEDGER MATH ---
         let daysToConsume = 0;
         let cancelledShiftsForAudit = [];
 
@@ -198,22 +199,31 @@ router.post("/:doctorId/overrides", authenticateUser, async (req, res) => {
                 if (policyToApply === 'CANCEL_ALL') {
                     await TenantQueueToken.updateMany(
                         { _id: { $in: affectedTokens.map(t => t._id) } },
-                        { $set: { status: 'CANCELLED', notes: `Doctor Unavailable. Policy: Cancel All.` } }
+                        { $set: { status: 'DOC_UNVAILABLE', notes: `Doctor Unavailable. Policy: Cancel All.` } }
                     );
                 } else if (policyToApply === 'MANUAL_ALLOCATION') {
                     await TenantQueueToken.updateMany(
                         { _id: { $in: affectedTokens.map(t => t._id) } },
-                        { $set: { status: 'CANCELLED', isRescheduled: false, notes: `Doctor Leave. Action Required.` } }
+                        { $set: { status: 'DOC_UNVAILABLE', isRescheduled: false, notes: `Doctor Leave. Action Required.` } }
                     );
                 } else if (policyToApply === 'AUTO_NEXT_AVAILABLE') {
-                    let nextDay = moment(date).add(1, 'days');
-                    for (let token of affectedTokens) {
-                        token.date = nextDay.format("YYYY-MM-DD");
-                        token.isRescheduled = true;
-                        token.priority = 1;
-                        await token.save();
+                   for (let token of affectedTokens) {
+                        const nextDayStr = getNextWorkingDayForShift(doctor, date, token.shiftName);
+                        if (nextDayStr) {
+                            token.originalDate = token.originalDate || token.date;
+                            token.date = nextDayStr;
+                            token.isRescheduled = true;
+                            token.priority = 1;
+                            token.notes = `Auto-rescheduled from ${token.originalDate} due to doctor absence.`;
+                            await token.save();
+                        } else {
+                            token.status = 'DOC_UNVAILABLE';
+                            token.notes = `Doctor Unavailable. Could not find a future shift to auto-reschedule.`;
+                            await token.save();
+                        }
                     }
                 }
+                sendToBrand(instId, { type: 'TOKENS_UPDATED' }, 'tests_queue_updated');
             }
         }
         
@@ -224,23 +234,34 @@ router.post("/:doctorId/overrides", authenticateUser, async (req, res) => {
 });
 
 // ==========================================
-// 6. REVOKE ABSENCE (Restores Ledger)
+// 6. REVOKE ABSENCE (Restores Ledger & Patients)
 // ==========================================
 router.delete("/:doctorId/absence/:date", authenticateUser, async (req, res) => {
     try {
         const { date } = req.params;
-        const doctor = await Doctor.findOne({ doctorId: req.params.doctorId, institutionId: req.user.institutionId });
+        const instId = req.user.institutionId;
+        const doctor = await Doctor.findOne({ doctorId: req.params.doctorId, institutionId: instId });
         if (!doctor) return res.status(404).json({ message: "Doctor not found" });
+
+        const Institution = require("../models/Institutions");
+        const institution = await Institution.findOne({ institutionId: instId });
+        const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+        const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
+
+        let shiftsToRestore = [];
+        let restoreAllShifts = false;
 
         // 1. Remove Overrides & Reverse Metrics
         const overridesForDate = doctor.dailyOverrides.filter(o => o.date === date);
         if (overridesForDate.length > 0) {
             
-            // --- NEW: REVERSE AD-HOC LEAVE LEDGER ---
+            // --- REVERSE AD-HOC LEAVE LEDGER ---
             const todayIndex = moment(date).day();
             const todayShifts = doctor.schedule.find(s => s.dayOfWeek === todayIndex)?.shifts || [];
             const cancelledShifts = overridesForDate.filter(o => o.isCancelled).flatMap(o => o.shiftNames || []);
             
+            if (cancelledShifts.length > 0) shiftsToRestore.push(...cancelledShifts);
+
             let daysToRefund = 0;
             if (cancelledShifts.length >= todayShifts.length && todayShifts.length > 0) {
                 daysToRefund = 1;
@@ -256,7 +277,6 @@ router.delete("/:doctorId/absence/:date", authenticateUser, async (req, res) => 
                     details: `Revoked Ad-Hoc Leave for ${date}. Refunded ${daysToRefund} day(s) to balance.`
                 });
             }
-            // ------------------------------------------
 
             for (let o of overridesForDate) {
                 if (o.isCancelled) doctor.metrics.cancellationsCount = Math.max(0, doctor.metrics.cancellationsCount - 1);
@@ -268,17 +288,45 @@ router.delete("/:doctorId/absence/:date", authenticateUser, async (req, res) => 
         // 2. Remove Planned Leaves that cover this date & Reverse Metric
         const leaveIndex = doctor.leaves.findIndex(l => date >= l.startDate && date <= l.endDate);
         if (leaveIndex > -1) {
-            // ... (Your existing planned leave removal logic here) ...
             const targetLeave = doctor.leaves[leaveIndex];
+
+            if (!targetLeave.shiftNames || targetLeave.shiftNames.length === 0) {
+                restoreAllShifts = true;
+            } else {
+                shiftsToRestore.push(...targetLeave.shiftNames);
+            }
+
             doctor.leaves.splice(leaveIndex, 1);
             
-            // Refund the days for that whole planned leave (for simplicity when hitting master revoke)
             doctor.metrics.leavesTaken = Math.max(0, doctor.metrics.leavesTaken - (targetLeave.leaveDaysCount || 0));
             doctor.leaveAuditLogs.push({
                 action: "FULL_REVOKE",
                 byUserName: req.user.username,
                 details: `Forced Revoke of Planned Leave (${targetLeave.startDate} to ${targetLeave.endDate}) via Master Reset.`
             });
+        }
+
+        // 3. --- SMART PATIENT RESTORATION ---
+        if (restoreAllShifts || shiftsToRestore.length > 0) {
+            let shiftFilter = {};
+            if (!restoreAllShifts && shiftsToRestore.length > 0) {
+                shiftFilter = { shiftName: { $in: shiftsToRestore } };
+            }
+
+            await TenantQueueToken.updateMany(
+                {
+                    date: date,
+                    doctorId: doctor._id,
+                    status: 'DOC_UNVAILABLE', // Only restore tokens that are actively dead
+                    ...shiftFilter
+                },
+                {
+                    $set: {
+                        status: 'WAITING',
+                        notes: 'Schedule restored. Leave revoked.'
+                    }
+                }
+            );
         }
 
         await doctor.save();
@@ -319,8 +367,6 @@ router.delete("/:doctorId", authenticateUser, async (req, res) => {
 });
 
 
-
-
 // --- HELPER: Calculate Actual Working Days (Supports Partial Shifts) ---
 const calculateWorkingDays = (datesArray, schedule, targetShifts = []) => {
     let count = 0;
@@ -330,11 +376,9 @@ const calculateWorkingDays = (datesArray, schedule, targetShifts = []) => {
         
         if (daySch && daySch.isAvailable && daySch.shifts?.length > 0) {
             if (targetShifts && targetShifts.length > 0) {
-                // If they only took 1 out of 2 shifts off, it counts as 0.5 days.
                 const matchingShifts = daySch.shifts.filter(s => targetShifts.includes(s.shiftName)).length;
                 count += (matchingShifts / daySch.shifts.length);
             } else {
-                // Full day off
                 count += 1;
             }
         }
@@ -361,12 +405,13 @@ const getDatesInRange = (startDate, endDate) => {
 router.post("/:doctorId/leaves", authenticateUser, async (req, res) => {
     try {
         const { startDate, endDate, reason, shiftNames } = req.body;
-        const doctor = await Doctor.findOne({ doctorId: req.params.doctorId, institutionId: req.user.institutionId });
+        const instId = req.user.institutionId;
+        const doctor = await Doctor.findOne({ doctorId: req.params.doctorId, institutionId: instId });
         if (!doctor) return res.status(404).json({ message: "Doctor not found" });
 
         const requestedDates = getDatesInRange(startDate, endDate);
 
-        // --- NEW: STRICT BACKEND OVERLAP CHECK ---
+        // STRICT BACKEND OVERLAP CHECK
         for (let d of requestedDates) {
             const existingLeave = doctor.leaves.find(l => d >= l.startDate && d <= l.endDate);
             if (existingLeave) {
@@ -383,16 +428,13 @@ router.post("/:doctorId/leaves", authenticateUser, async (req, res) => {
                 }
             }
         }
-        // ------------------------------------------
 
-        // Calculate actual working days consumed 
         const daysToConsume = calculateWorkingDays(requestedDates, doctor.schedule, shiftNames);
 
         if (daysToConsume === 0) {
             return res.status(400).json({ message: "Leave rejected: Doctor has no working shifts matching this request during this date range." });
         }
 
-        // Check Limit
         const currentTaken = doctor.metrics.leavesTaken || 0;
         const limit = doctor.leaveSettings?.leaveLimitPerYear || 20;
         if (currentTaken + daysToConsume > limit) {
@@ -412,16 +454,62 @@ router.post("/:doctorId/leaves", authenticateUser, async (req, res) => {
         });
 
         await doctor.save();
+
+        // --- NEW: APPLY QUEUE CANCELLATION FOR PLANNED LEAVE ---
+        const Institution = require("../models/Institutions");
+        const institution = await Institution.findOne({ institutionId: instId });
+        const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+        const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
+
+        let shiftFilter = {};
+        if (shiftNames && shiftNames.length > 0) {
+            shiftFilter = { shiftName: { $in: shiftNames } };
+        }
+
+        const policyToApply = institution.settings?.queuePolicies?.dayCancelPolicy || 'MANUAL_ALLOCATION';
+
+        const affectedTokens = await TenantQueueToken.find({
+            date: { $in: requestedDates },
+            doctorId: doctor._id,
+            status: { $in: ['WAITING', 'HOLD'] },
+            ...shiftFilter
+        });
+
+        if (affectedTokens.length > 0) {
+            if (policyToApply === 'CANCEL_ALL') {
+                await TenantQueueToken.updateMany(
+                    { _id: { $in: affectedTokens.map(t => t._id) } },
+                    { $set: { status: 'DOC_UNVAILABLE', notes: `Doctor Planned Leave. Policy: Cancel All.` } }
+                );
+            } else if (policyToApply === 'MANUAL_ALLOCATION') {
+                await TenantQueueToken.updateMany(
+                    { _id: { $in: affectedTokens.map(t => t._id) } },
+                    { $set: { status: 'DOC_UNVAILABLE', isRescheduled: false, notes: `Doctor Planned Leave. Action Required.` } }
+                );
+            } else if (policyToApply === 'AUTO_NEXT_AVAILABLE') {
+                // Shift patients to the day after the leave block ends
+                let nextDay = moment(endDate).add(1, 'days');
+                for (let token of affectedTokens) {
+                    token.date = nextDay.format("YYYY-MM-DD");
+                    token.isRescheduled = true;
+                    token.priority = 1;
+                    await token.save();
+                }
+            }
+        }
+
         res.status(200).json(doctor);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
+
 // B. REVOKE LEAVE (Full or Partial)
 router.put("/:doctorId/leaves/:leaveId/revoke", authenticateUser, async (req, res) => {
     try {
-        const { datesToRevoke } = req.body; // e.g., ["2026-02-13"]
-        const doctor = await Doctor.findOne({ doctorId: req.params.doctorId, institutionId: req.user.institutionId });
+        const { datesToRevoke } = req.body; 
+        const instId = req.user.institutionId;
+        const doctor = await Doctor.findOne({ doctorId: req.params.doctorId, institutionId: instId });
         
         const leaveIndex = doctor.leaves.findIndex(l => l._id.toString() === req.params.leaveId);
         if (leaveIndex === -1) return res.status(404).json({ message: "Leave record not found" });
@@ -430,14 +518,11 @@ router.put("/:doctorId/leaves/:leaveId/revoke", authenticateUser, async (req, re
         const allOriginalDates = getDatesInRange(targetLeave.startDate, targetLeave.endDate);
         const remainingDates = allOriginalDates.filter(d => !datesToRevoke.includes(d));
 
-        // Calculate refund based on whether it was a full day or specific shifts
         const daysToRefund = calculateWorkingDays(datesToRevoke, doctor.schedule, targetLeave.shiftNames);
 
-        // Remove the old combined leave
         doctor.leaves.splice(leaveIndex, 1);
         doctor.metrics.leavesTaken = Math.max(0, doctor.metrics.leavesTaken - daysToRefund);
 
-        // Reconstruct remaining dates into new consecutive blocks, preserving the specific shifts
         if (remainingDates.length > 0) {
             let blocks = [];
             let currentBlock = [remainingDates[0]];
@@ -456,19 +541,44 @@ router.put("/:doctorId/leaves/:leaveId/revoke", authenticateUser, async (req, re
                 doctor.leaves.push({
                     startDate: block[0],
                     endDate: block[block.length - 1],
-                    shiftNames: targetLeave.shiftNames, // Inherit specific shifts
+                    shiftNames: targetLeave.shiftNames, 
                     reason: targetLeave.reason + " (Split after partial revoke)",
                     leaveDaysCount: calculateWorkingDays(block, doctor.schedule, targetLeave.shiftNames)
                 });
             });
         }
 
-        // Log to Ledger
         doctor.leaveAuditLogs.push({
             action: remainingDates.length === 0 ? "FULL_REVOKE" : "PARTIAL_REVOKE",
             byUserName: req.user.username,
             details: `Revoked ${daysToRefund} working day(s) from original leave (${targetLeave.startDate} to ${targetLeave.endDate}). Dates revoked: ${datesToRevoke.join(', ')}`
         });
+
+        // --- RESTORE QUEUE TOKENS ---
+        const Institution = require("../models/Institutions");
+        const institution = await Institution.findOne({ institutionId: instId });
+        const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+        const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
+
+        let shiftFilter = {};
+        if (targetLeave.shiftNames && targetLeave.shiftNames.length > 0) {
+            shiftFilter = { shiftName: { $in: targetLeave.shiftNames } };
+        }
+
+        await TenantQueueToken.updateMany(
+            {
+                date: { $in: datesToRevoke },
+                doctorId: doctor._id,
+                status: 'DOC_UNVAILABLE',
+                ...shiftFilter
+            },
+            {
+                $set: {
+                    status: 'WAITING',
+                    notes: 'Schedule restored. Planned Leave revoked.'
+                }
+            }
+        );
 
         await doctor.save();
         res.status(200).json(doctor);

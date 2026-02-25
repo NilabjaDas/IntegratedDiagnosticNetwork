@@ -129,276 +129,6 @@ const validateDiscount = async (userModel, userId, totalAmount, discountAmount) 
 };
 
 // 1. CREATE ORDER
-// router.post("/", async (req, res) => {
-//   try {
-//     const { 
-//         // Common Fields
-//         items, 
-//         discountAmount = 0, 
-//         discountReason, 
-//         discountOverrideCode, 
-//         initialPayment, 
-//         notes,
-//         scheduleDate, 
-
-//         // Patient Selection Logic
-//         walkin,      // Boolean flag
-//         patientId,   // For Registered
-//         patientName, // For Walk-in
-//         age,         // For Walk-in OR Edit Registered
-//         gender,      // For Walk-in OR Edit Registered
-//         updatedPatientData // NEW FLAG: True if user edited registered patient details
-//     } = req.body;
-    
-//     const instId = req.user.institutionId;
-//     const brandCode = req.user.brand;
-//     let finalPatientId = null;
-//     let finalPatientDetails = {};
-
-//     // --- A. PATIENT RESOLUTION ---
-//     if (walkin) {
-//         // CASE 1: WALK-IN PATIENT
-//         if (!patientName || !age || !gender) {
-//             return res.status(400).json({ message: "Name, Age, and Gender are required for Walk-ins." });
-//         }
-        
-//         finalPatientId = null; // No DB Link
-//         finalPatientDetails = {
-//             name: patientName,
-//             age: Number(age),
-//             gender: gender,
-//             mobile: "" 
-//         };
-
-//     } else {
-//         // CASE 2: REGISTERED PATIENT
-//         if (!patientId) return res.status(400).json({ message: "Patient ID is required." });
-
-//         const patient = await Patient.findById(patientId);
-//         if (!patient) return res.status(404).json({ message: "Patient not found." });
-
-//         // --- UPDATE PATIENT LOGIC (NEW) ---
-//         // If user edited details on frontend, update the Master DB record now.
-//         if (updatedPatientData) {
-//             if (age) patient.age = Number(age);
-//             if (gender) patient.gender = gender;
-//             await patient.save(); // Persist changes to Patient Collection
-//         }
-
-//         finalPatientId = patient._id;
-        
-//         // Snapshot relevant details (Using the freshest data from patient object)
-//         finalPatientDetails = {
-//             name: `${patient.firstName} ${patient.lastName || ''}`.trim(),
-//             age: patient.age, 
-//             gender: patient.gender,
-//             mobile: patient.mobile
-//         };
-
-//         // Link Patient to Institution if not already linked
-//         if(!patient.enrolledInstitutions.includes(instId)){
-//             patient.enrolledInstitutions.push(instId);
-//             await patient.save();
-//         }
-//     }
-
-//     // --- B. CALCULATE ITEMS ---
-//     const { orderItems, calculatedTotal } = await calculateOrderItems(items, req);
-//     if (orderItems.length === 0) return res.status(400).json({ message: "No valid items." });
-
-//     // -------------------------------------------------------------
-//     // --- NEW: SCHEDULING & CAPACITY CHECK ---
-//     // -------------------------------------------------------------
-//     // 1. Filter out IDs of items to check their config
-//     const itemIds = orderItems.map(i => i.itemId);
-    
-//     // 2. Fetch Test Configs from DB to check limits
-//     const dbTests = await req.TenantTest.find({ _id: { $in: itemIds } });
-//     const finalAppointmentDate = scheduleDate ? scheduleDate : moment().format("YYYY-MM-DD");
-//     const dateKey = finalAppointmentDate;
-
-//     for (const dbTest of dbTests) {
-//         // If test has a limit (and it's not null/0)
-//         if (dbTest.dailyLimit !== null && dbTest.dailyLimit !== undefined && dbTest.dailyLimit > 0) {
-            
-
-//             // Check availability in Tenant DB
-//             // We verify the current count before reserving
-//             let availability = await req.TenantAvailability.findOne({
-//                 testId: dbTest._id.toString(),
-//                 date: dateKey
-//             });
-
-//             if (availability) {
-//                 if (availability.count >= dbTest.dailyLimit) {
-//                     return res.status(400).json({ 
-//                         message: `Capacity Full: ${dbTest.name} has reached its daily limit (${dbTest.dailyLimit}) for ${dateKey}.` 
-//                     });
-//                 }
-//                 // Slot available -> Increment
-//                 availability.count += 1;
-//                 await availability.save();
-//             } else {
-//                 // First booking of the day -> Create record
-//                 await req.TenantAvailability.create({
-//                     testId: dbTest._id.toString(),
-//                     date: dateKey,
-//                     count: 1, 
-//                     dailyLimit: dbTest.dailyLimit
-//                 });
-//             }
-//         }
-//     }
-//     // -------------------------------------------------------------
-
-//     // --- C. DISCOUNT VALIDATION LOGIC ---
-//     let authorizerName = null;
-//     let isOverridden = false;
-
-//     if (discountAmount > 0) {
-//         try {
-//             authorizerName = await validateDiscount(req.TenantUser, req.user.userId, calculatedTotal, discountAmount);
-//         } catch (limitError) {
-//             if (discountOverrideCode) {
-//                 const institution = await Institution.findOne({ institutionId: instId }).select("+settings.discountOverrideCode");
-//                 if (institution.settings?.discountOverrideCode === discountOverrideCode) {
-//                     isOverridden = true;
-//                     authorizerName = `System Override (by ${req.user.username})`;
-//                 } else {
-//                     return res.status(403).json({ message: "Invalid Override Code" });
-//                 }
-//             } else {
-//                 return res.status(403).json({ 
-//                     message: limitError.message, 
-//                     requiresOverride: true 
-//                 });
-//             }
-//         }
-//     }
-
-//     // --- D. GENERATE DISPLAY ID ---
-//     const startOfDay = moment().startOf('day').toDate();
-//     const count = await req.TenantOrder.countDocuments({ createdAt: { $gte: startOfDay } });
-//     const displayId = `${moment().format("YYMMDD")}-${String(count + 1).padStart(3, '0')}`;
-
-//     // --- E. FINANCIALS ---
-//     let financials = {
-//         totalAmount: calculatedTotal,
-//         discountAmount,
-//         discountReason, 
-//         discountAuthorizedBy: authorizerName ? `${authorizerName}` : null,
-//         discountOverriden: isOverridden,
-//         netAmount: calculatedTotal - discountAmount,
-//         paidAmount: 0,
-//         dueAmount: calculatedTotal - discountAmount,
-//         status: "Pending"
-//     };
-
-//     // --- F. INITIAL PAYMENT ---
-//     let transactions = [];
-//     if (initialPayment && initialPayment.amount > 0) {
-//         transactions.push({
-//             paymentMode: initialPayment.mode, // Preserved exact usage
-//             amount: Number(initialPayment.amount),
-//             transactionId: initialPayment.transactionId,
-//             notes: initialPayment.notes,
-//             recordedBy: req.user.userId,
-//             date: new Date()
-//         });
-//         financials.paidAmount = Number(initialPayment.amount);
-//         financials.dueAmount = financials.netAmount - financials.paidAmount;
-//         financials.status = financials.dueAmount <= 0 ? "Paid" : "PartiallyPaid";
-//     }
-
-//     // --- G. CREATE ORDER ---
-//     const newOrder = new req.TenantOrder({
-//       institutionId: instId,
-//       orderId: uuidv4(),
-//       displayId,
-      
-//       patientId: finalPatientId, // Null for Walk-ins
-//       isWalkIn: !!walkin,        // True/False
-//       patientDetails: finalPatientDetails, // The snapshot (contains updated age/gender)
-      
-//       // --- NEW: Save Appointment Details ---
-//       appointment: {
-//           date: finalAppointmentDate,
-//           status: "Scheduled"
-//       },
-
-//       items: orderItems,
-//       financials,
-//       transactions,
-//       notes
-//     });
-
-//     await newOrder.save();
-
-// // -------------------------------------------------------------
-//     // --- SMART QUEUE / TOKEN GENERATION ---
-//     // -------------------------------------------------------------
-//     const tokenPrefixes = { "Pathology": "PAT", "Radiology": "RAD", "Cardiology": "CAR", "Other": "OTH" };
-    
-//     // 1. Group the ordered tests by Department
-//     const departmentGroups = {};
-//     for (const item of orderItems) {
-//         if (item.itemType === 'Test') {
-//             const testDef = await req.TenantTest.findById(item.itemId);
-//             const dept = testDef?.department || "Other";
-            
-//             if (!departmentGroups[dept]) departmentGroups[dept] = [];
-//             departmentGroups[dept].push({ testId: item.itemId, name: item.name });
-//         }
-//     }
-    
-//     const generatedTokens = [];
-    
-//     // 2. Generate an Atomic Token for each Department involved
-//     for (const [dept, tests] of Object.entries(departmentGroups)) {
-        
-//         // ATOMIC INCREMENT: Safe against race conditions
-//         const counter = await req.TenantDailyCounter.findOneAndUpdate(
-//             { institutionId: instId, date: dateKey, department: dept },
-//             { $inc: { sequence_value: 1 } },
-//             { new: true, upsert: true, setDefaultsOnInsert: true }
-//         );
-        
-//         const seq = counter.sequence_value;
-//         const prefix = tokenPrefixes[dept] || "GEN";
-//         const tokenStr = `${prefix}-${String(seq).padStart(3, '0')}`; // e.g. PAT-001
-        
-//         // 3. Create the Queue Token
-//         const newToken = new req.TenantQueueToken({
-//             institutionId: instId,
-//             date: dateKey,
-//             department: dept,
-//             tokenNumber: tokenStr,
-//             sequence: seq,
-//             orderId: newOrder._id,
-//             patientId: finalPatientId,
-//             patientDetails: finalPatientDetails,
-//             tests: tests,
-//             status: 'WAITING'
-//         });
-        
-//         await newToken.save();
-//         generatedTokens.push(newToken);
-        
-//         // 4. SSE TRIGGER (Optional Feature): Instantly update the Department's Screen
-//         sendToBrand(brandCode, { type: 'NEW_TOKEN', token: newToken }, 'tests_queue_updated');
-//     }
-
-//     // --- SSE TRIGGER ---
-//     // Notify all clients of this institution to refresh their test availability
-//     sendToBrand(brandCode, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
-//     // Return order + newly generated tokens
-//     res.status(201).json({ order: newOrder, tokens: generatedTokens });
-
-//   } catch (err) {
-//     console.error("Order Error:", err);
-//     res.status(500).json({ message: err.message });
-//   }
-// });
 router.post("/", async (req, res) => {
   try {
     const { 
@@ -946,10 +676,11 @@ router.put("/:id/cancel", async (req, res) => {
         
         if (!order) return res.status(404).json({ message: "Order not found" });
         if (order.cancellation.isCancelled) return res.status(400).json({ message: "Order is already cancelled." });
+        
         const dateKey = moment(order?.appointment?.date).format("YYYY-MM-DD");
+        
         // 1. Release Capacity Slots
         if (order.appointment?.date) {
-      
             // Find item IDs
             const itemIds = order.items.map(i => i.itemId);
             const dbTests = await req.TenantTest.find({ _id: { $in: itemIds } });
@@ -982,8 +713,43 @@ router.put("/:id/cancel", async (req, res) => {
         }
 
         await order.save();
-        // Trigger refresh on cancel
+
+        // 3. --- FIX: CANCEL ALL ASSOCIATED QUEUE TOKENS ---
+        
+        // A. Cancel standard waiting/hold tokens
+        await req.TenantQueueToken.updateMany(
+            { 
+                orderId: order._id, 
+                status: { $in: ['WAITING', 'HOLD'] } 
+            },
+            { 
+                $set: { 
+                    status: 'CANCELLED', 
+                    notes: `Master Order Cancelled: ${reason || "No reason provided"}` 
+                } 
+            }
+        );
+
+        // B. Override tokens that were previously suspended due to Doctor Absence
+        await req.TenantQueueToken.updateMany(
+            { 
+                orderId: order._id, 
+                status: 'DOC_UNVAILABLE' 
+            },
+            { 
+                $set: { 
+                    status: 'CANCELLED', 
+                    notes: `Master Order Cancelled: ${reason || "No reason provided"} (Note: Previously pending due to Doctor Absence)` 
+                } 
+            }
+        );
+
+        // 4. Trigger SSE to refresh displays and capacity
         sendToBrand(req.user.institutionId, { type: 'REFRESH_AVAILABILITY', date: dateKey }, 'tests_availability_updated');
+        
+        // Broadcast token update so TV displays and dashboards instantly reflect the changes
+        sendToBrand(req.user.institutionId, { type: 'TOKENS_UPDATED' }, 'tests_queue_updated');
+
         res.json(order);
 
     } catch(err) {
