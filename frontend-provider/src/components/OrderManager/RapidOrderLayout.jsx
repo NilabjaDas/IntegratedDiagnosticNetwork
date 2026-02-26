@@ -134,22 +134,35 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
     return current && current < dayjs().startOf("day");
   };
 
-  // --- NEW: SMART DOCTOR AVAILABILITY HELPER ---
+// --- UPDATED: SMART DOCTOR AVAILABILITY HELPER ---
   const getDoctorAvailability = (doctor, dateStr) => {
-      const dayIndex = dayjs(dateStr).day();
+      const targetDate = dayjs(dateStr);
+      const dayIndex = targetDate.day();
+      
+      // Calculate which week of the month this date falls into (1st, 2nd, 3rd, 4th, 5th)
+      const weekOfMonth = Math.ceil(targetDate.date() / 7);
+
       const daySchedule = doctor.schedule?.find(s => s.dayOfWeek === dayIndex);
       if (!daySchedule || !daySchedule.isAvailable) return [];
 
-      let availableShifts = [...daySchedule.shifts];
+      // 1. Filter out shifts that don't operate on this specific week of the month
+      let availableShifts = daySchedule.shifts.filter(shift => {
+          if (shift.repeatWeeks && shift.repeatWeeks.length > 0) {
+              return shift.repeatWeeks.includes(weekOfMonth);
+          }
+          return true; // Fallback for older data that doesn't have repeatWeeks yet
+      });
 
-      // Block Planned Leaves
+      if (availableShifts.length === 0) return [];
+
+      // 2. Block Planned Leaves
       const plannedLeave = doctor.leaves?.find(l => dateStr >= l.startDate && dateStr <= l.endDate);
       if (plannedLeave) {
           if (!plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0) return [];
           availableShifts = availableShifts.filter(s => !plannedLeave.shiftNames.includes(s.shiftName));
       }
 
-      // Block Ad-Hoc Cancellations
+      // 3. Block Ad-Hoc Cancellations
       const override = doctor.dailyOverrides?.find(o => o.date === dateStr);
       if (override && override.isCancelled) {
           if (!override.shiftNames || override.shiftNames.length === 0) return [];

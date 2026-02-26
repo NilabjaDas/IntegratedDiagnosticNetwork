@@ -42,6 +42,7 @@ const mergePatientsWithOrders = async (orders) => {
 
 // --- HELPER: Calculate Items & Total (Refactored) ---
 const calculateOrderItems = async (items, req) => {
+    console.log(items)
     const orderItems = [];
     let calculatedTotal = 0;
     
@@ -70,11 +71,11 @@ const calculateOrderItems = async (items, req) => {
                 orderItems.push({ 
                     itemId: doctor._id, 
                     name: `Consultation: Dr. ${doctor.personalInfo.firstName} ${doctor.personalInfo.lastName}`, 
-                    price: doctor.fees.newConsultation, 
+                    price: item.isFollowUp ? doctor.fees.followUpConsultation : doctor.fees.newConsultation, 
                     itemType: 'Consultation',
                     shiftName: item.shiftName
                 });
-                calculatedTotal += doctor.fees.newConsultation;
+                calculatedTotal += item.isFollowUp ? doctor.fees.followUpConsultation : doctor.fees.newConsultation;
             }
         }
     }
@@ -205,6 +206,16 @@ router.post("/", async (req, res) => {
         const shiftExists = daySchedule.shifts.find(s => s.shiftName === shiftName);
         if (!shiftExists) {
             return res.status(400).json({ message: `Doctor does not have a '${shiftName}' shift on this day.` });
+        }
+
+        // --- NEW: CHECK WEEKS OF THE MONTH ---
+        // Calculate which week of the month the target date falls into (1st, 2nd, 3rd, 4th, 5th)
+        const dateObj = moment(targetDateStr);
+        const weekOfMonth = Math.ceil(dateObj.date() / 7); 
+
+        // If repeatWeeks exists and the current weekOfMonth is NOT in the array, block the booking
+        if (shiftExists.repeatWeeks && shiftExists.repeatWeeks.length > 0 && !shiftExists.repeatWeeks.includes(weekOfMonth)) {
+            return res.status(400).json({ message: `Doctor does not work the ${shiftName} shift during the ${weekOfMonth}${weekOfMonth===1?'st':weekOfMonth===2?'nd':weekOfMonth===3?'rd':'th'} week of the month.` });
         }
 
         // B. Check Planned Leaves

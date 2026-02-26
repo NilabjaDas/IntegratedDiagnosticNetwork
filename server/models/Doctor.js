@@ -14,6 +14,10 @@ const shiftSchema = new mongoose.Schema({
     startTime: { type: String, required: true }, // "10:00"
     endTime: { type: String, required: true },   // "14:00"
     maxTokens: { type: Number, required: true }, // e.g., 20 patients
+    repeatWeeks: { 
+        type: [Number], 
+        default: [1, 2, 3, 4, 5] 
+    },
     breaks: [breakSchema] // Breaks strictly within this shift
 }, { _id: false });
 

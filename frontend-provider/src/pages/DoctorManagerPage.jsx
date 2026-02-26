@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useDispatch, useSelector } from 'react-redux';
 import { Table, Button, Drawer, Form, Typography, message, Space, Popconfirm, Tag, Tabs } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ClockCircleOutlined, AlertOutlined, PlusSquareOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, ClockCircleOutlined, AlertOutlined, PlusSquareOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
-import { getDoctors, createDoctor, updateDoctor, deleteDoctor, addDoctorOverride, fetchMyInstitutionSettings,revokeDoctorAbsence } from '../redux/apiCalls';
+import { getDoctors, createDoctor, updateDoctor, deleteDoctor, addDoctorOverride, fetchMyInstitutionSettings, revokeDoctorAbsence } from '../redux/apiCalls';
 
 // Modular Components
 import DoctorProfileTab from '../components/DoctorManager/DoctorProfileTab';
@@ -57,7 +57,12 @@ const DoctorManagerPage = () => {
                     ...existingDay,
                     shifts: existingDay.shifts.map(shift => ({
                         ...shift,
-                        timeRange: [dayjs(shift.startTime, 'HH:mm'), dayjs(shift.endTime, 'HH:mm')]
+                        timeRange: [dayjs(shift.startTime, 'HH:mm'), dayjs(shift.endTime, 'HH:mm')],
+                        repeatWeeks: shift.repeatWeeks && shift.repeatWeeks.length > 0 ? shift.repeatWeeks : [1, 2, 3, 4, 5],
+                        breaks: shift.breaks?.map(b => ({
+                            label: b.label,
+                            timeRange: [dayjs(b.startTime, 'HH:mm'), dayjs(b.endTime, 'HH:mm')]
+                        })) || []
                     }))
                 };
             }
@@ -66,46 +71,55 @@ const DoctorManagerPage = () => {
     };
 
     const handleOpenSpecialShift = (doc) => {
-    setSelectedDoctorForSpecialShift(doc);
-    setSpecialShiftModalVisible(true);
-};
+        setSelectedDoctorForSpecialShift(doc);
+        setSpecialShiftModalVisible(true);
+    };
 
     const openDrawer = (doctor = null) => {
         setEditingDoctor(doctor);
         if (doctor) {
             form.setFieldsValue({
                 ...doctor,
+                // Personal Info
                 firstName: doctor.personalInfo?.firstName,
                 lastName: doctor.personalInfo?.lastName,
+                gender: doctor.personalInfo?.gender,
                 phone: doctor.personalInfo?.phone,
                 email: doctor.personalInfo?.email,
+                
+                // Professional Info
                 specialization: doctor.professionalInfo?.specialization,
                 registrationNumber: doctor.professionalInfo?.registrationNumber,
+                qualifications: doctor.professionalInfo?.qualifications || [],
+                experienceYears: doctor.professionalInfo?.experienceYears,
+                
+                // Rules & Settings
                 newConsultation: doctor.fees?.newConsultation,
                 followUpConsultation: doctor.fees?.followUpConsultation,
                 avgTimePerPatientMinutes: doctor.consultationRules?.avgTimePerPatientMinutes,
                 followUpValidityDays: doctor.consultationRules?.followUpValidityDays,
                 allowOverbooking: doctor.consultationRules?.allowOverbooking,
+                leaveSettings: doctor.leaveSettings,
                 assignedCounterId: doctor.assignedCounterId,
+                prescriptionTemplateId: doctor.prescriptionTemplateId,
+                
+                // Schedules
                 schedule: buildInitialSchedule(doctor.schedule),
-                leaves: doctor.leaves?.map(l => ({
-                    reason: l.reason,
-                    dateRange: [dayjs(l.startDate, 'YYYY-MM-DD'), dayjs(l.endDate, 'YYYY-MM-DD')]
-                }))
             });
         } else {
             form.resetFields();
             form.setFieldsValue({
                 schedule: buildInitialSchedule([]),
                 avgTimePerPatientMinutes: 15,
-                followUpValidityDays: 7
+                followUpValidityDays: 7,
+                leaveSettings: { leaveLimitPerYear: 20 }
             });
         }
         setDrawerVisible(true);
     };
 
- const handleSaveDoctor = async (values) => {
-        // 1. Format the schedule back to DB strings (Now including nested breaks)
+    const handleSaveDoctor = async (values) => {
+        // 1. Format the schedule back to DB strings (Including Breaks)
         const formattedSchedule = (values.schedule || []).map((day, index) => ({
             dayOfWeek: index, 
             isAvailable: !!day.isAvailable, // Force boolean
@@ -114,7 +128,7 @@ const DoctorManagerPage = () => {
                 startTime: shift.timeRange && shift.timeRange[0] ? shift.timeRange[0].format('HH:mm') : "00:00",
                 endTime: shift.timeRange && shift.timeRange[1] ? shift.timeRange[1].format('HH:mm') : "00:00",
                 maxTokens: shift.maxTokens,
-                // --- NEW: Map nested breaks ---
+                repeatWeeks: shift.repeatWeeks || [1, 2, 3, 4, 5],
                 breaks: shift.breaks?.map(b => ({
                     label: b.label || "Break",
                     startTime: b.timeRange && b.timeRange[0] ? b.timeRange[0].format('HH:mm') : "00:00",
@@ -123,20 +137,20 @@ const DoctorManagerPage = () => {
             })) || []
         }));
 
-        // 2. Build the comprehensive payload
+        // 2. Build complete payload
         const payload = {
             personalInfo: { 
                 firstName: values.firstName, 
                 lastName: values.lastName, 
-                gender: values.gender, // Added
+                gender: values.gender,
                 phone: values.phone, 
                 email: values.email 
             },
             professionalInfo: { 
                 specialization: values.specialization, 
                 registrationNumber: values.registrationNumber,
-                qualifications: values.qualifications, // Added
-                experienceYears: values.experienceYears // Added
+                qualifications: values.qualifications,
+                experienceYears: values.experienceYears
             },
             fees: { 
                 newConsultation: values.newConsultation, 
@@ -147,12 +161,12 @@ const DoctorManagerPage = () => {
                 followUpValidityDays: values.followUpValidityDays,
                 allowOverbooking: values.allowOverbooking
             },
-            leaveSettings: values.leaveSettings, // Added (e.g., leaveLimitPerYear)
-            prescriptionTemplateId: values.prescriptionTemplateId, // Added
+            leaveSettings: values.leaveSettings,
+            prescriptionTemplateId: values.prescriptionTemplateId,
             assignedCounterId: values.assignedCounterId,
             schedule: formattedSchedule,
-            // Note: 'leaves' are intentionally omitted here to prevent overwriting the Leave Ledger tab
         };
+
         try {
             if (editingDoctor) {
                 await updateDoctor(dispatch, editingDoctor.doctorId, payload);
@@ -169,16 +183,6 @@ const DoctorManagerPage = () => {
         }
     };
 
-    const handleDelete = async (id) => {
-        try {
-            await deleteDoctor(dispatch, id);
-            message.success("Doctor deactivated.");
-            getDoctors(dispatch);
-        } catch (error) {
-            message.error("Failed to delete.");
-        }
-    };
-
     const handleSaveOverride = async (values) => {
         try {
             const formattedValues = { ...values, date: values.date};
@@ -189,6 +193,70 @@ const DoctorManagerPage = () => {
         } catch (error) {
             console.log(error)
             message.error("Failed to apply override.");
+        }
+    };
+
+    const getTodayStatus = (doc) => {
+        const todayStr = dayjs().format('YYYY-MM-DD');
+        const todayIndex = dayjs().day();
+        const totalShifts = doc.schedule?.find(s => s.dayOfWeek === todayIndex)?.shifts || [];
+        const totalShiftCount = totalShifts.length;
+
+        const todayLeaves = doc.leaves?.filter(l => todayStr >= l.startDate && todayStr <= l.endDate) || [];
+        let plannedCancelledShifts = [];
+        let isFullDayLeave = false;
+
+        todayLeaves.forEach(l => {
+            if (!l.shiftNames || l.shiftNames.length === 0) {
+                isFullDayLeave = true;
+            } else {
+                plannedCancelledShifts.push(...l.shiftNames);
+            }
+        });
+
+        const overrides = doc.dailyOverrides?.filter(o => o.date === todayStr) || [];
+        const overrideCancelledShifts = overrides.filter(o => o.isCancelled).flatMap(o => o.shiftNames || []);
+        const overridesDelays = overrides.filter(o => o.delayMinutes > 0);
+
+        const allCancelledShifts = [...new Set([...plannedCancelledShifts, ...overrideCancelledShifts])];
+
+        if (isFullDayLeave || (totalShiftCount > 0 && allCancelledShifts.length >= totalShiftCount)) {
+            return { text: isFullDayLeave ? 'On Planned Leave' : 'Cancelled (Full Day)', color: 'red', canRevoke: true, fullyCancelled: true };
+        }
+
+        const details = [];
+
+        if (plannedCancelledShifts.length > 0) {
+            details.push(`${plannedCancelledShifts.join(', ')}: Planned Leave`);
+        }
+
+        const pureOverrideCancels = overrideCancelledShifts.filter(s => !plannedCancelledShifts.includes(s));
+        if (pureOverrideCancels.length > 0) {
+            details.push(`${pureOverrideCancels.join(', ')}: Cancelled`);
+        }
+
+        overridesDelays.forEach(o => {
+            const activeDelays = (o.shiftNames || []).filter(s => !allCancelledShifts.includes(s));
+            if (activeDelays.length > 0) {
+                details.push(`${activeDelays.join(', ')}: Late (${o.delayMinutes}m)`);
+            }
+        });
+
+        if (details.length > 0) {
+            return { text: details.join(' | '), color: 'orange', canRevoke: true, fullyCancelled: false };
+        }
+
+        return { text: 'Active / Normal', color: 'green', canRevoke: false, fullyCancelled: false };
+    };
+
+    const handleRevokeAbsence = async (doctorId) => {
+        try {
+            const todayStr = dayjs().format('YYYY-MM-DD');
+            await revokeDoctorAbsence(doctorId, todayStr);
+            message.success("Schedule restored successfully!");
+            getDoctors(dispatch); 
+        } catch (error) {
+            message.error("Failed to revoke absence.");
         }
     };
 
@@ -211,14 +279,12 @@ const DoctorManagerPage = () => {
                 <Space size="middle">
                     <Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => openDrawer(record)} />
                     
-                    {/* SHOW REVOKE IF THERE IS AN OVERRIDE */}
                     {status.canRevoke ? (
                         <Popconfirm title="Revoke absence/delay and restore schedule?" onConfirm={() => handleRevokeAbsence(record.doctorId)}>
                             <Button size="small" type="primary" style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}>Revoke Status</Button>
                         </Popconfirm>
                     ) : null}
 
-                    {/* HIDE DELAY BUTTON IF ALREADY FULLY CANCELLED */}
                     {!status.fullyCancelled && (
                         <Button type="primary" size="small" icon={<AlertOutlined />} danger onClick={() => { setEditingDoctor(record); setOverrideModalVisible(true); }}>
                             Delay / Leave
@@ -234,97 +300,22 @@ const DoctorManagerPage = () => {
     ];
 
     const tabItems = [
-        { key: '1', label: 'Profile & Fees', children: <DoctorProfileTab rooms={rooms} /> , forceRender: true},
-        { key: '2', label: 'Weekly Schedule', children: <DoctorScheduleTab form={form} /> , forceRender: true},
+        { key: '1', label: 'Profile & Fees', children: <DoctorProfileTab rooms={rooms} />, forceRender: true },
+        { key: '2', label: 'Weekly Schedule', children: <DoctorScheduleTab form={form} />, forceRender: true },
         { 
             key: '3', 
             label: 'Leave Ledger', 
             children: <DoctorLeavesTab 
                 doctor={editingDoctor} 
                 refreshData={(updatedDoctorFromServer) => {
-                    // 1. Refresh the background table data
                     getDoctors(dispatch); 
-                    
-                    // 2. FIX: Instantly update the current Drawer's state!
                     if (updatedDoctorFromServer) {
                         setEditingDoctor(updatedDoctorFromServer);
                     }
-                }}
-                
+                }} 
             /> 
         }
     ];
-
-const getTodayStatus = (doc) => {
-        const todayStr = dayjs().format('YYYY-MM-DD');
-        const todayIndex = dayjs().day();
-        const totalShifts = doc.schedule?.find(s => s.dayOfWeek === todayIndex)?.shifts || [];
-        const totalShiftCount = totalShifts.length;
-
-        // 1. Gather all Planned Leave cancellations for today
-        const todayLeaves = doc.leaves?.filter(l => todayStr >= l.startDate && todayStr <= l.endDate) || [];
-        let plannedCancelledShifts = [];
-        let isFullDayLeave = false;
-
-        todayLeaves.forEach(l => {
-            if (!l.shiftNames || l.shiftNames.length === 0) {
-                isFullDayLeave = true;
-            } else {
-                plannedCancelledShifts.push(...l.shiftNames);
-            }
-        });
-
-        // 2. Gather all Overrides for today
-        const overrides = doc.dailyOverrides?.filter(o => o.date === todayStr) || [];
-        const overrideCancelledShifts = overrides.filter(o => o.isCancelled).flatMap(o => o.shiftNames || []);
-        const overridesDelays = overrides.filter(o => o.delayMinutes > 0);
-
-        // Merge all cancelled shifts
-        const allCancelledShifts = [...new Set([...plannedCancelledShifts, ...overrideCancelledShifts])];
-
-        // If Full day leave, OR all shifts are cancelled
-        if (isFullDayLeave || (totalShiftCount > 0 && allCancelledShifts.length >= totalShiftCount)) {
-            return { text: isFullDayLeave ? 'On Planned Leave' : 'Cancelled (Full Day)', color: 'red', canRevoke: true, fullyCancelled: true };
-        }
-
-        const details = [];
-
-        // Build string for Planned Leaves
-        if (plannedCancelledShifts.length > 0) {
-            details.push(`${plannedCancelledShifts.join(', ')}: Planned Leave`);
-        }
-
-        // Build string for Override Cancels (excluding ones already in planned leave)
-        const pureOverrideCancels = overrideCancelledShifts.filter(s => !plannedCancelledShifts.includes(s));
-        if (pureOverrideCancels.length > 0) {
-            details.push(`${pureOverrideCancels.join(', ')}: Cancelled`);
-        }
-
-        // Build string for Delays
-        overridesDelays.forEach(o => {
-            const activeDelays = (o.shiftNames || []).filter(s => !allCancelledShifts.includes(s));
-            if (activeDelays.length > 0) {
-                details.push(`${activeDelays.join(', ')}: Late (${o.delayMinutes}m)`);
-            }
-        });
-
-        if (details.length > 0) {
-            return { text: details.join(' | '), color: 'orange', canRevoke: true, fullyCancelled: false };
-        }
-
-        return { text: 'Active / Normal', color: 'green', canRevoke: false, fullyCancelled: false };
-    };
-
-    const handleRevokeAbsence = async (doctorId) => {
-        try {
-            const todayStr = dayjs().format('YYYY-MM-DD');
-            await revokeDoctorAbsence(doctorId, todayStr);
-            message.success("Schedule restored successfully!");
-            getDoctors(dispatch); // Refresh table
-        } catch (error) {
-            message.error("Failed to revoke absence.");
-        }
-    };
 
     return (
         <PageContainer>
@@ -338,7 +329,7 @@ const getTodayStatus = (doc) => {
             <Table columns={columns} dataSource={doctors} rowKey="doctorId" loading={isFetching} style={{ background: '#fff', borderRadius: '8px' }} />
 
             <Drawer
-                title={editingDoctor ? `Dr. ${editingDoctor.personalInfo.firstName + " " + editingDoctor.personalInfo.lastName + "'s"} Profile` : "Add New Doctor"}
+                title={editingDoctor ? "Edit Doctor Profile" : "Add New Doctor"}
                 width={'100%'}
                 onClose={() => setDrawerVisible(false)}
                 open={drawerVisible}
@@ -356,16 +347,15 @@ const getTodayStatus = (doc) => {
                 doctor={editingDoctor} 
             />
             <DoctorSpecialShiftModal 
-        visible={specialShiftModalVisible}
-        onCancel={() => { setSpecialShiftModalVisible(false); setSelectedDoctorForSpecialShift(null); }}
-        onSuccess={() => {
-            setSpecialShiftModalVisible(false);
-            setSelectedDoctorForSpecialShift(null);
-            // Refresh your table data here, assuming you have a loadData() or getDoctors() function
-            getDoctors(dispatch); 
-        }}
-        doctor={selectedDoctorForSpecialShift}
-    />
+                visible={specialShiftModalVisible}
+                onCancel={() => { setSpecialShiftModalVisible(false); setSelectedDoctorForSpecialShift(null); }}
+                onSuccess={() => {
+                    setSpecialShiftModalVisible(false);
+                    setSelectedDoctorForSpecialShift(null);
+                    getDoctors(dispatch); 
+                }}
+                doctor={selectedDoctorForSpecialShift}
+            />
         </PageContainer>
     );
 };
