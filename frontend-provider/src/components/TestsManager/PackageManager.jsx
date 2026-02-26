@@ -26,7 +26,7 @@ import {
   TeamOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-import { createPackage, updatePackage, deletePackage } from "../redux/apiCalls";
+import { createPackage, updatePackage, deletePackage } from "../../redux/apiCalls";
 
 const { Option } = Select;
 const { TextArea } = Input;

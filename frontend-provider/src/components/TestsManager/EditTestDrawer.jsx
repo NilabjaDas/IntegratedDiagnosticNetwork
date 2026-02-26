@@ -17,7 +17,7 @@ import {
 } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-import { updateMyTest, getTestDetails } from "../redux/apiCalls";
+import { updateMyTest, getTestDetails } from "../../redux/apiCalls";
 import BioReferenceInput from "./BioReferenceInput";
 
 const { Option } = Select;

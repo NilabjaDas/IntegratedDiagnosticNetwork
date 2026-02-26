@@ -3,7 +3,7 @@ import styled from "styled-components";
 import { Table, Button, Modal, Tag, Form, Input, message, Empty } from "antd";
 import { CloudDownloadOutlined, AppstoreAddOutlined } from "@ant-design/icons";
 import { useSelector, useDispatch } from "react-redux";
-import { getTemplateLibrary, importTemplate, getInstitutionDetails } from "../redux/apiCalls";
+import { getTemplateLibrary, importTemplate, getInstitutionDetails } from "../../redux/apiCalls";
 
 const Container = styled.div`
   padding: 0 20px;

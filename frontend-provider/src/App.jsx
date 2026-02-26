@@ -21,9 +21,7 @@ import { BASE_URL, currentDomain } from "./requestMethods";
 import { Bounce, toast, ToastContainer } from "react-toastify";
 import MaintenanceContainer from "./components/MaintenanceContainer";
 import HomePage from "./pages/HomePage";
-import Page1 from "./pages/Page1";
-import Page2 from "./pages/Page2";
-import Page3 from "./pages/Page3";
+import BlankPage from "./pages/BlankPage"; // MUST HAVE
 import {
   getInstitutionDetails,
   getInstitutionStatus,
@@ -38,12 +36,14 @@ import MainLayout from "./components/MainLayout";
 import TestsPage from "./pages/TestsPage";
 import OrdersPage from "./pages/OrdersPage";
 import ConfigurationPage from "./pages/ConfigurationPage";
-import ClinicalManagerPage from './pages/ClinicalManagerPage';
 import DoctorWorkspacePage from './pages/DoctorWorkspacePage';
 import moment from "moment";
 import QueueManagerPage from "./pages/QueueManagerPage";
 import TvDisplayPage from "./pages/TvDisplayPage";
-import { addTokenSuccess, getQueueSuccess } from "./redux/queueRedux";
+import { addTokenSuccess } from "./redux/queueRedux";
+import TemplateEditor from "./components/Configuration/TemplateEditor";
+import TemplateLibrary from "./components/Configuration/TemplateLibrary";
+import ClinicalPage from "./pages/ClinicalPage";
 
 // Global style to reset default margin and padding
 const GlobalStyle = createGlobalStyle`
@@ -59,10 +59,6 @@ const GlobalStyle = createGlobalStyle`
   }
 `;
 
-/**
- * Inline ProtectedRoute so no extra file required.
- * It simply checks auth token in redux and redirects to /login if missing.
- */
 const ProtectedRoute = ({ children }) => {
   const token = useSelector(
     (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
@@ -72,74 +68,37 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-  const theme = useSelector(
-    (state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme
-  );
+  const theme = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.theme);
   const dispatch = useDispatch();
-  // --- selectors (kept those still used) ---
-  const institutionDetails = useSelector(
-    (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails
-  );
-  const institutionStatus = useSelector(
-    (state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].status
-  );
-  const token = useSelector(
-    (state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token
-  );
-  const maintenanceDataFromRedux = useSelector(
-    (state) => state[process.env.REACT_APP_UI_DATA_KEY]?.scheduledMaintenance
-  );
+  
+  const institutionDetails = useSelector((state) => state[process.env.REACT_APP_INSTITUTIONS_DATA_KEY].brandDetails);
+  const token = useSelector((state) => state[process.env.REACT_APP_ACCESS_TOKEN_KEY]?.token);
+  const maintenanceDataFromRedux = useSelector((state) => state[process.env.REACT_APP_UI_DATA_KEY]?.scheduledMaintenance);
 
-  // local UI state
-  const [maintenanceData, setMaintenanceData] = useState(
-    maintenanceDataFromRedux
-  );
-  const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(
-    maintenanceDataFromRedux?.activeStatus
-  );
+  const [maintenanceData, setMaintenanceData] = useState(maintenanceDataFromRedux);
+  const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(maintenanceDataFromRedux?.activeStatus);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalResponse, setModalResponse] = useState(false);
   
-  // utility to check if current route is login
   const isOnLoginRoute = () => {
-    try {
-      return window.location.pathname === "/login";
-    } catch {
-      return false;
-    }
+    try { return window.location.pathname === "/login"; } catch { return false; }
   };
 
-  // -------------------------
-  // Ping effect
-  // -------------------------
   useEffect(() => {
-    if (!token) return; // don't run anything unless token exists
-
+    if (!token) return;
     const pingServer = async () => {
       if (isOnLoginRoute()) return;
       try {
-        // We just call getPing. 
-        // If it returns 403/401, the Axios Interceptor in requestMethods.js 
-        // will automatically dispatch CLEAR_ALL_REDUCERS.
         await getPing(dispatch);
       } catch (error) {
         console.error("Ping failed:", error);
       }
     };
-
-    // immediate ping once token is available
     pingServer();
-
-    const interval = setInterval(() => {
-      pingServer();
-    }, 600000); // 10 minutes
-
+    const interval = setInterval(() => { pingServer(); }, 600000); 
     return () => clearInterval(interval);
   }, [token, dispatch]);
 
-  // -------------------------
-  // Fetch brand details (unchanged)
-  // -------------------------
   useEffect(() => {
     const fetchInstitutionDetails = async () => {
       await getInstitutionStatus(dispatch);
@@ -148,21 +107,14 @@ function App() {
     fetchInstitutionDetails();
   }, [dispatch]);
 
-  // -------------------------
-  // Initial Data Load
-  // -------------------------
   useEffect(() => {
     const today = moment().format("YYYY-MM-DD");
-    // Load initial data
     if (token) {
       getMyTests(dispatch, today);
       getPackages(dispatch);
     }
   }, [dispatch, token]);
 
-  // -------------------------
-  // SSE / EventSource
-  // -------------------------
   useEffect(() => {
     let eventSource;
     let retryTimeout;
@@ -170,56 +122,36 @@ function App() {
     const connectEventSource = () => {
       if (!token) return;
 
-      const eventUrl =
-        BASE_URL === "/"
+      const eventUrl = BASE_URL === "/"
           ? `/server/events?token=${token}&domain=${currentDomain}`
           : `${BASE_URL}/server/events?token=${token}&domain=${currentDomain}`;
 
       eventSource = new EventSource(eventUrl);
 
-      // --- NEW: Listen for Authentication Errors from SSE ---
       eventSource.addEventListener("error", (event) => {
         try {
             const data = JSON.parse(event.data);
             if (data && (data.message === "Token expired" || data.message === "Unauthorized")) {
-                console.warn("SSE Auth Error:", data.message);
                 eventSource.close();
-                dispatch({ type: CLEAR_ALL_REDUCERS }); // Force logout
+                dispatch({ type: CLEAR_ALL_REDUCERS }); 
             }
-        } catch (e) {
-            // Standard network error or connection drop will be handled by onerror
-        }
+        } catch (e) {}
       });
-
-      eventSource.onmessage = (event) => {
-        // console.log("SSE message:", event.data);
-      };
 
       eventSource.addEventListener("adminLogout", (event) => {
         const data = JSON.parse(event.data);
         if (data.domain === currentDomain) {
-          toast.info(`${data.message}`, {
-            position: "top-right",
-            autoClose: 10000,
-            hideProgressBar: false,
-            draggable: true,
-            progress: undefined,
-            theme: "light",
-            transition: Bounce,
-          });
+          toast.info(`${data.message}`, { position: "top-right", autoClose: 10000, theme: "light", transition: Bounce });
         }
         dispatch({ type: CLEAR_ALL_REDUCERS });
       });
 
       eventSource.addEventListener("scheduled_maintenance", (event) => {
         const data = JSON.parse(event.data);
-
         setMaintenanceData(data);
         if (data?.activeStatus) {
-          // if maintenance active, clear reducers and force maintenance viewport
           dispatch({ type: CLEAR_ALL_REDUCERS });
         }
-
         setIsMaintenanceModalOpen(data?.activeStatus || false);
         dispatch(setScheduledMaintenanceData(data));
         dispatch(viewPortData(data?.activeStatus ? 100 : 0));
@@ -235,22 +167,18 @@ function App() {
         dispatch(setMasterReportsData(data?.report?.properties));
       });
 
-        eventSource.addEventListener("tests_queue_updated", (event) => {
+      eventSource.addEventListener("tests_queue_updated", (event) => {
           const eventData = JSON.parse(event.data);
-          const tokenContent = eventData.token;
-           dispatch(addTokenSuccess(tokenContent));
+          dispatch(addTokenSuccess(eventData.token));
       });
 
       eventSource.addEventListener("tests_availability_updated", (event) => {
         try {
           const payload = JSON.parse(event.data);
-          const targetDate = payload.date; // "YYYY-MM-DD" from server
-
-          // Option A: Always fetch the date that was modified
+          const targetDate = payload.date; 
           if (targetDate) {
             getMyTests(dispatch, targetDate);
           } else {
-            // Fallback to today if no date passed
             getMyTests(dispatch, moment().format("YYYY-MM-DD"));
           }
         } catch (e) {
@@ -259,12 +187,8 @@ function App() {
       });
 
       eventSource.onerror = (error) => {
-        // Standard EventSource error (network down, 401 status on handshake, etc)
-        console.error("SSE error:", error);
         if (eventSource) eventSource.close();
-        retryTimeout = setTimeout(() => {
-          connectEventSource();
-        }, 3000);
+        retryTimeout = setTimeout(() => { connectEventSource(); }, 3000);
       };
     };
 
@@ -278,83 +202,43 @@ function App() {
     };
   }, [token, dispatch]);
 
-  const handleLogout = () => {
-    dispatch({ type: CLEAR_ALL_REDUCERS });
-  };
-
-  const handleModalClose = () => {
-    setModalOpen(false);
-  };
-
-  const handleModalResponse = (val) => {
-    setModalResponse(val);
-  };
+  const handleLogout = () => { dispatch({ type: CLEAR_ALL_REDUCERS }); };
+  const handleModalClose = () => { setModalOpen(false); };
+  const handleModalResponse = (val) => { setModalResponse(val); };
 
   useEffect(() => {
-    if (modalResponse) {
-      handleLogout();
-    }
+    if (modalResponse) { handleLogout(); }
   }, [modalResponse, handleLogout]);
 
   function BackWatcher() {
     const navigate = useNavigate();
     const blockedRef = useRef(false);
 
-    useOnBack(
-      (prevLocation, newLocation) => {
+    useOnBack((prevLocation) => {
         if (blockedRef.current) {
           blockedRef.current = false;
           return;
         }
-
-        // Only block if the user WAS on "/" when they pressed back
         if (prevLocation?.pathname === "/") {
           setModalOpen(true);
           blockedRef.current = true;
           navigate("/", { replace: true });
         }
-      },
-      {
-        onForward: (prevLocation, newLocation) => {
-          // optional: handle forward if needed
-        },
-      }
-    );
-
+      }, {});
     return null;
   }
 
-  // -------------------------
-  // Render (URL-based routing)
-  // -------------------------
   return (
     <ConfigProvider theme={theme === "dark" ? darkTheme : {}}>
       <Helmet>
-        <link
-          rel="icon"
-          href={
-            institutionDetails?.favicon ||
-            institutionDetails?.institutionSymbolUrl ||
-            institutionDetails?.institutionLogoUrl
-          }
-        />
-        <title>
-          {`Medico Control Center | ${
-            institutionDetails?.brandName || "TechFloater"
-          }`}
-        </title>
+        <link rel="icon" href={institutionDetails?.favicon || institutionDetails?.institutionSymbolUrl || institutionDetails?.institutionLogoUrl} />
+        <title>{`Medico Control Center | ${institutionDetails?.brandName || "TechFloater"}`}</title>
       </Helmet>
 
       <GlobalStyle />
       <ToastContainer />
 
-      <Modal
-        open={isMaintenanceModalOpen}
-        footer={null}
-        closable={false}
-        width={478}
-        style={{ borderRadius: "30px" }}
-      >
+      <Modal open={isMaintenanceModalOpen} footer={null} closable={false} width={478} style={{ borderRadius: "30px" }}>
         {maintenanceData && (
           <MaintenanceContainer
             activeStatus={maintenanceData.activeStatus}
@@ -368,44 +252,43 @@ function App() {
 
       <BrowserRouter>
         <BackWatcher />
-        <LogoutModal
-          open={modalOpen}
-          close={handleModalClose}
-          modalResponse={(val) => handleModalResponse(val)}
-          yesText="Yes"
-          noText="No"
-        />
+        <LogoutModal open={modalOpen} close={handleModalClose} modalResponse={handleModalResponse} yesText="Yes" noText="No" />
+        
+        {/* --- FIXED ROUTES ARCHITECTURE --- */}
         <Routes>
-          {/* Public login route: redirect to / if already logged in */}
-          <Route
-            path="/login"
-            element={token ? <Navigate to="/" replace /> : <LoginPage />}
-          />
+            <Route path="/login" element={token ? <Navigate to="/" replace /> : <LoginPage />} />
+            <Route path="/tv-display" element={<TvDisplayPage />} />
 
-          {/* Protected app routes (URL-based). Refreshing any of these stays on same URL */}
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Routes>
-                    <Route path="/" element={<HomePage />} />
-                    <Route path="/tests-management" element={<TestsPage />} />
-                    <Route path="/orders-management" element={<OrdersPage />} />
-                    <Route path="/queue-management" element={<QueueManagerPage />} />
-                    <Route path="/configuration" element={<ConfigurationPage />} />
-                    <Route path="/doctors" element={<ClinicalManagerPage />} />
-                    <Route path="/doctor-workspace" element={<DoctorWorkspacePage />} />
-                    <Route path="/page2" element={<Page2 />} />
-                    <Route path="/page3" element={<Page3 />} />
-                    <Route path="/tv-display/:department" element={<TvDisplayPage />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
+            {/* Protected Application Architecture */}
+            <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+                <Route index element={<HomePage />} />
+                
+             {/* Tests Management */}
+                <Route path="tests-management" element={<Navigate to="/tests-management/my-tests" replace />} />
+                <Route path="tests-management/:tab" element={<TestsPage />} />
+                
+                {/* Orders Management */}
+                <Route path="orders-management" element={<Navigate to="/orders-management/orders" replace />} />
+                <Route path="orders-management/:tab" element={<OrdersPage />} />
+
+              {/* Queue Management */}
+                <Route path="queue-management" element={<Navigate to="/queue-management/queue" replace />} />
+                <Route path="queue-management/:tab" element={<QueueManagerPage />} />
+
+             {/* Clinical Management */}
+                <Route path="clinical-management" element={<Navigate to="/clinical-management/doctors" replace />} />
+                <Route path="clinical-management/:tab" element={<ClinicalPage />} />
+
+              {/* EMR Workspace */}
+                <Route path="doctor-emr" element={<Navigate to="/doctor-emr/workspace" replace />} />
+                <Route path="doctor-emr/:tab" element={<DoctorWorkspacePage />} />
+
+             {/* Configuration */}
+                <Route path="configuration" element={<Navigate to="/configuration/identity" replace />} />
+                <Route path="configuration/:tab" element={<ConfigurationPage />} />
+            </Route>
         </Routes>
+
       </BrowserRouter>
     </ConfigProvider>
   );

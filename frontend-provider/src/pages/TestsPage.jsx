@@ -1,63 +1,58 @@
-import React, { useEffect } from "react";
-import { Tabs, Layout, Typography } from "antd";
-import { ExperimentOutlined, AppstoreAddOutlined, MedicineBoxOutlined } from "@ant-design/icons";
+import React from "react";
 import styled from "styled-components";
-import TestManager from "../components/TestManager";
-import MasterCatalog from "../components/MasterCatalog";
-import PackageManager from "../components/PackageManager";
-import { useDispatch } from "react-redux";
-import { getMyTests, getPackages } from "../redux/apiCalls";
+import { Typography, Card } from "antd";
+import { useParams, Navigate } from "react-router-dom";
 
-const { Title } = Typography;
+import TestManager from "../components/TestsManager/TestManager";
+import MasterCatalog from "../components/TestsManager/MasterCatalog";
+import PackageManager from "../components/TestsManager/PackageManager";
 
-// --- Styled Components ---
+const { Title, Text } = Typography;
+
 const PageContainer = styled.div`
-  /* padding: 24px; */
-  /* min-height: 100vh; */
-  /* You can add more theme-specific styles here if needed */
-  /* border-radius: 8px; */
-  /* box-shadow: 0 2px 8px rgba(0,0,0,0.1); */
+  padding: 24px;
+  min-height: 100vh;
+  background-color: #f4f6f8;
 `;
 
 const TestsPage = () => {
+  const { tab } = useParams(); // Reads "my-tests", "packages", etc., from the URL
 
+  // Map the URL parameter to the correct component
+  const renderContent = () => {
+    switch (tab) {
+      case 'my-tests': 
+        return <TestManager />;
+      case 'packages': 
+        return <PackageManager />;
+      case 'master-catalog': 
+        return <MasterCatalog />;
+      default: 
+        // If they type a weird URL, send them back to my-tests
+        return <Navigate to="/tests-management/my-tests" replace />;
+    }
+  };
 
-  const items = [
-    {
-      key: "1",
-      label: (
-        <span>
-          <ExperimentOutlined />
-          My Tests (Price List)
-        </span>
-      ),
-      children: <TestManager />,
-    },
-    {
-      key: "2",
-      label: (
-        <span>
-          <MedicineBoxOutlined />
-          Health Packages
-        </span>
-      ),
-      children: <PackageManager />,
-    },
-    {
-      key: "3",
-      label: (
-        <span>
-          <AppstoreAddOutlined />
-          Add from Master Catalog
-        </span>
-      ),
-      children: <MasterCatalog />,
-    },
-  ];
+  // Dynamically set the page title based on the URL
+  const getTitle = () => {
+    const titles = {
+      'my-tests': 'My Tests (Price List)',
+      'packages': 'Health Packages',
+      'master-catalog': 'Master Catalog'
+    };
+    return titles[tab] || 'Tests Management';
+  };
 
   return (
     <PageContainer>
-      <Tabs defaultActiveKey="1" items={items} size="large" />
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0 }}>{getTitle()}</Title>
+        <Text type="secondary">Manage your laboratory tests, packages, and master catalog imports.</Text>
+      </div>
+      
+      <Card bodyStyle={{ padding: '24px' }} style={{ borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', minHeight: '600px' }}>
+        {renderContent()}
+      </Card>
     </PageContainer>
   );
 };

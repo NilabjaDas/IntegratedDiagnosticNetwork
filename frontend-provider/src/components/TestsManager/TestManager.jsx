@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Table, Input, InputNumber, Button, Tag, Space, message, Tooltip, Modal } from "antd";
 import { EditOutlined, SaveOutlined, CloseOutlined, DeleteOutlined, SettingOutlined, LinkOutlined, DisconnectOutlined } from "@ant-design/icons";
 import { useSelector, useDispatch } from "react-redux";
-import { updateMyTest, deleteMyTest } from "../redux/apiCalls";
+import { updateMyTest, deleteMyTest } from "../../redux/apiCalls";
 import EditTestDrawer from "./EditTestDrawer"; 
 
 const TestManager = () => {

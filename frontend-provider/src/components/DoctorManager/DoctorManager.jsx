@@ -1,58 +1,31 @@
 import React, { useEffect, useState } from 'react';
+import styled from 'styled-components';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
-    Table, Button, Drawer, Form, Typography, message, Space, Popconfirm, 
-    Tag, Tabs, Layout, Menu, Card, Empty 
+    Table, Button, Drawer, Form, Typography, message, Space, Popconfirm, Tag, Tabs, Card
 } from 'antd';
 import { 
-    PlusOutlined, EditOutlined, ClockCircleOutlined, AlertOutlined, PlusSquareOutlined, 
-    TeamOutlined, MedicineBoxOutlined, ExperimentOutlined, HeartOutlined 
+    PlusOutlined, EditOutlined, ClockCircleOutlined, AlertOutlined, PlusSquareOutlined 
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 import { 
     getDoctors, createDoctor, updateDoctor, deleteDoctor, 
     addDoctorOverride, fetchMyInstitutionSettings, revokeDoctorAbsence 
-} from '../redux/apiCalls';
+} from '../../redux/apiCalls';
 
-// Modular Components
-import DoctorProfileTab from '../components/DoctorManager/DoctorProfileTab';
-import DoctorScheduleTab from '../components/DoctorManager/DoctorScheduleTab';
-import DoctorLeavesTab from '../components/DoctorManager/DoctorLeavesTab';
-import DoctorOverrideModal from '../components/DoctorManager/DoctorOverrideModal';
-import DoctorSpecialShiftModal from '../components/DoctorManager/DoctorSpecialShiftModal';
+// Modular Components (now in the same directory)
+import DoctorProfileTab from './DoctorProfileTab';
+import DoctorScheduleTab from './DoctorScheduleTab';
+import DoctorLeavesTab from './DoctorLeavesTab';
+import DoctorOverrideModal from './DoctorOverrideModal';
+import DoctorSpecialShiftModal from './DoctorSpecialShiftModal';
 
 const { Title, Text } = Typography;
-const { Sider, Content } = Layout;
 
 const DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-// ==========================================
-// DUMMY COMPONENTS FOR NEW MENUS
-// ==========================================
-const MedicineManager = () => (
-    <div>
-        <Title level={3} style={{ marginBottom: 24 }}>Medicine Directory</Title>
-        <Card style={{ minHeight: '500px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <Empty description={<span style={{ color: '#888' }}>Medicine Management Module Coming Soon</span>} />
-        </Card>
-    </div>
-);
-
-const ClinicalTestsManager = () => (
-    <div>
-        <Title level={3} style={{ marginBottom: 24 }}>Clinical Tests Configuration</Title>
-        <Card style={{ minHeight: '500px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <Empty description={<span style={{ color: '#888' }}>Clinical Tests Module Coming Soon</span>} />
-        </Card>
-    </div>
-);
-
-
-// ==========================================
-// EXISTING DOCTORS MANAGER
-// ==========================================
-const DoctorsManager = () => {
+const DoctorManager = () => {
     const dispatch = useDispatch();
     const doctors = useSelector((state) => state[process.env.REACT_APP_DOCTORS_KEY]?.doctors || []);
     const isFetching = useSelector((state) => state[process.env.REACT_APP_DOCTORS_KEY]?.isFetching);
@@ -108,20 +81,15 @@ const DoctorsManager = () => {
         if (doctor) {
             form.setFieldsValue({
                 ...doctor,
-                // Personal Info
                 firstName: doctor.personalInfo?.firstName,
                 lastName: doctor.personalInfo?.lastName,
                 gender: doctor.personalInfo?.gender,
                 phone: doctor.personalInfo?.phone,
                 email: doctor.personalInfo?.email,
-                
-                // Professional Info
                 specialization: doctor.professionalInfo?.specialization,
                 registrationNumber: doctor.professionalInfo?.registrationNumber,
                 qualifications: doctor.professionalInfo?.qualifications || [],
                 experienceYears: doctor.professionalInfo?.experienceYears,
-                
-                // Rules & Settings
                 newConsultation: doctor.fees?.newConsultation,
                 followUpConsultation: doctor.fees?.followUpConsultation,
                 avgTimePerPatientMinutes: doctor.consultationRules?.avgTimePerPatientMinutes,
@@ -130,8 +98,6 @@ const DoctorsManager = () => {
                 leaveSettings: doctor.leaveSettings,
                 assignedCounterId: doctor.assignedCounterId,
                 prescriptionTemplateId: doctor.prescriptionTemplateId,
-                
-                // Schedules
                 schedule: buildInitialSchedule(doctor.schedule),
             });
         } else {
@@ -165,28 +131,10 @@ const DoctorsManager = () => {
         }));
 
         const payload = {
-            personalInfo: { 
-                firstName: values.firstName, 
-                lastName: values.lastName, 
-                gender: values.gender,
-                phone: values.phone, 
-                email: values.email 
-            },
-            professionalInfo: { 
-                specialization: values.specialization, 
-                registrationNumber: values.registrationNumber,
-                qualifications: values.qualifications,
-                experienceYears: values.experienceYears
-            },
-            fees: { 
-                newConsultation: values.newConsultation, 
-                followUpConsultation: values.followUpConsultation 
-            },
-            consultationRules: { 
-                avgTimePerPatientMinutes: values.avgTimePerPatientMinutes,
-                followUpValidityDays: values.followUpValidityDays,
-                allowOverbooking: values.allowOverbooking
-            },
+            personalInfo: { firstName: values.firstName, lastName: values.lastName, gender: values.gender, phone: values.phone, email: values.email },
+            professionalInfo: { specialization: values.specialization, registrationNumber: values.registrationNumber, qualifications: values.qualifications, experienceYears: values.experienceYears },
+            fees: { newConsultation: values.newConsultation, followUpConsultation: values.followUpConsultation },
+            consultationRules: { avgTimePerPatientMinutes: values.avgTimePerPatientMinutes, followUpValidityDays: values.followUpValidityDays, allowOverbooking: values.allowOverbooking },
             leaveSettings: values.leaveSettings,
             prescriptionTemplateId: values.prescriptionTemplateId,
             assignedCounterId: values.assignedCounterId,
@@ -251,25 +199,17 @@ const DoctorsManager = () => {
 
         const details = [];
 
-        if (plannedCancelledShifts.length > 0) {
-            details.push(`${plannedCancelledShifts.join(', ')}: Planned Leave`);
-        }
+        if (plannedCancelledShifts.length > 0) details.push(`${plannedCancelledShifts.join(', ')}: Planned Leave`);
 
         const pureOverrideCancels = overrideCancelledShifts.filter(s => !plannedCancelledShifts.includes(s));
-        if (pureOverrideCancels.length > 0) {
-            details.push(`${pureOverrideCancels.join(', ')}: Cancelled`);
-        }
+        if (pureOverrideCancels.length > 0) details.push(`${pureOverrideCancels.join(', ')}: Cancelled`);
 
         overridesDelays.forEach(o => {
             const activeDelays = (o.shiftNames || []).filter(s => !allCancelledShifts.includes(s));
-            if (activeDelays.length > 0) {
-                details.push(`${activeDelays.join(', ')}: Late (${o.delayMinutes}m)`);
-            }
+            if (activeDelays.length > 0) details.push(`${activeDelays.join(', ')}: Late (${o.delayMinutes}m)`);
         });
 
-        if (details.length > 0) {
-            return { text: details.join(' | '), color: 'orange', canRevoke: true, fullyCancelled: false };
-        }
+        if (details.length > 0) return { text: details.join(' | '), color: 'orange', canRevoke: true, fullyCancelled: false };
 
         return { text: 'Active / Normal', color: 'green', canRevoke: false, fullyCancelled: false };
     };
@@ -292,7 +232,7 @@ const DoctorsManager = () => {
             const status = getTodayStatus(record);
             return <Tag color={status.color}>{status.text}</Tag>;
         }},
-        { title: 'Fees', key: 'fees', render: (_, record) => `₹${record.fees?.newConsultation} / ₹${record.fees?.followUpConsultation}` },
+        { title: 'Fees (New / FUP)', key: 'fees', render: (_, record) => `₹${record.fees?.newConsultation} / ₹${record.fees?.followUpConsultation}` },
         { title: 'Assigned Cabin', dataIndex: 'assignedCounterId', key: 'cabin', render: (id) => {
             const room = rooms.find(r => r.counterId === id);
             return room ? <Tag color="blue">{room.name}</Tag> : <Text type="secondary">Unassigned</Text>;
@@ -330,15 +270,7 @@ const DoctorsManager = () => {
         { 
             key: '3', 
             label: 'Leave Ledger', 
-            children: <DoctorLeavesTab 
-                doctor={editingDoctor} 
-                refreshData={(updatedDoctorFromServer) => {
-                    getDoctors(dispatch); 
-                    if (updatedDoctorFromServer) {
-                        setEditingDoctor(updatedDoctorFromServer);
-                    }
-                }} 
-            /> 
+            children: <DoctorLeavesTab doctor={editingDoctor} refreshData={(updated) => { getDoctors(dispatch); if (updated) setEditingDoctor(updated); }} /> 
         }
     ];
 
@@ -354,83 +286,20 @@ const DoctorsManager = () => {
                 </Button>
             </div>
 
-            <Table columns={columns} dataSource={doctors} rowKey="doctorId" loading={isFetching} style={{ background: '#fff', borderRadius: '8px' }} />
+            <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 8, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+                <Table columns={columns} dataSource={doctors} rowKey="doctorId" loading={isFetching} />
+            </Card>
 
-            <Drawer
-                title={editingDoctor ? "Edit Doctor Profile" : "Add New Doctor"}
-                width={800}
-                onClose={() => setDrawerVisible(false)}
-                open={drawerVisible}
-                extra={<Button type="primary" onClick={() => form.submit()}>Save Doctor</Button>}
-            >
+            <Drawer title={editingDoctor ? "Edit Doctor Profile" : "Add New Doctor"} width={'100%'} onClose={() => setDrawerVisible(false)} open={drawerVisible} extra={<Button type="primary" onClick={() => form.submit()}>Save Doctor</Button>}>
                 <Form form={form} layout="vertical" onFinish={handleSaveDoctor}>
                     <Tabs defaultActiveKey="1" items={tabItems} />
                 </Form>
             </Drawer>
 
-            <DoctorOverrideModal 
-                visible={overrideModalVisible} 
-                onCancel={() => setOverrideModalVisible(false)} 
-                onSave={handleSaveOverride} 
-                doctor={editingDoctor} 
-            />
-            <DoctorSpecialShiftModal 
-                visible={specialShiftModalVisible}
-                onCancel={() => { setSpecialShiftModalVisible(false); setSelectedDoctorForSpecialShift(null); }}
-                onSuccess={() => {
-                    setSpecialShiftModalVisible(false);
-                    setSelectedDoctorForSpecialShift(null);
-                    getDoctors(dispatch); 
-                }}
-                doctor={selectedDoctorForSpecialShift}
-            />
+            <DoctorOverrideModal visible={overrideModalVisible} onCancel={() => setOverrideModalVisible(false)} onSave={handleSaveOverride} doctor={editingDoctor} />
+            <DoctorSpecialShiftModal visible={specialShiftModalVisible} onCancel={() => { setSpecialShiftModalVisible(false); setSelectedDoctorForSpecialShift(null); }} onSuccess={() => { setSpecialShiftModalVisible(false); setSelectedDoctorForSpecialShift(null); getDoctors(dispatch); }} doctor={selectedDoctorForSpecialShift} />
         </div>
     );
 };
 
-
-// ==========================================
-// MASTER PAGE LAYOUT
-// ==========================================
-const ClinicalManagerPage = () => {
-    const [activeKey, setActiveKey] = useState('doctors');
-
-    const menuItems = [
-        { key: 'doctors', icon: <TeamOutlined />, label: 'Doctor Directory' },
-        { key: 'medicine', icon: <MedicineBoxOutlined />, label: 'Medicine Catalog' },
-        { key: 'clinical_tests', icon: <ExperimentOutlined />, label: 'Clinical Tests' },
-    ];
-
-    const renderContent = () => {
-        switch (activeKey) {
-            case 'doctors': return <DoctorsManager />;
-            case 'medicine': return <MedicineManager />;
-            case 'clinical_tests': return <ClinicalTestsManager />;
-            default: return <DoctorsManager />;
-        }
-    };
-
-    return (
-        <Layout style={{ minHeight: '100vh', background: '#f4f6f8' }}>
-            <Sider width={240} theme="light" style={{ borderRight: '1px solid #e8e8e8', overflowY: 'auto' }}>
-                <div style={{ padding: '20px 16px', borderBottom: '1px solid #f0f0f0' }}>
-                    <Title level={4} style={{ margin: 0, color: '#1890ff' }}>
-                        <HeartOutlined style={{ marginRight: 8 }}/> Clinical Admin
-                    </Title>
-                </div>
-                <Menu
-                    mode="inline"
-                    selectedKeys={[activeKey]}
-                    onClick={(e) => setActiveKey(e.key)}
-                    items={menuItems}
-                    style={{ borderRight: 0, padding: '16px 0' }}
-                />
-            </Sider>
-            <Content style={{ padding: '24px', overflowY: 'auto', height: '100vh' }}>
-                {renderContent()}
-            </Content>
-        </Layout>
-    );
-};
-
-export default ClinicalManagerPage;
+export default DoctorManager;

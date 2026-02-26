@@ -1,7 +1,7 @@
 import React from 'react';
 import { Card, Row, Col, Typography, Tag, Button, Empty, Space } from 'antd';
 import { CheckCircleOutlined, PauseCircleOutlined } from '@ant-design/icons';
-import RichTextEditor from '../RichTextEditor';
+import RichTextEditor from '../Configuration/RichTextEditor';
 
 const { Title, Text } = Typography;
 

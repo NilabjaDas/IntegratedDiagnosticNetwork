@@ -16,7 +16,7 @@ import {
 } from "antd";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-import { createCustomTest } from "../redux/apiCalls";
+import { createCustomTest } from "../../redux/apiCalls";
 
 const { Option } = Select;
 const { TextArea } = Input;

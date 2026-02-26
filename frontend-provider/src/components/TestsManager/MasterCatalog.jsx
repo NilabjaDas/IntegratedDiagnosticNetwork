@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Table, Input, Button, Card, Tag, Modal, Form, InputNumber, message, Row, Col, Empty, Divider, Select, Checkbox } from "antd";
 import { SearchOutlined, PlusOutlined, ExperimentOutlined } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
-import { searchMasterCatalog, addTestFromMaster } from "../redux/apiCalls";
+import { searchMasterCatalog, addTestFromMaster } from "../../redux/apiCalls";
 import CustomTestDrawer from "./CustomTestDrawer";
 
 const { Search } = Input;

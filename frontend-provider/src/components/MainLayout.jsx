@@ -3,6 +3,7 @@ import { Layout } from "antd";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
 import { useSelector } from "react-redux";
+import { Outlet } from "react-router-dom"; // <--- 1. IMPORT OUTLET
 
 const { Content } = Layout;
 
@@ -11,13 +12,13 @@ const MainLayout = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <Layout >
+    <Layout>
       <Sidebar collapsed={collapsed} />
 
       <Layout
         className="site-layout"
         style={{
-          marginLeft: collapsed ? 80 : 220,
+          marginLeft: collapsed ? 80 : 250, // <--- 2. MATCH SIDEBAR WIDTH (250px)
           transition: "margin-left 0.2s",
           background: theme === "dark" ? "#000000" : "#f5f5f5",
         }}
@@ -34,7 +35,8 @@ const MainLayout = ({ children }) => {
               borderRadius: "4px",
             }}
           >
-            {children}
+            {/* 3. RENDER NESTED ROUTES HERE */}
+            {children || <Outlet />} 
           </div>
         </Content>
       </Layout>
