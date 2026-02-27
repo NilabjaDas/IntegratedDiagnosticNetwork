@@ -56,6 +56,8 @@ import {
     deleteDoctorStart, deleteDoctorSuccess, deleteDoctorFailure
 } from "./doctorRedux";
 
+import { getClinicalMedicinesStart, getClinicalMedicinesSuccess, getClinicalMedicinesFailure } from "./clinicalMedicineRedux";
+import { getClinicalTestsStart, getClinicalTestsSuccess, getClinicalTestsFailure } from "./clinicalTestRedux";
 import { getInstitutionSuccess, setInstitutionDetails, setInstitutionStatus } from "./InstitutionRedux";
 
 //Get Encryption Key
@@ -629,7 +631,6 @@ export const callNextPatientInQueue = async (dispatch, dept, counterId, counterN
 };
 
 
-// Add these to apiCalls.js
 export const fetchMyInstitutionSettings = async () => {
     try {
         const res = await userRequest.get("/institutions/my-settings");
@@ -776,4 +777,105 @@ export const revokeDoctorLeave = async (doctorId, leaveId, datesToRevoke) => {
         const res = await userRequest.put(`/doctors/${doctorId}/leaves/${leaveId}/revoke`, { datesToRevoke });
         return res.data;
     } catch (err) { throw err; }
+};
+
+
+// ==========================================
+// CLINICAL MEDICINE CATALOG
+// ==========================================
+export const getClinicalMedicines = async (dispatch) => {
+    dispatch(getClinicalMedicinesStart());
+    try {
+        const res = await userRequest.get("/doctors/medicines");
+        dispatch(getClinicalMedicinesSuccess(res.data));
+    } catch (err) {
+        dispatch(getClinicalMedicinesFailure());
+    }
+};
+
+export const createClinicalMedicine = async (dispatch, data) => {
+    try {
+        const res = await userRequest.post("/doctors/medicines", data);
+        await getClinicalMedicines(dispatch); // Refresh list
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};
+
+export const updateClinicalMedicine = async (dispatch, id, data) => {
+    try {
+        const res = await userRequest.put(`/doctors/medicines/${id}`, data);
+        await getClinicalMedicines(dispatch); // Refresh list
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};
+
+export const deleteClinicalMedicine = async (dispatch, id) => {
+    try {
+        await userRequest.delete(`/doctors/medicines/${id}`);
+        await getClinicalMedicines(dispatch); // Refresh list
+    } catch (err) {
+        throw err;
+    }
+};
+
+// ==========================================
+// CLINICAL TESTS CATALOG
+// ==========================================
+export const getClinicalTests = async (dispatch) => {
+    dispatch(getClinicalTestsStart());
+    try {
+        const res = await userRequest.get("/doctors/clinical-tests");
+        dispatch(getClinicalTestsSuccess(res.data));
+    } catch (err) {
+        dispatch(getClinicalTestsFailure());
+    }
+};
+
+export const createClinicalTest = async (dispatch, data) => {
+    try {
+        const res = await userRequest.post("/doctors/clinical-tests", data);
+        await getClinicalTests(dispatch); // Refresh list
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};
+
+export const updateClinicalTest = async (dispatch, id, data) => {
+    try {
+        const res = await userRequest.put(`/doctors/clinical-tests/${id}`, data);
+        await getClinicalTests(dispatch); // Refresh list
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};
+
+export const deleteClinicalTest = async (dispatch, id) => {
+    try {
+        await userRequest.delete(`/doctors/clinical-tests/${id}`);
+        await getClinicalTests(dispatch); // Refresh list
+    } catch (err) {
+        throw err;
+    }
+};
+
+
+// ==========================================
+// DOCTOR CALENDAR & BOOKINGS
+// ==========================================
+export const fetchDoctorMonthlyBookings = async (doctorId, year, month) => {
+    try {
+        const res = await userRequest.get(`/doctors/${doctorId}/monthly-queue`, {
+            params: { year, month }
+        });
+        return res.data; 
+    } catch (err) {
+        console.error("Failed to fetch monthly bookings:", err);
+        return [];
+    }
 };

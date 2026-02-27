@@ -1,8 +1,10 @@
 import React from 'react';
 import styled from 'styled-components';
 import { useParams, Navigate } from 'react-router-dom';
-import DoctorManager from '../components/DoctorManager/DoctorManager';
+import DoctorManager from '../components/ClinicalManager/DoctorManager';
 import BlankPage from './BlankPage';
+import ClinicalMedicineManager from '../components/ClinicalManager/ClinicalMedicineManager';
+import ClinicalTestManager from '../components/ClinicalManager/ClinicalTestManager';
 
 const PageContainer = styled.div`
   padding: 24px;
@@ -18,9 +20,9 @@ const ClinicalPage = () => {
             case 'doctors':
                 return <DoctorManager />;
             case 'medicine':
-                return <BlankPage title="Medicine Catalog" />;
+                return <ClinicalMedicineManager/>;
             case 'tests':
-                return <BlankPage title="Clinical Tests Configuration" />;
+                return <ClinicalTestManager/>;
             default:
                 return <Navigate to="/clinical-management/doctors" replace />;
         }

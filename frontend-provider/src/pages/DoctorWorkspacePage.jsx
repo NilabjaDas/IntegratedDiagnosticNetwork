@@ -2,6 +2,7 @@ import React from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import DoctorWorkspace from '../components/DoctorEMR/DoctorWorkspace';
 import BlankPage from './BlankPage';
+import DoctorAppointmentBooking from '../components/DoctorEMR/DoctorAppointmentBooking';
 
 const DoctorWorkspacePage = () => {
     const { tab } = useParams();
@@ -9,6 +10,8 @@ const DoctorWorkspacePage = () => {
     switch (tab) {
         case 'workspace':
             return <DoctorWorkspace />;
+        case 'booking':
+            return <DoctorAppointmentBooking />;
         case 'reports':
             return <BlankPage title="Doctor EMR Reports" />;
         default:

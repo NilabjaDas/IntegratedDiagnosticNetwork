@@ -24,6 +24,29 @@ router.get("/search-master", authenticateUser, async (req, res) => {
   }
 });
 
+// 1.5 GET ALL Master Catalog Tests (For Bulk Import Modal)
+// GET /api/catalog/tests
+router.get("/tests", authenticateUser, async (req, res) => {
+  try {
+    // Fetch all base tests, sorted alphabetically
+    // You might want to add a .limit(500) if your master catalog grows massively
+    const tests = await BaseTest.find().select("name code department category").sort({ name: 1 });
+    
+    // Map the 'code' to 'shortName' or 'alias' so the frontend modal can read it easily
+    const formattedTests = tests.map(t => ({
+      _id: t._id,
+      name: t.name,
+      alias: t.code,
+      department: t.department,
+      category: t.category
+    }));
+
+    res.json(formattedTests);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 2. IMPORT Test from Master to Institution
 // POST /api/catalog/import-test
 router.post("/import-test", authenticateUser, async (req, res) => {

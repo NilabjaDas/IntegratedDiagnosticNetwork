@@ -654,7 +654,7 @@ const CreateOrderDrawer = ({ open, onClose }) => {
                                                             >
                                                                 {item.availableShifts.map(s => (
                                                                     <Option key={s.shiftName} value={s.shiftName}>
-                                                                        {s.shiftName} ({moment(s.startTime,"HH:mm").format("h:mm a")}-{moment(s.endTime,"HH:mm").format("h:mm a")})
+                                                                        {s.shiftName} ({moment(s.startTime,"hh:mm").format("h:mma")}-{moment(s.endTime,"hh:mm").format("h:mma")})
                                                                     </Option>
                                                                 ))}
                                                             </Select>

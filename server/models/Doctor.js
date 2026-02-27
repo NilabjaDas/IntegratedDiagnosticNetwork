@@ -62,6 +62,7 @@ const doctorSchema = new mongoose.Schema({
         lastName: { type: String, required: true },
         gender: { type: String, enum: ["Male", "Female", "Other"] },
         phone: { type: String },
+        publicContact : {type: String},
         email: { type: String }
     },
     professionalInfo: {

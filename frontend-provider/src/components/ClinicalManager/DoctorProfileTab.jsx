@@ -22,6 +22,7 @@ const DoctorProfileTab = ({ rooms, templates = [] }) => {
                     </Form.Item>
                 </Col>
                 <Col span={12}><Form.Item name="phone" label="Phone Number"><Input /></Form.Item></Col>
+                <Col span={12}><Form.Item name="publicContact" label="Public Number"><Input /></Form.Item></Col>
                 <Col span={12}><Form.Item name="email" label="Email Address"><Input /></Form.Item></Col>
             </Row>
             

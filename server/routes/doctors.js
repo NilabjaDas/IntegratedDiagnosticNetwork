@@ -1,11 +1,14 @@
 const router = require("express").Router();
 const Doctor = require("../models/Doctor");
+const clinicalMedicineSchema = require("../models/ClinicalMedicine");
+const clinicalTestSchema = require("../models/ClinicalTest");
 const { authenticateUser } = require("../middleware/auth");
 const mongoose = require("mongoose");
 const getModel = require("../middleware/getModelsHandler");
 const QueueTokenSchema = require("../models/QueueToken");
 const moment = require("moment-timezone");
 const { sendToBrand } = require("../sseManager");
+const Institutions = require("../models/Institutions");
 
 // --- NEW HELPER: Finds the actual next working day for a specific shift ---
 const getNextWorkingDayForShift = (doctor, startDateStr, shiftName) => {
@@ -42,9 +45,10 @@ const hasOverlappingShifts = (schedule) => {
     return false; // No overlaps found
 };
 
+router.use(authenticateUser)
 
 // 1. CREATE DOCTOR
-router.post("/", authenticateUser, async (req, res) => {
+router.post("/",  async (req, res) => {
     try {
         const overlapError = hasOverlappingShifts(req.body.schedule);
         if (overlapError) {
@@ -63,7 +67,7 @@ router.post("/", authenticateUser, async (req, res) => {
 });
 
 // 2. GET ALL DOCTORS FOR INSTITUTION
-router.get("/", authenticateUser, async (req, res) => {
+router.get("/",  async (req, res) => {
     try {
         const doctors = await Doctor.find({ 
             institutionId: req.user.institutionId,
@@ -76,7 +80,7 @@ router.get("/", authenticateUser, async (req, res) => {
 });
 
 // 3. GET SINGLE DOCTOR BY ID
-router.put("/:doctorId", authenticateUser, async (req, res) => {
+router.put("/:doctorId",  async (req, res) => {
     try {
         if (req.body.schedule) {
             const overlapError = hasOverlappingShifts(req.body.schedule);
@@ -101,7 +105,7 @@ router.put("/:doctorId", authenticateUser, async (req, res) => {
 // ==========================================
 // 5. ADD DAILY OVERRIDE (Synced with Leave Ledger)
 // ==========================================
-router.post("/:doctorId/overrides", authenticateUser, async (req, res) => {
+router.post("/:doctorId/overrides",  async (req, res) => {
     try {
         const { date, isFullDayCancel, note, overrides } = req.body;
         const instId = req.user.institutionId;
@@ -147,8 +151,7 @@ router.post("/:doctorId/overrides", authenticateUser, async (req, res) => {
         }
         // ------------------------------
 
-        const Institution = require("../models/Institutions");
-        const institution = await Institution.findOne({ institutionId: instId });
+        const institution = await Institutions.findOne({ institutionId: instId });
         const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
         const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
 
@@ -236,15 +239,14 @@ router.post("/:doctorId/overrides", authenticateUser, async (req, res) => {
 // ==========================================
 // 6. REVOKE ABSENCE (Restores Ledger & Patients)
 // ==========================================
-router.delete("/:doctorId/absence/:date", authenticateUser, async (req, res) => {
+router.delete("/:doctorId/absence/:date",  async (req, res) => {
     try {
         const { date } = req.params;
         const instId = req.user.institutionId;
         const doctor = await Doctor.findOne({ doctorId: req.params.doctorId, institutionId: instId });
         if (!doctor) return res.status(404).json({ message: "Doctor not found" });
 
-        const Institution = require("../models/Institutions");
-        const institution = await Institution.findOne({ institutionId: instId });
+        const institution = await Institutions.findOne({ institutionId: instId });
         const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
         const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
 
@@ -337,7 +339,7 @@ router.delete("/:doctorId/absence/:date", authenticateUser, async (req, res) => 
 });
 
 // --- REQ 4: ADD SPECIAL SHIFT ---
-router.post("/:doctorId/special-shifts", authenticateUser, async (req, res) => {
+router.post("/:doctorId/special-shifts",  async (req, res) => {
     try {
         const { date, shiftName, startTime, endTime, maxTokens, note } = req.body;
         
@@ -354,7 +356,7 @@ router.post("/:doctorId/special-shifts", authenticateUser, async (req, res) => {
 });
 
 // 6. DEACTIVATE DOCTOR (Soft Delete)
-router.delete("/:doctorId", authenticateUser, async (req, res) => {
+router.delete("/:doctorId",  async (req, res) => {
     try {
         await Doctor.findOneAndUpdate(
             { doctorId: req.params.doctorId, institutionId: req.user.institutionId },
@@ -402,7 +404,7 @@ const getDatesInRange = (startDate, endDate) => {
 // ==========================================
 
 // A. ADD PLANNED LEAVE
-router.post("/:doctorId/leaves", authenticateUser, async (req, res) => {
+router.post("/:doctorId/leaves",  async (req, res) => {
     try {
         const { startDate, endDate, reason, shiftNames } = req.body;
         const instId = req.user.institutionId;
@@ -456,8 +458,7 @@ router.post("/:doctorId/leaves", authenticateUser, async (req, res) => {
         await doctor.save();
 
         // --- NEW: APPLY QUEUE CANCELLATION FOR PLANNED LEAVE ---
-        const Institution = require("../models/Institutions");
-        const institution = await Institution.findOne({ institutionId: instId });
+        const institution = await Institutions.findOne({ institutionId: instId });
         const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
         const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
 
@@ -505,7 +506,7 @@ router.post("/:doctorId/leaves", authenticateUser, async (req, res) => {
 });
 
 // B. REVOKE LEAVE (Full or Partial)
-router.put("/:doctorId/leaves/:leaveId/revoke", authenticateUser, async (req, res) => {
+router.put("/:doctorId/leaves/:leaveId/revoke",  async (req, res) => {
     try {
         const { datesToRevoke } = req.body; 
         const instId = req.user.institutionId;
@@ -555,8 +556,7 @@ router.put("/:doctorId/leaves/:leaveId/revoke", authenticateUser, async (req, re
         });
 
         // --- RESTORE QUEUE TOKENS ---
-        const Institution = require("../models/Institutions");
-        const institution = await Institution.findOne({ institutionId: instId });
+        const institution = await Institutions.findOne({ institutionId: instId });
         const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
         const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
 
@@ -586,5 +586,157 @@ router.put("/:doctorId/leaves/:leaveId/revoke", authenticateUser, async (req, re
         res.status(500).json({ error: err.message });
     }
 });
+
+
+// ==========================================
+// MONTHLY CALENDAR BOOKINGS
+// ==========================================
+router.get("/:doctorId/monthly-queue", async (req, res) => {
+    try {
+        const { year, month } = req.query; // e.g., 2024, 10
+        const instId = req.user.institutionId;
+        
+        const institution = await Institutions.findOne({ institutionId: instId });
+        if (!institution) return res.status(404).json({ message: "Institution not found" });
+
+        const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+        
+        // Dynamically grab the QueueToken model
+        const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
+
+        // FIX: Use the global Doctor model instead of req.TenantDoctor
+        const doctor = await Doctor.findOne({ doctorId: req.params.doctorId, institutionId: instId });
+        
+        if (!doctor) return res.status(404).json({ message: "Doctor not found" });
+
+        // Construct a regex to match YYYY-MM prefix (e.g., "2024-10")
+        const formattedMonth = month.toString().padStart(2, '0');
+        const datePrefixRegex = new RegExp(`^${year}-${formattedMonth}`);
+
+        const bookings = await TenantQueueToken.find({
+            doctorId: doctor._id,
+            date: { $regex: datePrefixRegex } 
+        })
+        // Ensure 'orderId' is explicitly requested here!
+        .select("date tokenNumber patientName status shiftName priority isRescheduled orderId") 
+        .sort({ tokenNumber: 1 });
+
+        res.status(200).json(bookings);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ==========================================
+// MEDICINE CATALOG ROUTES
+// ==========================================
+router.get("/medicines", async (req, res) => {
+    try {
+        const ClinicalMedicine = getModel(req.db, "ClinicalMedicine", clinicalMedicineSchema);
+        const medicines = await ClinicalMedicine.find({ institutionId: req.user.institutionId }).sort({ name: 1 });
+        res.status(200).json(medicines);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.post("/medicines", async (req, res) => {
+    try {
+        const ClinicalMedicine = getModel(req.db, "ClinicalMedicine", clinicalMedicineSchema);
+        const newMedicine = new ClinicalMedicine({
+            ...req.body,
+            institutionId: req.user.institutionId
+        });
+        await newMedicine.save();
+        res.status(201).json(newMedicine);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.put("/medicines/:id", async (req, res) => {
+    try {
+        const ClinicalMedicine = getModel(req.db, "ClinicalMedicine", clinicalMedicineSchema);
+        const updatedMedicine = await ClinicalMedicine.findByIdAndUpdate(
+            req.params.id,
+            { $set: req.body },
+            { new: true }
+        );
+        res.status(200).json(updatedMedicine);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.delete("/medicines/:id", async (req, res) => {
+    try {
+        const ClinicalMedicine = getModel(req.db, "ClinicalMedicine", clinicalMedicineSchema);
+        await ClinicalMedicine.findByIdAndDelete(req.params.id);
+        res.status(200).json({ message: "Medicine deleted successfully" });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ==========================================
+// CLINICAL TESTS ROUTES
+// ==========================================
+router.get("/clinical-tests", async (req, res) => {
+    try {
+        const ClinicalTest = getModel(req.db, "ClinicalTest", clinicalTestSchema);
+        const tests = await ClinicalTest.find({ institutionId: req.user.institutionId }).sort({ name: 1 });
+        res.status(200).json(tests);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.post("/clinical-tests", async (req, res) => {
+    try {
+        const ClinicalTest = getModel(req.db, "ClinicalTest", clinicalTestSchema);
+        const institutionId = req.user.institutionId;
+        
+        // Handle Bulk Import from Master Catalog
+        if (Array.isArray(req.body)) {
+            const testsToInsert = req.body.map(test => ({ ...test, institutionId }));
+            const inserted = await ClinicalTest.insertMany(testsToInsert);
+            return res.status(201).json(inserted);
+        } 
+        
+        // Handle Single Test Creation
+        const newTest = new ClinicalTest({ ...req.body, institutionId });
+        await newTest.save();
+        return res.status(201).json(newTest);
+        
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.put("/clinical-tests/:id", async (req, res) => {
+    try {
+        const ClinicalTest = getModel(req.db, "ClinicalTest", clinicalTestSchema);
+        const updatedTest = await ClinicalTest.findByIdAndUpdate(
+            req.params.id,
+            { $set: req.body },
+            { new: true }
+        );
+        res.status(200).json(updatedTest);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.delete("/clinical-tests/:id", async (req, res) => {
+    try {
+        const ClinicalTest = getModel(req.db, "ClinicalTest", clinicalTestSchema);
+        await ClinicalTest.findByIdAndDelete(req.params.id);
+        res.status(200).json({ message: "Clinical test deleted successfully" });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
 
 module.exports = router;

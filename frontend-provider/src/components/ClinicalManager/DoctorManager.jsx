@@ -20,6 +20,8 @@ import DoctorScheduleTab from './DoctorScheduleTab';
 import DoctorLeavesTab from './DoctorLeavesTab';
 import DoctorOverrideModal from './DoctorOverrideModal';
 import DoctorSpecialShiftModal from './DoctorSpecialShiftModal';
+import { CalendarOutlined } from '@ant-design/icons';
+import DoctorCalendarWorkspace from './DoctorCalendarWorkspace';
 
 const { Title, Text } = Typography;
 
@@ -36,6 +38,7 @@ const DoctorManager = () => {
     const [rooms, setRooms] = useState([]);
     const [specialShiftModalVisible, setSpecialShiftModalVisible] = useState(false);
     const [selectedDoctorForSpecialShift, setSelectedDoctorForSpecialShift] = useState(null);
+    const [calendarVisible, setCalendarVisible] = useState(false);
     const [form] = Form.useForm();
 
     useEffect(() => {
@@ -85,6 +88,7 @@ const DoctorManager = () => {
                 lastName: doctor.personalInfo?.lastName,
                 gender: doctor.personalInfo?.gender,
                 phone: doctor.personalInfo?.phone,
+                publicContact: doctor.personalInfo?.publicContact,
                 email: doctor.personalInfo?.email,
                 specialization: doctor.professionalInfo?.specialization,
                 registrationNumber: doctor.professionalInfo?.registrationNumber,
@@ -131,7 +135,7 @@ const DoctorManager = () => {
         }));
 
         const payload = {
-            personalInfo: { firstName: values.firstName, lastName: values.lastName, gender: values.gender, phone: values.phone, email: values.email },
+            personalInfo: { firstName: values.firstName, lastName: values.lastName, gender: values.gender, phone: values.phone,publicContact: values.publicContact, email: values.email },
             professionalInfo: { specialization: values.specialization, registrationNumber: values.registrationNumber, qualifications: values.qualifications, experienceYears: values.experienceYears },
             fees: { newConsultation: values.newConsultation, followUpConsultation: values.followUpConsultation },
             consultationRules: { avgTimePerPatientMinutes: values.avgTimePerPatientMinutes, followUpValidityDays: values.followUpValidityDays, allowOverbooking: values.allowOverbooking },
@@ -271,7 +275,8 @@ const DoctorManager = () => {
             key: '3', 
             label: 'Leave Ledger', 
             children: <DoctorLeavesTab doctor={editingDoctor} refreshData={(updated) => { getDoctors(dispatch); if (updated) setEditingDoctor(updated); }} /> 
-        }
+        },
+        
     ];
 
     return (
@@ -281,9 +286,14 @@ const DoctorManager = () => {
                     <Title level={3} style={{ margin: 0 }}>Doctor Directory</Title>
                     <Text type="secondary">Manage doctor profiles, schedules, and clinical leaves</Text>
                 </div>
-                <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => openDrawer()}>
-                    Add Doctor
-                </Button>
+                <Space>
+                    <Button size="large" icon={<CalendarOutlined />} onClick={() => setCalendarVisible(true)}>
+                        Calendar View
+                    </Button>
+                    <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => openDrawer()}>
+                        Add Doctor
+                    </Button>
+                </Space>
             </div>
 
             <Card bodyStyle={{ padding: 0 }} style={{ borderRadius: 8, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
@@ -298,6 +308,11 @@ const DoctorManager = () => {
 
             <DoctorOverrideModal visible={overrideModalVisible} onCancel={() => setOverrideModalVisible(false)} onSave={handleSaveOverride} doctor={editingDoctor} />
             <DoctorSpecialShiftModal visible={specialShiftModalVisible} onCancel={() => { setSpecialShiftModalVisible(false); setSelectedDoctorForSpecialShift(null); }} onSuccess={() => { setSpecialShiftModalVisible(false); setSelectedDoctorForSpecialShift(null); getDoctors(dispatch); }} doctor={selectedDoctorForSpecialShift} />
+            <DoctorCalendarWorkspace 
+                visible={calendarVisible} 
+                onClose={() => setCalendarVisible(false)} 
+                doctors={doctors} 
+            />
         </div>
     );
 };

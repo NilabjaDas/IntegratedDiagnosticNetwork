@@ -67,6 +67,7 @@ const menuItems = [
   ]),
   
   getItem("Doctor EMR", "sub_emr", <LaptopOutlined />, [
+    getItem("Book Appointment", "/doctor-emr/booking", <AppstoreAddOutlined />),
     getItem("Doctor Workspace", "/doctor-emr/workspace", <DesktopOutlined />),
     getItem("Reports", "/doctor-emr/reports", <LineChartOutlined />),
   ]),

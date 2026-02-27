@@ -815,7 +815,7 @@ const RapidOrderLayout = ({ onClose, onSwitchToNormal }) => {
                                           style={{ width: 160, fontSize: 11 }}
                                       >
                                           {item.availableShifts?.map(s => (
-                                              <Option key={s.shiftName} value={s.shiftName}>{s.shiftName} ({moment(s.startTime,"HH:mm").format("ha")}-{moment(s.endTime,"HH:mm").format("ha")})</Option>
+                                              <Option key={s.shiftName} value={s.shiftName}>{s.shiftName} ({moment(s.startTime,"hh:mm").format("h:mma")}-{moment(s.endTime,"hh:mm").format("h:mma")})</Option>
                                           ))}
                                       </Select>
                                       <Checkbox 
