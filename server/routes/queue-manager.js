@@ -66,7 +66,7 @@ router.get("/department/:deptName", async (req, res) => {
             institutionId: req.user.institutionId,
             date: todayStr,
             department: req.params.deptName,
-            status: { $in: ['WAITING', 'CALLED', 'IN_PROGRESS', 'HOLD'] } 
+            status: { $in: ['WAITING','IN_CABIN', 'CALLED', 'IN_PROGRESS', 'HOLD'] } 
         }).sort({ sequence: 1 });
         
         res.json(queue);
@@ -117,10 +117,11 @@ router.post("/department/:dept/call-next", async (req, res) => {
     try {
         const { counterId, counterName } = req.body;
         const todayStr = moment().format("YYYY-MM-DD");
-
+         const instId = req.user.institutionId;
+         const brandCode = req.user.brand;
         const token = await req.TenantQueueToken.findOneAndUpdate(
             { 
-                institutionId: req.user.institutionId, 
+                institutionId: instId, 
                 date: todayStr, 
                 department: req.params.dept,
                 status: 'WAITING' 
@@ -139,13 +140,13 @@ router.post("/department/:dept/call-next", async (req, res) => {
 
         if (!token) return res.status(404).json({ message: "No patients waiting in queue." });
 
-        sendToBrand(req.user.institutionId, { 
+        sendToBrand(brandCode, { 
                     type: 'TV_ANNOUNCEMENT', 
                     token: token.tokenNumber, 
                     counterName: token.assignedCounterName 
                 }, 'tv_display');
 
-        sendToBrand(req.user.institutionId, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
+        sendToBrand(brandCode, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
 
         res.json(token);
     } catch (err) {
@@ -153,37 +154,54 @@ router.post("/department/:dept/call-next", async (req, res) => {
     }
 });
 
-// DIRECT STATUS CONTROL (Start, Complete, Hold, Recall)
+// DIRECT STATUS CONTROL (Start, Complete, Hold, Recall, Send to Cabin)
 router.put("/token/:tokenId/action", async (req, res) => {
     try {
         const { action } = req.body; 
+        const brandCode = req.user.brand;
         const token = await req.TenantQueueToken.findById(req.params.tokenId);
         if (!token) return res.status(404).json({ message: "Token not found" });
-
         switch(action) {
             case "START": 
                 token.status = "IN_PROGRESS"; 
+                console.log("sent sse IN_PROGRESS")
+                sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token: token }, 'tests_queue_updated');
                 break;
             case "COMPLETE":
                 token.status = "COMPLETED";
                 token.completedAt = new Date();
+                sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token: token }, 'tests_queue_updated');
                 break;
             case "HOLD": 
                 token.status = "HOLD"; 
+                sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token: token }, 'tests_queue_updated');
                 break;
             case "RECALL":
                 token.status = "CALLED";
                 token.calledAt = new Date();
-                sendToBrand(req.user.institutionId, { 
+                sendToBrand(brandCode, { 
                     type: 'TV_ANNOUNCEMENT', 
                     token: token.tokenNumber, 
                     counterName: token.assignedCounterName 
                 }, 'tv_display');
+                sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token: token }, 'tests_queue_updated');
+                break;
+            // --- NEW: Handle SEND_TO_CABIN action ---
+            case "SEND_TO_CABIN":
+                token.status = "IN_CABIN";
+                token.calledAt = new Date();
+                sendToBrand(brandCode, { 
+                    type: 'TV_ANNOUNCEMENT', 
+                    token: token.tokenNumber, 
+                }, 'tv_display');
+                sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token: token }, 'tests_queue_updated');
                 break;
         }
 
         await token.save();
-        sendToBrand(req.user.institutionId, { type: 'QUEUE_UPDATE', token: token }, `queue_${token.department}`);
+        
+        // --- CRITICAL FIX: Send to unified channel so App.jsx picks it up ---
+        sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token: token }, 'tests_queue_updated');
 
         res.json(token);
     } catch (err) {
@@ -200,10 +218,10 @@ router.put("/token/:tokenId/action", async (req, res) => {
 router.put("/:id/prescription", async (req, res) => {
     try {
         const { prescriptionHtml } = req.body;
-        const brandCode = req.user.brandCode || "default";
-
+         const instId = req.user.institutionId;
+        const brandCode = req.user.brand;
         const token = await req.TenantQueueToken.findOneAndUpdate(
-            { _id: req.params.id, institutionId: req.user.institutionId },
+            { _id: req.params.id, institutionId: instId },
             { 
                 $set: { 
                     prescriptionHtml, 
@@ -215,10 +233,9 @@ router.put("/:id/prescription", async (req, res) => {
         );
 
         if (!token) return res.status(404).json({ message: "Token not found" });
-
+        console.log("sse fired for prescription")
         // Trigger SSE to remove the patient from "In Progress" TV screens
-        sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token }, 'tests_queue_updated');
-
+        sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token: token }, 'tests_queue_updated');
         res.status(200).json(token);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -233,7 +250,7 @@ router.put("/token/:tokenId/reschedule", async (req, res) => {
     try {
         const { newDate, newShiftName } = req.body;
         const instId = req.user.institutionId;
-
+        const brandCode = req.user.brand;
         const token = await req.TenantQueueToken.findOne({ _id: req.params.tokenId, institutionId: instId });
         if (!token) return res.status(404).json({ message: "Token not found" });
 
@@ -261,6 +278,7 @@ router.put("/token/:tokenId/reschedule", async (req, res) => {
         token.notes = token.notes + ` | Rescheduled to ${newDate}`;
 
         await token.save();
+        sendToBrand(brandCode, { type: 'TOKEN_UPDATED', token: token }, 'tests_queue_updated');
         res.status(200).json(token);
     } catch (err) {
         res.status(500).json({ error: err.message });

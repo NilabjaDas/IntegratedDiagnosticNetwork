@@ -34,7 +34,7 @@ const queueTokenSchema = new mongoose.Schema({
   // --- FIX: ADD CANCELLED TO ENUM ---
   status: { 
       type: String, 
-      enum: ['WAITING', 'CALLED', 'IN_PROGRESS', 'COMPLETED', 'HOLD', 'SKIPPED', 'CANCELLED', 'DOC_UNVAILABLE'], 
+      enum: ['WAITING', 'CALLED', 'IN_CABIN', 'IN_PROGRESS', 'COMPLETED', 'HOLD', 'SKIPPED', 'CANCELLED', 'DOC_UNVAILABLE'],
       default: 'WAITING' 
   },
   

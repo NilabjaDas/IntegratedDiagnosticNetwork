@@ -21,7 +21,6 @@ import { BASE_URL, currentDomain } from "./requestMethods";
 import { Bounce, toast, ToastContainer } from "react-toastify";
 import MaintenanceContainer from "./components/MaintenanceContainer";
 import HomePage from "./pages/HomePage";
-import BlankPage from "./pages/BlankPage"; // MUST HAVE
 import {
   getInstitutionDetails,
   getInstitutionStatus,
@@ -40,9 +39,7 @@ import DoctorWorkspacePage from './pages/DoctorWorkspacePage';
 import moment from "moment";
 import QueueManagerPage from "./pages/QueueManagerPage";
 import TvDisplayPage from "./pages/TvDisplayPage";
-import { addTokenSuccess } from "./redux/queueRedux";
-import TemplateEditor from "./components/Configuration/TemplateEditor";
-import TemplateLibrary from "./components/Configuration/TemplateLibrary";
+import {updateTokenSuccess } from "./redux/queueRedux";
 import ClinicalPage from "./pages/ClinicalPage";
 
 // Global style to reset default margin and padding
@@ -169,8 +166,10 @@ function App() {
 
       eventSource.addEventListener("tests_queue_updated", (event) => {
           const eventData = JSON.parse(event.data);
-          dispatch(addTokenSuccess(eventData.token));
+          dispatch(updateTokenSuccess(eventData.token));
       });
+
+     
 
       eventSource.addEventListener("tests_availability_updated", (event) => {
         try {
@@ -186,6 +185,8 @@ function App() {
         }
       });
 
+
+      
       eventSource.onerror = (error) => {
         if (eventSource) eventSource.close();
         retryTimeout = setTimeout(() => { connectEventSource(); }, 3000);

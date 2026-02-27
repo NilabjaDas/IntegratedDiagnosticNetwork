@@ -80,42 +80,68 @@ const CreateOrderDrawer = ({ open, onClose }) => {
   const disabledDate = (current) => current && current < dayjs().startOf('day');
 
 // --- UPDATED: SMART DOCTOR AVAILABILITY HELPER ---
-  const getDoctorAvailability = (doctor, dateStr) => {
-      const targetDate = dayjs(dateStr);
-      const dayIndex = targetDate.day();
-      
-      // Calculate which week of the month this date falls into (1st, 2nd, 3rd, 4th, 5th)
-      const weekOfMonth = Math.ceil(targetDate.date() / 7);
+const getDoctorAvailability = (doctor, dateInput) => {
+    if (!doctor) return [];
+    
+    // FIX: Safely convert the incoming string into a dayjs object first
+    const targetDate = dayjs(dateInput); 
+    
+    const dateStr = targetDate.format("YYYY-MM-DD");
+    const dayIndex = targetDate.day();
+    const weekOfMonth = Math.ceil(targetDate.date() / 7);
 
-      const daySchedule = doctor.schedule?.find(s => s.dayOfWeek === dayIndex);
-      if (!daySchedule || !daySchedule.isAvailable) return [];
+    let availableShifts = [];
 
-      // 1. Filter out shifts that don't operate on this specific week of the month
-      let availableShifts = daySchedule.shifts.filter(shift => {
-          if (shift.repeatWeeks && shift.repeatWeeks.length > 0) {
-              return shift.repeatWeeks.includes(weekOfMonth);
-          }
-          return true; // Fallback for older data that doesn't have repeatWeeks yet
-      });
+    // 1. GET REGULAR SCHEDULE
+    const daySchedule = doctor.schedule?.find(s => s.dayOfWeek === dayIndex);
+    if (daySchedule && daySchedule.isAvailable) {
+        availableShifts = daySchedule.shifts.filter(shift => {
+            if (shift.repeatWeeks && shift.repeatWeeks.length > 0) {
+                return shift.repeatWeeks.includes(weekOfMonth);
+            }
+            return true;
+        });
+    }
 
-      if (availableShifts.length === 0) return [];
+    // 2. APPLY LEAVES
+    const plannedLeave = doctor.leaves?.find(l => dateStr >= l.startDate && dateStr <= l.endDate);
+    if (plannedLeave) {
+        // If no specific shifts are mentioned, it's a full day leave. Wipe out regular shifts.
+        if (!plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0) {
+            availableShifts = [];
+        } else {
+            // Otherwise, filter out the specific leave shifts
+            availableShifts = availableShifts.filter(s => !plannedLeave.shiftNames.includes(s.shiftName));
+        }
+    }
 
-      // 2. Block Planned Leaves
-      const plannedLeave = doctor.leaves?.find(l => dateStr >= l.startDate && dateStr <= l.endDate);
-      if (plannedLeave) {
-          if (!plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0) return [];
-          availableShifts = availableShifts.filter(s => !plannedLeave.shiftNames.includes(s.shiftName));
-      }
+    // 3. APPLY DAILY CANCELLATIONS (Overrides)
+    const override = doctor.dailyOverrides?.find(o => o.date === dateStr);
+    if (override && override.isCancelled) {
+        if (!override.shiftNames || override.shiftNames.length === 0) {
+            availableShifts = [];
+        } else {
+            availableShifts = availableShifts.filter(s => !override.shiftNames.includes(s.shiftName));
+        }
+    }
 
-      // 3. Block Ad-Hoc Cancellations
-      const override = doctor.dailyOverrides?.find(o => o.date === dateStr);
-      if (override && override.isCancelled) {
-          if (!override.shiftNames || override.shiftNames.length === 0) return [];
-          availableShifts = availableShifts.filter(s => !override.shiftNames.includes(s.shiftName));
-      }
+    // 4. ADD SPECIAL SHIFTS
+    // Special shifts explicitly assigned to this date overrule regular days off and leaves.
+    const specialShiftsForDay = doctor.specialShifts?.filter(s => s.date === dateStr) || [];
+    
+    specialShiftsForDay.forEach(specialShift => {
+        // If a special shift has the same name as a regular shift (rare), it replaces it. 
+        // Otherwise, it gets added to the available shifts.
+        const existingIndex = availableShifts.findIndex(s => s.shiftName === specialShift.shiftName);
+        if (existingIndex > -1) {
+            availableShifts[existingIndex] = specialShift; 
+        } else {
+            availableShifts.push(specialShift);
+        }
+    });
 
-      return availableShifts;
-  };
+    return availableShifts;
+};
 
   const onScheduleDateChange = (date) => {
       const newDateStr = date ? date.format("YYYY-MM-DD") : null;

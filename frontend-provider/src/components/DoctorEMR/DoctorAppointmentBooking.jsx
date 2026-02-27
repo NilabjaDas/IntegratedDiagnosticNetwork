@@ -87,34 +87,65 @@ const DoctorAppointmentBooking = () => {
   }, [dispatch]);
 
   // --- SMART DOCTOR AVAILABILITY HELPER ---
-  const getDoctorAvailability = (doctor, dateObj) => {
+const getDoctorAvailability = (doctor, dateObj) => {
     if (!doctor) return [];
+    
     const dateStr = dateObj.format("YYYY-MM-DD");
     const dayIndex = dateObj.day();
     const weekOfMonth = Math.ceil(dateObj.date() / 7);
 
+    let availableShifts = [];
+
+    // 1. GET REGULAR SCHEDULE
     const daySchedule = doctor.schedule?.find(s => s.dayOfWeek === dayIndex);
-    if (!daySchedule || !daySchedule.isAvailable) return [];
+    if (daySchedule && daySchedule.isAvailable) {
+        availableShifts = daySchedule.shifts.filter(shift => {
+            if (shift.repeatWeeks && shift.repeatWeeks.length > 0) {
+                return shift.repeatWeeks.includes(weekOfMonth);
+            }
+            return true;
+        });
+    }
 
-    let shifts = daySchedule.shifts.filter(shift => {
-        if (shift.repeatWeeks && shift.repeatWeeks.length > 0) return shift.repeatWeeks.includes(weekOfMonth);
-        return true;
-    });
-
+    // 2. APPLY LEAVES
     const plannedLeave = doctor.leaves?.find(l => dateStr >= l.startDate && dateStr <= l.endDate);
     if (plannedLeave) {
-        if (!plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0) return [];
-        shifts = shifts.filter(s => !plannedLeave.shiftNames.includes(s.shiftName));
+        // If no specific shifts are mentioned, it's a full day leave. Wipe out regular shifts.
+        if (!plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0) {
+            availableShifts = [];
+        } else {
+            // Otherwise, filter out the specific leave shifts
+            availableShifts = availableShifts.filter(s => !plannedLeave.shiftNames.includes(s.shiftName));
+        }
     }
 
+    // 3. APPLY DAILY CANCELLATIONS (Overrides)
     const override = doctor.dailyOverrides?.find(o => o.date === dateStr);
     if (override && override.isCancelled) {
-        if (!override.shiftNames || override.shiftNames.length === 0) return [];
-        shifts = shifts.filter(s => !override.shiftNames.includes(s.shiftName));
+        if (!override.shiftNames || override.shiftNames.length === 0) {
+            availableShifts = [];
+        } else {
+            availableShifts = availableShifts.filter(s => !override.shiftNames.includes(s.shiftName));
+        }
     }
-    return shifts;
-  };
 
+    // 4. ADD SPECIAL SHIFTS
+    // Special shifts explicitly assigned to this date overrule regular days off and leaves.
+    const specialShiftsForDay = doctor.specialShifts?.filter(s => s.date === dateStr) || [];
+    
+    specialShiftsForDay.forEach(specialShift => {
+        // If a special shift has the same name as a regular shift (rare), it replaces it. 
+        // Otherwise, it gets added to the available shifts.
+        const existingIndex = availableShifts.findIndex(s => s.shiftName === specialShift.shiftName);
+        if (existingIndex > -1) {
+            availableShifts[existingIndex] = specialShift; 
+        } else {
+            availableShifts.push(specialShift);
+        }
+    });
+
+    return availableShifts;
+};
   // --- CALENDAR & DOCTOR SYNC ---
   useEffect(() => {
     if (activeDoctor) {

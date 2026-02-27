@@ -698,7 +698,6 @@ export const deleteDoctor = async (dispatch, id) => {
 };
 
 export const addDoctorOverride = async (id, overrideData) => {
-  console.log(overrideData)
     try {
         const res = await userRequest.post(`/doctors/${id}/overrides`, overrideData);
         return res.data;
@@ -879,3 +878,5 @@ export const fetchDoctorMonthlyBookings = async (doctorId, year, month) => {
         return [];
     }
 };
+
+

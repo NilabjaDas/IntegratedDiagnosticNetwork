@@ -187,7 +187,7 @@ router.post("/", async (req, res) => {
     const finalAppointmentDate = scheduleDate ? scheduleDate : moment().format("YYYY-MM-DD");
     const dateKey = finalAppointmentDate;
 
-    // --- 2.5 STRICT DOCTOR AVAILABILITY VALIDATION ---
+  // --- 2.5 STRICT DOCTOR AVAILABILITY VALIDATION ---
     if (appointment && appointment.doctorId) {
         const { doctorId, shiftName } = appointment;
         const doctor = await Doctor.findOne({ _id: doctorId, institutionId: instId });
@@ -197,48 +197,61 @@ router.post("/", async (req, res) => {
 
         const targetDateStr = moment(dateKey).format("YYYY-MM-DD");
         const dayOfWeek = moment(dateKey).day();
-
-        // A. Check Standard Schedule
-        const daySchedule = doctor.schedule.find(s => s.dayOfWeek === dayOfWeek);
-        if (!daySchedule || !daySchedule.isAvailable) {
-            return res.status(400).json({ message: "Doctor does not work on this day of the week." });
-        }
-        const shiftExists = daySchedule.shifts.find(s => s.shiftName === shiftName);
-        if (!shiftExists) {
-            return res.status(400).json({ message: `Doctor does not have a '${shiftName}' shift on this day.` });
-        }
-
-        // --- NEW: CHECK WEEKS OF THE MONTH ---
-        // Calculate which week of the month the target date falls into (1st, 2nd, 3rd, 4th, 5th)
         const dateObj = moment(targetDateStr);
-        const weekOfMonth = Math.ceil(dateObj.date() / 7); 
+        const weekOfMonth = Math.ceil(dateObj.date() / 7);
 
-        // If repeatWeeks exists and the current weekOfMonth is NOT in the array, block the booking
-        if (shiftExists.repeatWeeks && shiftExists.repeatWeeks.length > 0 && !shiftExists.repeatWeeks.includes(weekOfMonth)) {
-            return res.status(400).json({ message: `Doctor does not work the ${shiftName} shift during the ${weekOfMonth}${weekOfMonth===1?'st':weekOfMonth===2?'nd':weekOfMonth===3?'rd':'th'} week of the month.` });
+        let availableShifts = [];
+
+        // A. GET REGULAR SCHEDULE
+        const daySchedule = doctor.schedule?.find(s => s.dayOfWeek === dayOfWeek);
+        if (daySchedule && daySchedule.isAvailable) {
+            availableShifts = daySchedule.shifts.filter(shift => {
+                if (shift.repeatWeeks && shift.repeatWeeks.length > 0) {
+                    return shift.repeatWeeks.includes(weekOfMonth);
+                }
+                return true;
+            });
         }
 
-        // B. Check Planned Leaves
-        const plannedLeave = doctor.leaves.find(l => targetDateStr >= l.startDate && targetDateStr <= l.endDate);
+        // B. APPLY LEAVES
+        const plannedLeave = doctor.leaves?.find(l => targetDateStr >= l.startDate && targetDateStr <= l.endDate);
         if (plannedLeave) {
-            const isFullDayLeave = !plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0;
-            const isShiftLeave = plannedLeave.shiftNames?.includes(shiftName);
-            if (isFullDayLeave || isShiftLeave) {
-                return res.status(400).json({ message: "Cannot book: Doctor is on planned leave for this shift." });
+            if (!plannedLeave.shiftNames || plannedLeave.shiftNames.length === 0) {
+                availableShifts = [];
+            } else {
+                availableShifts = availableShifts.filter(s => !plannedLeave.shiftNames.includes(s.shiftName));
             }
         }
 
-        // C. Check Ad-Hoc Overrides / Cancellations
-        const adHocOverride = doctor.dailyOverrides.find(o => o.date === targetDateStr);
-        if (adHocOverride && adHocOverride.isCancelled) {
-            const isFullDayCancel = !adHocOverride.shiftNames || adHocOverride.shiftNames.length === 0;
-            const isShiftCancel = adHocOverride.shiftNames?.includes(shiftName);
-            if (isFullDayCancel || isShiftCancel) {
-                return res.status(400).json({ message: "Cannot book: This shift has been cancelled due to doctor unavailability." });
+        // C. APPLY DAILY CANCELLATIONS (Overrides)
+        const override = doctor.dailyOverrides?.find(o => o.date === targetDateStr);
+        if (override && override.isCancelled) {
+            if (!override.shiftNames || override.shiftNames.length === 0) {
+                availableShifts = [];
+            } else {
+                availableShifts = availableShifts.filter(s => !override.shiftNames.includes(s.shiftName));
             }
         }
 
-        // D. Check Token Capacity (Block overbooking if disabled)
+        // D. ADD SPECIAL SHIFTS (Overrides everything else)
+        const specialShiftsForDay = doctor.specialShifts?.filter(s => s.date === targetDateStr) || [];
+        specialShiftsForDay.forEach(specialShift => {
+            const existingIndex = availableShifts.findIndex(s => s.shiftName === specialShift.shiftName);
+            if (existingIndex > -1) {
+                availableShifts[existingIndex] = specialShift; 
+            } else {
+                availableShifts.push(specialShift);
+            }
+        });
+
+        // E. FINAL VALIDATION - Does the requested shift actually exist today?
+        const targetShift = availableShifts.find(s => s.shiftName === shiftName);
+
+        if (!targetShift) {
+            return res.status(400).json({ message: `Cannot book: Doctor is not available for the '${shiftName}' shift on this date.` });
+        }
+
+        // F. Check Token Capacity (Block overbooking if disabled)
         if (!doctor.consultationRules?.allowOverbooking) {
             const existingTokensCount = await req.TenantQueueToken.countDocuments({
                 doctorId: doctor._id,
@@ -247,7 +260,8 @@ router.post("/", async (req, res) => {
                 status: { $nin: ['CANCELLED', 'DOC_UNVAILABLE'] }
             });
             
-            if (existingTokensCount >= shiftExists.maxTokens) {
+            // We use targetShift.maxTokens so it correctly references special shift limits too!
+            if (existingTokensCount >= targetShift.maxTokens) {
                 return res.status(400).json({ message: `Cannot book: The ${shiftName} shift has reached its maximum patient limit.` });
             }
         }

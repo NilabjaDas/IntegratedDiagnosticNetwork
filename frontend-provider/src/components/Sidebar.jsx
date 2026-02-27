@@ -28,7 +28,8 @@ import {
   CreditCardOutlined,
   ApiOutlined,
   FilePdfOutlined,
-  CloudDownloadOutlined
+  CloudDownloadOutlined,
+  UserOutlined
 } from "@ant-design/icons";
 import { useDispatch, useSelector } from "react-redux";
 import { setPageLocation } from "../redux/uiRedux";
@@ -68,6 +69,7 @@ const menuItems = [
   
   getItem("Doctor EMR", "sub_emr", <LaptopOutlined />, [
     getItem("Book Appointment", "/doctor-emr/booking", <AppstoreAddOutlined />),
+    getItem("Assistant Workspace", "/doctor-emr/assistant", <UserOutlined />),
     getItem("Doctor Workspace", "/doctor-emr/workspace", <DesktopOutlined />),
     getItem("Reports", "/doctor-emr/reports", <LineChartOutlined />),
   ]),

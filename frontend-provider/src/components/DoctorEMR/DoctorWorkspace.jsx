@@ -1,160 +1,113 @@
-import React, { useEffect, useState } from 'react';
-import styled from 'styled-components';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Typography, message, Row, Col, Spin } from 'antd';
 import { useDispatch, useSelector } from 'react-redux';
-import { Row, Col, message } from 'antd';
-import dayjs from 'dayjs';
+import { fetchDepartmentQueue, updateTokenStatus, completeConsultation } from '../../redux/apiCalls';
+import { updateTokenSuccess } from '../../redux/queueRedux';
 
-// API Calls (Updated path)
-import { getDoctors, fetchDoctorQueue, updateTokenStatus, completeConsultation } from '../../redux/apiCalls';
+import ActivePatientCard from './ActivePatientCard';
+import WaitingQueueList from './WaitingQueueList';
+import PrescriptionEditor from './PrescriptionEditor';
 
-// Modular Components (Updated path)
-import WorkspaceHeader from './WorkspaceHeader';
-import WorkspaceQueueList from './WorkspaceQueueList';
-import WorkspaceEditor from './WorkspaceEditor';
-
-const PageContainer = styled.div`
-  padding: 24px;
-  background-color: #f4f6f8;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-`;
+const { Title, Text } = Typography;
 
 const DoctorWorkspace = () => {
     const dispatch = useDispatch();
-    const doctors = useSelector((state) => state[process.env.REACT_APP_DOCTORS_KEY]?.doctors || []);
-    
-    // State
-    const [selectedDoctorId, setSelectedDoctorId] = useState(null);
-    const [selectedDate, setSelectedDate] = useState(dayjs().format("YYYY-MM-DD"));
-    const [queue, setQueue] = useState([]);
-    const [loadingQueue, setLoadingQueue] = useState(false);
+    const [actionLoadingId, setActionLoadingId] = useState(null);
 
-    // Active Consultation State
-    const [activeToken, setActiveToken] = useState(null);
-    const [prescriptionContent, setPrescriptionContent] = useState("");
-    const [saving, setSaving] = useState(false);
-
+    // 1. Pull the live queue directly from Redux
+    const { queue, isFetching } = useSelector((state) => state[process.env.REACT_APP_QUEUE_DATA_KEY]);
+    // 2. Fetch initial data on mount
     useEffect(() => {
-        getDoctors(dispatch);
+        fetchDepartmentQueue(dispatch, "Consultation");
     }, [dispatch]);
 
-    useEffect(() => {
-        if (selectedDoctorId && selectedDate) {
-            loadQueue();
-        } else {
-            setQueue([]);
-            setActiveToken(null);
-        }
-    }, [selectedDoctorId, selectedDate]);
+    // --- CRITICAL FIX: FILTER OUT PATHOLOGY/RADIOLOGY TOKENS ---
+// --- UI VIEW LAYER FILTERING ---
+    const consultationQueue = useMemo(() => {
+        // Generate today's date in YYYY-MM-DD format
+        const d = new Date();
+        const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-    const loadQueue = async () => {
-        setLoadingQueue(true);
-        try {
-            const data = await fetchDoctorQueue(selectedDate, selectedDoctorId);
-            setQueue(data);
-            
-            // Re-sync active token if it exists in the new data
-            const currentActive = data.find(t => t.status === 'IN_PROGRESS');
-            if (currentActive) {
-                setActiveToken(currentActive);
-                // Only override editor if it's empty, so we don't wipe out unsaved typing
-                setPrescriptionContent(prev => prev ? prev : (currentActive.prescriptionHtml || ""));
-            }
-        } catch (error) {
-            message.error("Failed to load queue.");
-        }
-        setLoadingQueue(false);
-    };
+        return queue.filter(token => 
+            token.department === 'Consultation' && 
+            token.date === todayStr // <-- Protects the Live UI from future bookings!
+        );
+    }, [queue]);
 
-    // --- WORKFLOW ACTIONS ---
+    // 3. Derive current states from the FILTERED queue
+    const inCabinToken = consultationQueue.find(t => t.status === 'IN_CABIN' || t.status === 'CALLED');
+    const inProgressToken = consultationQueue.find(t => t.status === 'IN_PROGRESS');
 
-    // 1. Doctor clicks "Call to Cabin"
-    const handlePingTV = async (token) => {
+    // --- HANDLERS USING YOUR DEFINED API CALLS ---
+
+    const handleAction = async (tokenId, action) => {
+        setActionLoadingId(tokenId);
         try {
-            await updateTokenStatus(dispatch, token._id, 'RECALL'); 
-            message.success(`Patient ${token.tokenNumber} announced on TV screen.`);
-            loadQueue(); 
+            await updateTokenStatus(dispatch, tokenId, action);
+            if (action === 'SEND_TO_CABIN') message.success("Patient called to cabin!");
+            if (action === 'START') message.success("Consultation Started");
         } catch (error) {
-            message.error("Failed to ping TV.");
-        }
-    };
-    
-    // 2. Patient walks in, Doctor clicks "Start"
-    const handleStartConsultation = async (token) => {
-        try {
-            await updateTokenStatus(dispatch, token._id, 'START');
-            message.success("Consultation Started");
-            setActiveToken(token);
-            setPrescriptionContent(token.prescriptionHtml || "");
-            loadQueue(); 
-        } catch (error) {
-            message.error("Failed to start consultation.");
+            message.error("Failed to update status");
+        } finally {
+            setActionLoadingId(null);
         }
     };
 
-    // 3. Doctor clicks "Hold" (e.g., waiting for lab test)
-    const handleHoldConsultation = async (token) => {
+    const handleComplete = async (tokenId, html) => {
+        setActionLoadingId(tokenId);
         try {
-            await updateTokenStatus(dispatch, token._id, 'HOLD');
-            message.info("Patient placed on hold.");
-            setActiveToken(null);
-            setPrescriptionContent("");
-            loadQueue();
+            const updatedToken = await completeConsultation(tokenId, html);
+            // Manually update Redux so the UI clears the patient immediately
+            dispatch(updateTokenSuccess(updatedToken)); 
+            message.success("Prescription saved and consultation completed!");
         } catch (error) {
-            message.error("Failed to hold consultation.");
+            message.error("Failed to save prescription");
+        } finally {
+            setActionLoadingId(null);
         }
     };
 
-    // 4. Doctor completes the visit
-    const handleSavePrescription = async (tokenId, htmlContent) => {
-        setSaving(true);
-        try {
-            await completeConsultation(tokenId, htmlContent);
-            message.success("Consultation Completed & Prescription Saved!");
-            setActiveToken(null);
-            setPrescriptionContent("");
-            loadQueue();
-        } catch (error) {
-            message.error("Failed to save prescription.");
-        }
-        setSaving(false);
-    };
+    // Use filtered queue to determine if we should show the spinner
+    if (isFetching && consultationQueue.length === 0) {
+        return <div style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }}><Spin size="large" /></div>;
+    }
 
     return (
-        <PageContainer>
-            <WorkspaceHeader 
-                doctors={doctors}
-                selectedDoctorId={selectedDoctorId}
-                setSelectedDoctorId={setSelectedDoctorId}
-                selectedDate={selectedDate}
-                setSelectedDate={setSelectedDate}
-            />
+        <div style={{ padding: '24px', height: 'calc(100vh - 64px)', overflowY: 'auto', background: '#f0f2f5' }}>
+            <div style={{ marginBottom: 24 }}>
+                <Title level={3} style={{ margin: 0 }}>Doctor Workspace</Title>
+                <Text type="secondary">Manage your active patients and waiting queue.</Text>
+            </div>
 
-            {selectedDoctorId && (
-                <Row gutter={16} style={{ flex: 1, minHeight: 0 }}>
-                    <Col span={8} style={{ display: 'flex', flexDirection: 'column' }}>
-                        <WorkspaceQueueList 
-                            queue={queue}
-                            loadingQueue={loadingQueue}
-                            activeToken={activeToken}
-                            onPingTV={handlePingTV}
-                            onStartConsultation={handleStartConsultation}
+            {inProgressToken ? (
+                <PrescriptionEditor 
+                    activeToken={inProgressToken} 
+                    onComplete={handleComplete}
+                    loading={actionLoadingId === inProgressToken._id}
+                />
+            ) : (
+                <Row gutter={24}>
+                    <Col span={24} style={{ marginBottom: 24 }}>
+                        <ActivePatientCard 
+                            activeToken={inCabinToken} 
+                            onStartConsultation={(id) => handleAction(id, 'START')}
+                            loading={actionLoadingId === inCabinToken?._id}
                         />
                     </Col>
-                    <Col span={16} style={{ display: 'flex', flexDirection: 'column' }}>
-                        <WorkspaceEditor 
-                            activeToken={activeToken}
-                            prescriptionContent={prescriptionContent}
-                            setPrescriptionContent={setPrescriptionContent}
-                            onSave={handleSavePrescription}
-                            onHold={handleHoldConsultation}
-                            saving={saving}
-                        />
+                    
+                    <Col span={24}>
+                        <div style={{ background: '#fff', padding: 20, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                            <Title level={5} style={{ marginBottom: 16 }}>Waiting Queue</Title>
+                            <WaitingQueueList 
+                                queue={consultationQueue} // <-- Pass the FILTERED array here
+                                onAction={handleAction} 
+                                loadingId={actionLoadingId} 
+                            />
+                        </div>
                     </Col>
                 </Row>
             )}
-        </PageContainer>
+        </div>
     );
 };
 
