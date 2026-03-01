@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Modal, Form, Input, Select, InputNumber, Button, message, Divider, Alert, Space, Tabs } from "antd";
 import { DollarCircleOutlined, CreditCardOutlined, QrcodeOutlined, SendOutlined, CheckCircleOutlined, ReloadOutlined } from "@ant-design/icons";
-import { recordManualPayment, createRazorpayOrder, verifyOnlinePayment, sendPaymentLink,verifyPaymentStatus, checkPaymentStatus } from "../../redux/apiCalls";
+import { recordManualPayment, createRazorpayOrder, verifyOnlinePayment, sendPaymentLink, checkPaymentStatus } from "../../redux/apiCalls";
 
 const { Option } = Select;
 
@@ -22,18 +22,20 @@ const loadRazorpayScript = () => {
 
 const PaymentModal = ({ open, onCancel, order, onSuccess }) => {
   const [form] = Form.useForm();
-  const [verifyForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [sendingLink, setSendingLink] = useState(false);
   const [paymentMode, setPaymentMode] = useState("Cash");
-  const [paymentStatus, setPaymentStatus] = useState(null); // 'failed' | 'cancelled' | 'success' | null
+  const [paymentStatus, setPaymentStatus] = useState(null);
 
-  const dueAmount = order?.financials?.dueAmount || 0;
+  // --- CRITICAL FIX: Unwrap the order object if it came from the create-order API ---
+  const actualOrder = order?.order || order;
   
-  // Extract patient details safely
-  const patientName = order?.patientId?.firstName ? `${order.patientId.firstName} ${order.patientId.lastName}` : "Patient";
-  const patientMobile = order?.patientId?.mobile || "";
-  const patientEmail = order?.patientId?.email || "";
+  const dueAmount = actualOrder?.financials?.dueAmount || 0;
+  
+  // Extract patient details safely (checks both populated patientId and flat patientDetails)
+  const patientName = actualOrder?.patientDetails?.name || (actualOrder?.patientId?.firstName ? `${actualOrder.patientId.firstName} ${actualOrder.patientId.lastName}` : "Patient");
+  const patientMobile = actualOrder?.patientDetails?.mobile || actualOrder?.patientId?.mobile || "";
+  const patientEmail = actualOrder?.patientId?.email || "";
 
   // --- HANDLER: Manual & Instant UPI ---
   const handleFinish = async (values) => {
@@ -43,7 +45,7 @@ const PaymentModal = ({ open, onCancel, order, onSuccess }) => {
     if (values.paymentMode === "Cash" || values.paymentMode === "Card") {
       // 1. MANUAL
       const payload = {
-        dbOrderId: order._id,
+        dbOrderId: actualOrder._id, // <--- Fixed
         mode: values.paymentMode,
         amount: values.amount,
         transactionId: values.transactionId,
@@ -70,7 +72,7 @@ const PaymentModal = ({ open, onCancel, order, onSuccess }) => {
       }
 
       // Create Order
-      const orderPayload = { amount: values.amount, orderId: order._id };
+      const orderPayload = { amount: values.amount, orderId: actualOrder._id }; // <--- Fixed
       const orderRes = await createRazorpayOrder(orderPayload);
 
       if (orderRes.status !== 200) {
@@ -85,13 +87,13 @@ const PaymentModal = ({ open, onCancel, order, onSuccess }) => {
         amount: amount,
         currency: currency,
         name: "Diagnostic Center",
-        description: `Order #${order.displayId}`,
+        description: `Order #${actualOrder.displayId}`, // <--- Fixed
         order_id: rzpOrderId,
         
         // Success Handler
         handler: async function (response) {
           const verifyPayload = {
-            dbOrderId: order._id,
+            dbOrderId: actualOrder._id, // <--- Fixed
             razorpayOrderId: response.razorpay_order_id,
             razorpayPaymentId: response.razorpay_payment_id,
             razorpaySignature: response.razorpay_signature,
@@ -145,12 +147,11 @@ const PaymentModal = ({ open, onCancel, order, onSuccess }) => {
 
   // --- HANDLER: Send Link ---
   const handleSendLink = async () => {
-    // Validate Amount first
     form.validateFields(['amount']).then(async (values) => {
         setSendingLink(true);
         const payload = {
             amount: values.amount,
-            dbOrderId: order._id,
+            dbOrderId: actualOrder._id, // <--- Fixed
             customerName: patientName,
             customerMobile: patientMobile,
             customerEmail: patientEmail
@@ -161,8 +162,6 @@ const PaymentModal = ({ open, onCancel, order, onSuccess }) => {
 
         if (res.status === 200) {
             message.success(`Link sent to ${patientMobile}`);
-            // Note: Since this is async, we don't close the modal immediately or mark as paid.
-            // A webhook is required to update status later.
         } else {
             message.error("Failed to send link");
         }
@@ -171,18 +170,18 @@ const PaymentModal = ({ open, onCancel, order, onSuccess }) => {
     });
   };
 
-const handleSmartVerify = async () => {
+  const handleSmartVerify = async () => {
     setLoading(true);
-    const res = await checkPaymentStatus(order._id);
+    const res = await checkPaymentStatus(actualOrder._id); // <--- Fixed
     setLoading(false);
 
-    if (res.data.success) {
+    if (res.data?.success) {
         message.success(res.data.message);
         onSuccess(); // Refresh and Close
     } else {
-        message.info(res.data.message); // "No new payments found"
+        message.info(res.data?.message || "No new payments found");
     }
-};
+  };
 
   const items = [
     {
@@ -192,7 +191,7 @@ const handleSmartVerify = async () => {
         <Form 
             layout="vertical" 
             form={form} 
-            onFinish={handleFinish} // Use your existing handleFinish
+            onFinish={handleFinish} 
             initialValues={{ paymentMode: "Cash", amount: dueAmount }}
         >
             <Form.Item name="paymentMode" label="Payment Mode">
@@ -237,36 +236,35 @@ const handleSmartVerify = async () => {
       )
     },
     {
-  key: '2',
-  label: 'Check Status',
-  children: (
-    <div style={{ padding: '20px 0', textAlign: 'center' }}>
-        <Alert 
-            message="Did the patient pay?" 
-            description="If the payment was successful but the status didn't update automatically, click below. The system will check with the bank securely."
-            type="info" 
-            showIcon 
-            style={{ marginBottom: 20, textAlign: 'left' }}
-        />
-        
-        <Button 
-            type="primary" 
-            size="large" 
-            icon={<ReloadOutlined />} 
-            loading={loading}
-            onClick={handleSmartVerify}
-        >
-            Check Payment Status
-        </Button>
-    </div>
-  )
-}
+      key: '2',
+      label: 'Check Status',
+      children: (
+        <div style={{ padding: '20px 0', textAlign: 'center' }}>
+            <Alert 
+                message="Did the patient pay?" 
+                description="If the payment was successful but the status didn't update automatically, click below. The system will check with the bank securely."
+                type="info" 
+                showIcon 
+                style={{ marginBottom: 20, textAlign: 'left' }}
+            />
+            
+            <Button 
+                type="primary" 
+                size="large" 
+                icon={<ReloadOutlined />} 
+                loading={loading}
+                onClick={handleSmartVerify}
+            >
+                Check Payment Status
+            </Button>
+        </div>
+      )
+    }
   ];
-
 
   return (
     <Modal
-      title="Payment"
+      title={`Payment for ${patientName}`}
       open={open}
       onCancel={onCancel}
       footer={null}
@@ -277,7 +275,11 @@ const handleSmartVerify = async () => {
          <div style={{ fontSize: 24, fontWeight: 'bold', color: '#cf1322' }}>₹{dueAmount}</div>
        </div>
        
-       <Tabs defaultActiveKey="1" items={items} />
+       {dueAmount > 0 ? (
+           <Tabs defaultActiveKey="1" items={items} />
+       ) : (
+           <Alert message="Order is Fully Paid" type="success" showIcon />
+       )}
     </Modal>
   );
 };

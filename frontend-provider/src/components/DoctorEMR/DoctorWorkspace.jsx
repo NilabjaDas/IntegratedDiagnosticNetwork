@@ -1,46 +1,82 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Typography, message, Row, Col, Spin } from 'antd';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchDepartmentQueue, updateTokenStatus, completeConsultation } from '../../redux/apiCalls';
+import { fetchDepartmentQueue, updateTokenStatus, completeConsultation, getDoctors, getOrderDetails, recordManualPayment } from '../../redux/apiCalls';
 import { updateTokenSuccess } from '../../redux/queueRedux';
 
 import ActivePatientCard from './ActivePatientCard';
 import WaitingQueueList from './WaitingQueueList';
 import PrescriptionEditor from './PrescriptionEditor';
+import EMRDeskPaymentModal from './EMRDeskPaymentModal';
 
 const { Title, Text } = Typography;
 
 const DoctorWorkspace = () => {
     const dispatch = useDispatch();
     const [actionLoadingId, setActionLoadingId] = useState(null);
+    const [paymentModalData, setPaymentModalData] = useState(null);
 
-    // 1. Pull the live queue directly from Redux
     const { queue, isFetching } = useSelector((state) => state[process.env.REACT_APP_QUEUE_DATA_KEY]);
-    // 2. Fetch initial data on mount
+    const doctors = useSelector((state) => state[process.env.REACT_APP_DOCTORS_KEY]?.doctors || []);
+
     useEffect(() => {
         fetchDepartmentQueue(dispatch, "Consultation");
-    }, [dispatch]);
+        if (doctors.length === 0) getDoctors(dispatch); 
+    }, [dispatch, doctors.length]);
 
-    // --- CRITICAL FIX: FILTER OUT PATHOLOGY/RADIOLOGY TOKENS ---
-// --- UI VIEW LAYER FILTERING ---
     const consultationQueue = useMemo(() => {
-        // Generate today's date in YYYY-MM-DD format
         const d = new Date();
         const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-        return queue.filter(token => 
-            token.department === 'Consultation' && 
-            token.date === todayStr // <-- Protects the Live UI from future bookings!
-        );
+        return queue.filter(token => token.department === 'Consultation' && token.date === todayStr);
     }, [queue]);
 
-    // 3. Derive current states from the FILTERED queue
     const inCabinToken = consultationQueue.find(t => t.status === 'IN_CABIN' || t.status === 'CALLED');
     const inProgressToken = consultationQueue.find(t => t.status === 'IN_PROGRESS');
 
-    // --- HANDLERS USING YOUR DEFINED API CALLS ---
+    // --- 🚨 FINANCIAL INTERCEPTOR 🚨 ---
+    const handleActionInterceptor = async (tokenId, action) => {
+        const token = consultationQueue.find(t => t._id === tokenId);
+        
+        if (!token.paymentStatus || token.paymentStatus === 'Paid') {
+            return executeAction(tokenId, action);
+        }
 
-    const handleAction = async (tokenId, action) => {
+        const doctor = doctors.find(d => d._id === token.doctorId || d.doctorId === token.doctorId);
+        const config = doctor?.billingPreferences || { paymentCollectionPoint: 'MANUAL_DESK_COLLECTION', doctorCapabilities: { allowedToCollect: true, allowedModes: ['Cash'], canWaiveFee: true } };
+
+        if (config.paymentCollectionPoint === 'STRICT_PREPAID') {
+            message.error("Strict Policy: Patient must complete payment at Reception before proceeding.");
+            return;
+        }
+
+        if (config.paymentCollectionPoint === 'AUTO_PAY_ON_CONSULT') {
+            await handleAutoPayAndProceed(token, action);
+            return;
+        }
+
+        setPaymentModalData({ token, action, config });
+    };
+
+    const handleAutoPayAndProceed = async (token, action) => {
+        setActionLoadingId(token._id);
+        try {
+            const res = await getOrderDetails(token.orderId);
+            if (res.status === 200) {
+                const due = res.data.financials?.dueAmount || 0;
+                if (due > 0) {
+                    await recordManualPayment({ dbOrderId: token.orderId, amount: due, mode: 'Cash', notes: 'Auto-collected by Doctor' });
+                    dispatch(updateTokenSuccess({ ...token, paymentStatus: 'Paid' }));
+                }
+            }
+            await executeAction(token._id, action);
+        } catch(err) {
+            message.error("Auto-pay failed.");
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
+    const executeAction = async (tokenId, action) => {
         setActionLoadingId(tokenId);
         try {
             await updateTokenStatus(dispatch, tokenId, action);
@@ -57,7 +93,6 @@ const DoctorWorkspace = () => {
         setActionLoadingId(tokenId);
         try {
             const updatedToken = await completeConsultation(tokenId, html);
-            // Manually update Redux so the UI clears the patient immediately
             dispatch(updateTokenSuccess(updatedToken)); 
             message.success("Prescription saved and consultation completed!");
         } catch (error) {
@@ -67,7 +102,6 @@ const DoctorWorkspace = () => {
         }
     };
 
-    // Use filtered queue to determine if we should show the spinner
     if (isFetching && consultationQueue.length === 0) {
         return <div style={{ display: 'flex', justifyContent: 'center', marginTop: 100 }}><Spin size="large" /></div>;
     }
@@ -90,7 +124,7 @@ const DoctorWorkspace = () => {
                     <Col span={24} style={{ marginBottom: 24 }}>
                         <ActivePatientCard 
                             activeToken={inCabinToken} 
-                            onStartConsultation={(id) => handleAction(id, 'START')}
+                            onStartConsultation={(id) => handleActionInterceptor(id, 'START')} // <-- Interceptor
                             loading={actionLoadingId === inCabinToken?._id}
                         />
                     </Col>
@@ -99,14 +133,25 @@ const DoctorWorkspace = () => {
                         <div style={{ background: '#fff', padding: 20, borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                             <Title level={5} style={{ marginBottom: 16 }}>Waiting Queue</Title>
                             <WaitingQueueList 
-                                queue={consultationQueue} // <-- Pass the FILTERED array here
-                                onAction={handleAction} 
+                                queue={consultationQueue} 
+                                onAction={handleActionInterceptor} // <-- Interceptor
                                 loadingId={actionLoadingId} 
                             />
                         </div>
                     </Col>
                 </Row>
             )}
+
+            <EMRDeskPaymentModal 
+                visible={!!paymentModalData} 
+                data={paymentModalData} 
+                onCancel={() => setPaymentModalData(null)} 
+                onSuccess={(tokenId, action) => {
+                    setPaymentModalData(null);
+                    executeAction(tokenId, action);
+                }}
+                role="Doctor" // Tells the modal to read doctorCapabilities (enables Waive Fee)
+            />
         </div>
     );
 };

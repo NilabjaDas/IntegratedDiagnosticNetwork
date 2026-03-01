@@ -325,6 +325,7 @@ export const updateOrderNotes = async (id, notes) => {
 
 // 1. Record Manual (Cash/Card)
 export const recordManualPayment = async (payload) => {
+  console.log(payload)
   try {
     const res = await userRequest.post("/payments/record-manual", payload);
     return { status: 200, data: res.data };

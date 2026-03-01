@@ -12,7 +12,6 @@ const DoctorProfileTab = ({ rooms, templates = [] }) => {
                 <Col span={8}><Form.Item name="firstName" label="First Name" rules={[{ required: true }]}><Input /></Form.Item></Col>
                 <Col span={8}><Form.Item name="lastName" label="Last Name" rules={[{ required: true }]}><Input /></Form.Item></Col>
                 <Col span={8}>
-                    {/* NEW: GENDER FIELD */}
                     <Form.Item name="gender" label="Gender">
                         <Select placeholder="Select">
                             <Option value="Male">Male</Option>
@@ -33,7 +32,6 @@ const DoctorProfileTab = ({ rooms, templates = [] }) => {
                 <Col span={12}><Form.Item name="specialization" label="Specialization" rules={[{ required: true }]}><Input placeholder="e.g. Cardiology" /></Form.Item></Col>
                 <Col span={12}><Form.Item name="registrationNumber" label="Medical Council Reg. No." rules={[{ required: true }]}><Input /></Form.Item></Col>
                 
-                {/* NEW: QUALIFICATIONS & EXPERIENCE */}
                 <Col span={16}>
                     <Form.Item name="qualifications" label="Qualifications (Type & Press Enter)">
                         <Select mode="tags" placeholder="e.g. MBBS, MD, FRCP" open={false} />
@@ -58,7 +56,6 @@ const DoctorProfileTab = ({ rooms, templates = [] }) => {
                     </Form.Item>
                 </Col>
 
-                {/* NEW: PRESCRIPTION TEMPLATE */}
                 <Col span={12}>
                     <Form.Item name="prescriptionTemplateId" label="Default Prescription Template">
                         <Select placeholder="Select a Template" allowClear>
@@ -93,6 +90,65 @@ const DoctorProfileTab = ({ rooms, templates = [] }) => {
                     </Form.Item>
                 </Col>
             </Row>
+
+            {/* --- NEW: BILLING & FINANCIAL PREFERENCES --- */}
+            <Card size="small" title="Billing & Financial Preferences" style={{ marginBottom: 16, borderColor: '#d9d9d9' }} headStyle={{ backgroundColor: '#fafafa' }}>
+                <Row gutter={16}>
+                    <Col span={24}>
+                        <Form.Item 
+                            name={['billingPreferences', 'paymentCollectionPoint']} 
+                            label="Payment Collection Strategy" 
+                            tooltip="When should the system enforce or trigger payment for this doctor?"
+                            initialValue="MANUAL_DESK_COLLECTION"
+                        >
+                            <Select>
+                                <Option value="STRICT_PREPAID">Strict Prepaid (Hospital Mode: Reception MUST collect before queueing)</Option>
+                                <Option value="AUTO_PAY_ON_CONSULT">Auto-Pay on Consult (Fast Mode: Mark as Paid when called to cabin)</Option>
+                                <Option value="MANUAL_DESK_COLLECTION">Manual Desk Collection (Prompt Assistant/Doctor to collect at desk)</Option>
+                            </Select>
+                        </Form.Item>
+                    </Col>
+
+                    {/* Assistant Capabilities */}
+                    <Col span={12}>
+                        <Card type="inner" title="Assistant Capabilities" size="small" style={{ height: '100%' }}>
+                            <Form.Item name={['billingPreferences', 'assistantCapabilities', 'allowedToCollect']} label="Allowed to Collect Payment?" valuePropName="checked" initialValue={true}>
+                                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+                            </Form.Item>
+                            <Form.Item name={['billingPreferences', 'assistantCapabilities', 'allowedModes']} label="Allowed Payment Modes" initialValue={['Cash', 'UPI']}>
+                                <Select mode="multiple" placeholder="Select Modes">
+                                    <Option value="Cash">Cash</Option>
+                                    <Option value="UPI">UPI QR</Option>
+                                    <Option value="Link">Payment Link</Option>
+                                </Select>
+                            </Form.Item>
+                            <Form.Item name={['billingPreferences', 'assistantCapabilities', 'maxDiscountPercent']} label="Max Discount Allowed (%)" initialValue={0}>
+                                <InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" />
+                            </Form.Item>
+                        </Card>
+                    </Col>
+
+                    {/* Doctor Capabilities */}
+                    <Col span={12}>
+                        <Card type="inner" title="Doctor Capabilities" size="small" style={{ height: '100%' }}>
+                            <Form.Item name={['billingPreferences', 'doctorCapabilities', 'allowedToCollect']} label="Allowed to Collect Payment?" valuePropName="checked" initialValue={true}>
+                                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+                            </Form.Item>
+                            <Form.Item name={['billingPreferences', 'doctorCapabilities', 'allowedModes']} label="Allowed Payment Modes" initialValue={['Cash']}>
+                                <Select mode="multiple" placeholder="Select Modes">
+                                    <Option value="Cash">Cash</Option>
+                                    <Option value="UPI">UPI QR</Option>
+                                    <Option value="Link">Payment Link</Option>
+                                </Select>
+                            </Form.Item>
+                            <Form.Item name={['billingPreferences', 'doctorCapabilities', 'canWaiveFee']} label="Can Waive Fee Entirely?" valuePropName="checked" initialValue={true} tooltip="Allows doctor to mark consultation as ₹0 for relatives/staff.">
+                                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+                            </Form.Item>
+                        </Card>
+                    </Col>
+                </Row>
+            </Card>
+
             <Card size="small" title="Leave & Operational Settings" style={{ marginBottom: 16 }}>
                 <Row gutter={16}>
                     <Col span={8}>
@@ -112,4 +168,4 @@ const DoctorProfileTab = ({ rooms, templates = [] }) => {
     );
 };
 
-export default DoctorProfileTab;
+export default DoctorProfileTab;    

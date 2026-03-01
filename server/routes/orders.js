@@ -439,6 +439,7 @@ router.post("/", async (req, res) => {
             patientDetails: finalPatientDetails,
             tests: groupItems,
             status: 'WAITING',
+            paymentStatus: financials.status,
             estimatedStartTime: etaData.etaDate,
             estimatedTimeFormatted: etaData.etaFormatted,
             isOverbooked: etaData.isOverbooked

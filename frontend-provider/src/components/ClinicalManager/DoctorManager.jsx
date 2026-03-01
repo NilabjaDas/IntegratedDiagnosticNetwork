@@ -14,7 +14,7 @@ import {
     addDoctorOverride, fetchMyInstitutionSettings, revokeDoctorAbsence 
 } from '../../redux/apiCalls';
 
-// Modular Components (now in the same directory)
+// Modular Components 
 import DoctorProfileTab from './DoctorProfileTab';
 import DoctorScheduleTab from './DoctorScheduleTab';
 import DoctorLeavesTab from './DoctorLeavesTab';
@@ -102,6 +102,12 @@ const DoctorManager = () => {
                 leaveSettings: doctor.leaveSettings,
                 assignedCounterId: doctor.assignedCounterId,
                 prescriptionTemplateId: doctor.prescriptionTemplateId,
+                // --- NEW: LOAD BILLING PREFERENCES ---
+                billingPreferences: doctor.billingPreferences || {
+                    paymentCollectionPoint: 'MANUAL_DESK_COLLECTION',
+                    assistantCapabilities: { allowedToCollect: true, allowedModes: ['Cash', 'UPI'], maxDiscountPercent: 0 },
+                    doctorCapabilities: { allowedToCollect: true, allowedModes: ['Cash'], canWaiveFee: true }
+                },
                 schedule: buildInitialSchedule(doctor.schedule),
             });
         } else {
@@ -110,7 +116,13 @@ const DoctorManager = () => {
                 schedule: buildInitialSchedule([]),
                 avgTimePerPatientMinutes: 15,
                 followUpValidityDays: 7,
-                leaveSettings: { leaveLimitPerYear: 20 }
+                leaveSettings: { leaveLimitPerYear: 20 },
+                // --- NEW: DEFAULT BILLING PREFERENCES FOR NEW DOCTOR ---
+                billingPreferences: {
+                    paymentCollectionPoint: 'MANUAL_DESK_COLLECTION',
+                    assistantCapabilities: { allowedToCollect: true, allowedModes: ['Cash', 'UPI'], maxDiscountPercent: 0 },
+                    doctorCapabilities: { allowedToCollect: true, allowedModes: ['Cash'], canWaiveFee: true }
+                }
             });
         }
         setDrawerVisible(true);
@@ -142,10 +154,13 @@ const DoctorManager = () => {
             leaveSettings: values.leaveSettings,
             prescriptionTemplateId: values.prescriptionTemplateId,
             assignedCounterId: values.assignedCounterId,
+            // --- NEW: INJECT BILLING PREFERENCES INTO PAYLOAD ---
+            billingPreferences: values.billingPreferences,
             schedule: formattedSchedule,
         };
 
         try {
+            console.log(payload)
             if (editingDoctor) {
                 await updateDoctor(dispatch, editingDoctor.doctorId, payload);
                 message.success("Doctor updated successfully");

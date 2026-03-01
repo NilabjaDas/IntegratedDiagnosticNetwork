@@ -85,6 +85,24 @@ const doctorSchema = new mongoose.Schema({
         allowOverbooking: { type: Boolean, default: false } 
     },
 
+    billingPreferences: {
+        paymentCollectionPoint: { 
+            type: String, 
+            enum: ['STRICT_PREPAID', 'AUTO_PAY_ON_CONSULT', 'MANUAL_DESK_COLLECTION'], 
+            default: 'MANUAL_DESK_COLLECTION' 
+        },
+        assistantCapabilities: {
+            allowedToCollect: { type: Boolean, default: true },
+            allowedModes: [{ type: String, enum: ['Cash', 'UPI', 'Link'], default: ['Cash', 'UPI'] }],
+            maxDiscountPercent: { type: Number, default: 0 }
+        },
+        doctorCapabilities: {
+            allowedToCollect: { type: Boolean, default: true },
+            allowedModes: [{ type: String, enum: ['Cash', 'UPI'], default: ['Cash'] }],
+            canWaiveFee: { type: Boolean, default: true }
+        }
+    },
+
     leaveSettings: {
         leaveLimitPerYear: { type: Number, default: 20 }
     },

@@ -37,7 +37,11 @@ const queueTokenSchema = new mongoose.Schema({
       enum: ['WAITING', 'CALLED', 'IN_CABIN', 'IN_PROGRESS', 'COMPLETED', 'HOLD', 'SKIPPED', 'CANCELLED', 'DOC_UNVAILABLE'],
       default: 'WAITING' 
   },
-  
+  paymentStatus: {
+        type: String,
+        enum: ['Pending', 'PartiallyPaid', 'Paid'],
+        default: 'Pending'
+    },
   // --- FIX: ADD NOTES FIELD ---
   notes: { type: String, default: "" }, 
 
