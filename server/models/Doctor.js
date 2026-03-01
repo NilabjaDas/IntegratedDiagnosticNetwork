@@ -94,12 +94,16 @@ const doctorSchema = new mongoose.Schema({
         assistantCapabilities: {
             allowedToCollect: { type: Boolean, default: true },
             allowedModes: [{ type: String, enum: ['Cash', 'UPI', 'Link'], default: ['Cash', 'UPI'] }],
-            maxDiscountPercent: { type: Number, default: 0 }
+            maxDiscountPercent: { type: Number, default: 0 },
+            canStartCompleteShifts: { type: Boolean, default: true },
+            canCancelShifts: { type: Boolean, default: false }
         },
         doctorCapabilities: {
             allowedToCollect: { type: Boolean, default: true },
             allowedModes: [{ type: String, enum: ['Cash', 'UPI'], default: ['Cash'] }],
-            canWaiveFee: { type: Boolean, default: true }
+            canWaiveFee: { type: Boolean, default: true },
+            canStartCompleteShifts: { type: Boolean, default: true },
+            canCancelShifts: { type: Boolean, default: true }
         }
     },
 
@@ -119,7 +123,8 @@ const doctorSchema = new mongoose.Schema({
         startTime: { type: String, required: true },
         endTime: { type: String, required: true },
         maxTokens: { type: Number, required: true },
-        notes: { type: String }
+        status: { type: String, enum: ['Scheduled', 'Cancelled'], default: 'Scheduled' },
+        note: { type: String }
     }],
 
     // --- Infrastructure ---

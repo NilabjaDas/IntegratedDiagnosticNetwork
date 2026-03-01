@@ -4,6 +4,7 @@ const queueSlice = createSlice({
   name: "queue",
   initialState: {
     queue: [],
+    liveShifts: [],
     isFetching: false,
     error: false,
   },
@@ -21,7 +22,13 @@ const queueSlice = createSlice({
       state.isFetching = false;
       state.queue = action.payload;
     },
-
+addTokenSuccess: (state, action) => {
+      state.isFetching = false;
+      const exists = state.queue.find((token) => token._id === action.payload._id);
+      if (!exists) {
+        state.queue.push(action.payload); 
+      }
+    },
     // 3. Real-Time Update: Triggered when a tech clicks Call/Start/Hold/Complete
     updateTokenSuccess: (state, action) => {
       state.isFetching = false;
@@ -39,7 +46,18 @@ const queueSlice = createSlice({
         }
       }
     },
- 
+ setLiveShifts: (state, action) => {
+      state.liveShifts = action.payload;
+    },
+    updateLiveShift: (state, action) => {
+      const updatedShift = action.payload;
+      const index = state.liveShifts.findIndex((s) => s._id === updatedShift._id);
+      if (index !== -1) {
+        state.liveShifts[index] = updatedShift;
+      } else {
+        state.liveShifts.push(updatedShift);
+      }
+    }
   },
 });
 
@@ -47,7 +65,10 @@ export const {
   queueProcessStart,
   queueProcessFailure,
   getQueueSuccess,
+  addTokenSuccess,
   updateTokenSuccess,
+  setLiveShifts,
+  updateLiveShift
 
 } = queueSlice.actions;
 

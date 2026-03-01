@@ -19,7 +19,7 @@ import DoctorProfileTab from './DoctorProfileTab';
 import DoctorScheduleTab from './DoctorScheduleTab';
 import DoctorLeavesTab from './DoctorLeavesTab';
 import DoctorOverrideModal from './DoctorOverrideModal';
-import DoctorSpecialShiftModal from './DoctorSpecialShiftModal';
+import DoctorSpecialShiftModal from './DoctorSpecialShiftDrawer';
 import { CalendarOutlined } from '@ant-design/icons';
 import DoctorCalendarWorkspace from './DoctorCalendarWorkspace';
 
@@ -105,8 +105,8 @@ const DoctorManager = () => {
                 // --- NEW: LOAD BILLING PREFERENCES ---
                 billingPreferences: doctor.billingPreferences || {
                     paymentCollectionPoint: 'MANUAL_DESK_COLLECTION',
-                    assistantCapabilities: { allowedToCollect: true, allowedModes: ['Cash', 'UPI'], maxDiscountPercent: 0 },
-                    doctorCapabilities: { allowedToCollect: true, allowedModes: ['Cash'], canWaiveFee: true }
+                    assistantCapabilities: { allowedToCollect: true, allowedModes: ['Cash', 'UPI'], maxDiscountPercent: 0,canStartCompleteShifts: true, canCancelShifts: false },
+                    doctorCapabilities: { allowedToCollect: true, allowedModes: ['Cash'], canWaiveFee: true,canStartCompleteShifts: true, canCancelShifts: true }
                 },
                 schedule: buildInitialSchedule(doctor.schedule),
             });
@@ -188,49 +188,107 @@ const DoctorManager = () => {
         }
     };
 
-    const getTodayStatus = (doc) => {
-        const todayStr = dayjs().format('YYYY-MM-DD');
-        const todayIndex = dayjs().day();
-        const totalShifts = doc.schedule?.find(s => s.dayOfWeek === todayIndex)?.shifts || [];
-        const totalShiftCount = totalShifts.length;
+const getTodayStatus = (doc) => {
+        const todayObj = dayjs();
+        const todayStr = todayObj.format('YYYY-MM-DD');
+        const todayIndex = todayObj.day();
+        const weekOfMonth = Math.ceil(todayObj.date() / 7);
 
+        // 1. Regular Shifts
+        const daySchedule = doc.schedule?.find(s => s.dayOfWeek === todayIndex);
+        let availableShifts = [];
+        if (daySchedule && daySchedule.isAvailable) {
+            availableShifts = daySchedule.shifts.filter(shift => {
+                if (shift.repeatWeeks && shift.repeatWeeks.length > 0) return shift.repeatWeeks.includes(weekOfMonth);
+                return true;
+            });
+        }
+
+        // 2. Special Shifts
+        const specialShifts = doc.specialShifts?.filter(s => s.date === todayStr && s.status !== 'Cancelled') || [];
+        const hasSpecialShifts = specialShifts.length > 0;
+
+        // Merge shifts to know total valid shifts today
+        let allShifts = [...availableShifts];
+        specialShifts.forEach(special => {
+            const idx = allShifts.findIndex(s => s.shiftName === special.shiftName);
+            if (idx > -1) allShifts[idx] = special;
+            else allShifts.push(special);
+        });
+        const totalShiftCount = allShifts.length;
+
+        // 3. Leaves
         const todayLeaves = doc.leaves?.filter(l => todayStr >= l.startDate && todayStr <= l.endDate) || [];
         let plannedCancelledShifts = [];
         let isFullDayLeave = false;
 
         todayLeaves.forEach(l => {
-            if (!l.shiftNames || l.shiftNames.length === 0) {
-                isFullDayLeave = true;
-            } else {
-                plannedCancelledShifts.push(...l.shiftNames);
-            }
+            if (!l.shiftNames || l.shiftNames.length === 0) isFullDayLeave = true;
+            else plannedCancelledShifts.push(...l.shiftNames);
         });
 
+        // 4. Overrides
         const overrides = doc.dailyOverrides?.filter(o => o.date === todayStr) || [];
         const overrideCancelledShifts = overrides.filter(o => o.isCancelled).flatMap(o => o.shiftNames || []);
         const overridesDelays = overrides.filter(o => o.delayMinutes > 0);
 
         const allCancelledShifts = [...new Set([...plannedCancelledShifts, ...overrideCancelledShifts])];
 
-        if (isFullDayLeave || (totalShiftCount > 0 && allCancelledShifts.length >= totalShiftCount)) {
+        // LOGIC CHECKS
+        if (totalShiftCount === 0) {
+            return { text: 'Off Today', color: 'default', canRevoke: false, fullyCancelled: true };
+        }
+
+        if (isFullDayLeave || allCancelledShifts.length >= totalShiftCount || overrides.some(o => o.isCancelled && (!o.shiftNames || o.shiftNames.length === 0))) {
             return { text: isFullDayLeave ? 'On Planned Leave' : 'Cancelled (Full Day)', color: 'red', canRevoke: true, fullyCancelled: true };
         }
 
         const details = [];
+        let hasRevokableIssue = false; // <-- NEW: Strictly track if there are negative issues
 
-        if (plannedCancelledShifts.length > 0) details.push(`${plannedCancelledShifts.join(', ')}: Planned Leave`);
+        if (hasSpecialShifts) details.push(`Special Shift Active`);
+        
+        if (plannedCancelledShifts.length > 0) {
+            details.push(`${plannedCancelledShifts.join(', ')} (Leave)`);
+            hasRevokableIssue = true;
+        }
 
         const pureOverrideCancels = overrideCancelledShifts.filter(s => !plannedCancelledShifts.includes(s));
-        if (pureOverrideCancels.length > 0) details.push(`${pureOverrideCancels.join(', ')}: Cancelled`);
+        if (pureOverrideCancels.length > 0) {
+            details.push(`${pureOverrideCancels.join(', ')} (Cancelled)`);
+            hasRevokableIssue = true;
+        }
 
         overridesDelays.forEach(o => {
             const activeDelays = (o.shiftNames || []).filter(s => !allCancelledShifts.includes(s));
-            if (activeDelays.length > 0) details.push(`${activeDelays.join(', ')}: Late (${o.delayMinutes}m)`);
+            if (activeDelays.length > 0) {
+                details.push(`${activeDelays.join(', ')} (Late ${o.delayMinutes}m)`);
+                hasRevokableIssue = true;
+            }
         });
 
-        if (details.length > 0) return { text: details.join(' | '), color: 'orange', canRevoke: true, fullyCancelled: false };
+        // If there is an actual delay or cancellation, show it in orange and allow revoke
+        if (hasRevokableIssue) {
+            return { text: details.join(' | '), color: 'orange', canRevoke: true, fullyCancelled: false };
+        }
 
-        return { text: 'Active / Normal', color: 'green', canRevoke: false, fullyCancelled: false };
+        // If it's just a special shift running normally, show it in purple
+        if (hasSpecialShifts) {
+            return { 
+                text: availableShifts.length > 0 ? 'Special & Normal Active' : 'Special Shift Active', 
+                color: 'purple', 
+                canRevoke: false, // <-- Correctly disabled!
+                fullyCancelled: false 
+            };
+        }
+
+        // Default normal day
+        return { 
+            text: 'Active / Normal', 
+            color: 'green', 
+            canRevoke: false, 
+            fullyCancelled: false 
+        };
     };
 
     const handleRevokeAbsence = async (doctorId) => {

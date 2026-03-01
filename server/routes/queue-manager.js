@@ -8,7 +8,8 @@ const Order = require("../models/Order");
 const QueueState = require("../models/QueueState");
 const Doctor = require("../models/Doctor");
 const QueueTokenSchema = require("../models/QueueToken");
-
+const DailyCounterSchema = require("../models/DailyCounter");
+const LiveShiftSchema = require("../models/LiveShift");
 const { authenticateUser } = require("../middleware/auth");
 const getModel = require("../middleware/getModelsHandler");
 const { sendToBrand } = require("../sseManager");
@@ -24,6 +25,8 @@ const getTenantContext = async (req, res, next) => {
         
         const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
         req.TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
+        req.TenantDailyCounter = getModel(tenantDb, "DailyCounter", DailyCounterSchema);
+        req.TenantLiveShift = getModel(tenantDb, "LiveShift", LiveShiftSchema);
         next();
     } catch (err) {
         res.status(500).json({ message: "Database Connection Error" });
@@ -285,6 +288,110 @@ router.put("/token/:tokenId/reschedule", async (req, res) => {
     }
 });
 
+
+// ==========================================
+// 7. LIVE SHIFT MANAGEMENT
+// ==========================================
+
+// Get today's live shifts for a specific doctor
+router.get("/shifts/:doctorId", async (req, res) => {
+    try {
+        const todayStr = moment().format("YYYY-MM-DD");
+        const shifts = await req.TenantLiveShift.find({
+            institutionId: req.user.institutionId,
+            date: todayStr,
+            doctorId: req.params.doctorId
+        });
+        res.json(shifts);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Action on a Shift (START, COMPLETE, CANCEL)
+router.post("/shifts/:doctorId/action", async (req, res) => {
+    try {
+        const { action, shiftName, plannedStartTime, plannedEndTime, maxTokens, cancelReason } = req.body;
+        const todayStr = moment().format("YYYY-MM-DD");
+        const instId = req.user.institutionId;
+        const doctorId = req.params.doctorId;
+
+        // Find existing or initialize a new shift tracking doc
+        let liveShift = await req.TenantLiveShift.findOne({
+            institutionId: instId,
+            date: todayStr,
+            doctorId: doctorId,
+            shiftName: shiftName
+        });
+
+        if (!liveShift && action === 'START') {
+            liveShift = new req.TenantLiveShift({
+                institutionId: instId,
+                date: todayStr,
+                doctorId: doctorId,
+                shiftName: shiftName,
+                plannedStartTime,
+                plannedEndTime,
+                maxTokens
+            });
+        }
+
+        if (!liveShift) {
+            return res.status(404).json({ message: "Shift not found or not started yet." });
+        }
+
+        switch(action) {
+            case 'START':
+                if (liveShift.status !== 'IN_PROGRESS') {
+                    liveShift.status = 'IN_PROGRESS';
+                    liveShift.actualStartTime = new Date();
+                    liveShift.startedBy = req.user.userId;
+                }
+                break;
+            case 'COMPLETE':
+                liveShift.status = 'COMPLETED';
+                liveShift.actualEndTime = new Date();
+                break;
+            case 'CANCEL':
+                liveShift.status = 'CANCELLED';
+                liveShift.cancelledBy = req.user.userId;
+                liveShift.cancelReason = cancelReason || "Cancelled by user";
+                liveShift.actualEndTime = new Date();
+                // --- NEW: AUTO-SYNC CANCELLATION TO DOCTOR PROFILE ---
+                const doc = await Doctor.findOne({ _id: doctorId, institutionId: instId });
+                if (doc) {
+                    let override = doc.dailyOverrides.find(o => o.date === todayStr);
+                    if (override) {
+                        override.isCancelled = true;
+                        if (!override.shiftNames) override.shiftNames = [];
+                        if (!override.shiftNames.includes(shiftName)) {
+                            override.shiftNames.push(shiftName);
+                        }
+                    } else {
+                        doc.dailyOverrides.push({
+                            date: todayStr,
+                            isCancelled: true,
+                            shiftNames: [shiftName],
+                            note: "Auto-cancelled via Live Workspace"
+                        });
+                    }
+                    await doc.save();
+                }
+                break;
+            default:
+                return res.status(400).json({ message: "Invalid action" });
+        }
+
+        await liveShift.save();
+
+        // Broadcast shift update so UI locks/unlocks instantly on all screens
+        sendToBrand(instId, { type: 'SHIFT_UPDATED', shift: liveShift }, 'tests_queue_updated');
+
+        res.json(liveShift);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 // Helper for Legacy Routes
 const addMinutesToTimeStr = (timeStr, minutesToAdd) => {

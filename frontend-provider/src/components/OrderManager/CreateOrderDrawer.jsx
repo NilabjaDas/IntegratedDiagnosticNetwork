@@ -115,19 +115,9 @@ const getDoctorAvailability = (doctor, dateInput) => {
         }
     }
 
-    // 3. APPLY DAILY CANCELLATIONS (Overrides)
-    const override = doctor.dailyOverrides?.find(o => o.date === dateStr);
-    if (override && override.isCancelled) {
-        if (!override.shiftNames || override.shiftNames.length === 0) {
-            availableShifts = [];
-        } else {
-            availableShifts = availableShifts.filter(s => !override.shiftNames.includes(s.shiftName));
-        }
-    }
-
-    // 4. ADD SPECIAL SHIFTS
+    // 3. ADD SPECIAL SHIFTS
     // Special shifts explicitly assigned to this date overrule regular days off and leaves.
-    const specialShiftsForDay = doctor.specialShifts?.filter(s => s.date === dateStr) || [];
+const specialShiftsForDay = doctor.specialShifts?.filter(s => s.date === dateStr && s.status !== 'Cancelled') || [];
     
     specialShiftsForDay.forEach(specialShift => {
         // If a special shift has the same name as a regular shift (rare), it replaces it. 
@@ -139,6 +129,15 @@ const getDoctorAvailability = (doctor, dateInput) => {
             availableShifts.push(specialShift);
         }
     });
+    // 4. APPLY DAILY CANCELLATIONS (Overrides)
+    const override = doctor.dailyOverrides?.find(o => o.date === dateStr);
+    if (override && override.isCancelled) {
+        if (!override.shiftNames || override.shiftNames.length === 0) {
+            availableShifts = [];
+        } else {
+            availableShifts = availableShifts.filter(s => !override.shiftNames.includes(s.shiftName));
+        }
+    }
 
     return availableShifts;
 };

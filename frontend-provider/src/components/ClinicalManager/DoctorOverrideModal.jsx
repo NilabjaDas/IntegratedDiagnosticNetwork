@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Form, Input, InputNumber, Row, Col, Typography, Modal, Switch, DatePicker, Select, Alert } from 'antd';
 import dayjs from 'dayjs';
 
@@ -8,10 +8,7 @@ const { Option } = Select;
 const DoctorOverrideModal = ({ visible, onCancel, onSave, doctor }) => {
     const [form] = Form.useForm();
     const isFullDayCancel = Form.useWatch('isFullDayCancel', form);
-
-    const todayIndex = dayjs().day(); 
-    const todaysSchedule = doctor?.schedule?.find(s => s.dayOfWeek === todayIndex);
-    const todayShifts = todaysSchedule?.isAvailable ? todaysSchedule.shifts : [];
+    const [todayShifts, setTodayShifts] = useState([]);
 
     useEffect(() => {
         if (visible && doctor) {
@@ -19,18 +16,43 @@ const DoctorOverrideModal = ({ visible, onCancel, onSave, doctor }) => {
             
             const todayObj = dayjs();
             const todayStr = todayObj.format('YYYY-MM-DD');
+            const todayIndex = todayObj.day();
+            const weekOfMonth = Math.ceil(todayObj.date() / 7);
             
+            // 1. Get Regular Shifts for Today
+            const todaysSchedule = doctor.schedule?.find(s => s.dayOfWeek === todayIndex);
+            let regularShifts = [];
+            if (todaysSchedule && todaysSchedule.isAvailable) {
+                regularShifts = todaysSchedule.shifts.filter(shift => {
+                    if (shift.repeatWeeks && shift.repeatWeeks.length > 0) return shift.repeatWeeks.includes(weekOfMonth);
+                    return true;
+                });
+            }
+
+            // 2. Get Special Shifts for Today
+            const specialShiftsForToday = doctor.specialShifts?.filter(s => s.date === todayStr && s.status !== 'Cancelled') || [];
+
+            // 3. Merge them (Special shifts override regular shifts with the same name)
+            let combinedShifts = [...regularShifts];
+            specialShiftsForToday.forEach(special => {
+                const existingIdx = combinedShifts.findIndex(s => s.shiftName === special.shiftName);
+                if(existingIdx > -1) combinedShifts[existingIdx] = special;
+                else combinedShifts.push(special);
+            });
+
+            setTodayShifts(combinedShifts);
+
             // Extract existing overrides for today
             const todaysOverrides = doctor.dailyOverrides?.filter(o => o.date === todayStr) || [];
             
             // Check if Full Day is currently cancelled
             const cancelledShifts = todaysOverrides.filter(o => o.isCancelled).flatMap(o => o.shiftNames || []);
             const uniqueCancelledShifts = [...new Set(cancelledShifts)];
-            const isFullDayCancelInit = todayShifts.length > 0 && uniqueCancelledShifts.length >= todayShifts.length;
+            const isFullDayCancelInit = combinedShifts.length > 0 && uniqueCancelledShifts.length >= combinedShifts.length;
 
             // Map out the shifts and inject any existing overrides
-            const initialShifts = todayShifts.map(s => {
-                const shiftOverride = todaysOverrides.find(o => o.shiftNames?.includes(s.shiftName));
+            const initialShifts = combinedShifts.map(s => {
+                const shiftOverride = todaysOverrides.find(o => o.shiftNames?.includes(s.shiftName) || (!o.shiftNames || o.shiftNames.length === 0));
                 
                 let status = 'Normal';
                 let delayMinutes = null;
@@ -58,8 +80,6 @@ const DoctorOverrideModal = ({ visible, onCancel, onSave, doctor }) => {
                 note: todaysOverrides[0]?.note || ''
             });
         }
-        // FIX: Removed `todayShifts` from the dependency array to kill the infinite loop.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visible, doctor, form]);
 
     const handleSubmit = (values) => {
@@ -97,14 +117,14 @@ const DoctorOverrideModal = ({ visible, onCancel, onSave, doctor }) => {
             <Form form={form} layout="vertical" onFinish={handleSubmit}>
                 <Alert 
                     message="Granular Schedule Control" 
-                    description="You can cancel the entire day, or apply specific delays and cancellations to individual shifts." 
+                    description="You can cancel the entire day, or apply specific delays and cancellations to individual shifts (including special shifts)." 
                     type="info" 
                     showIcon 
                     style={{ marginBottom: '16px' }}
                 />
 
                 {todayShifts?.length === 0 && (
-                    <Alert message="No Shifts Today" type="warning" showIcon style={{ marginBottom: '16px' }} />
+                    <Alert message="No Shifts Today" description="This doctor has no regular or special shifts scheduled for today." type="warning" showIcon style={{ marginBottom: '16px' }} />
                 )}
 
                 <Form.Item name="date" label="Date" rules={[{ required: true }]}>

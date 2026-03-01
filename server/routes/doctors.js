@@ -105,7 +105,7 @@ router.put("/:doctorId",  async (req, res) => {
 // ==========================================
 // 5. ADD DAILY OVERRIDE (Synced with Leave Ledger)
 // ==========================================
-router.post("/:doctorId/overrides",  async (req, res) => {
+router.post("/:doctorId/overrides", async (req, res) => {
     try {
         const { date, isFullDayCancel, note, overrides } = req.body;
         const instId = req.user.institutionId;
@@ -130,12 +130,10 @@ router.post("/:doctorId/overrides",  async (req, res) => {
         } else if (overrides && overrides.length > 0) {
             cancelledShiftsForAudit = overrides.filter(o => o.isCancelled).flatMap(o => o.shiftNames);
             if (cancelledShiftsForAudit.length > 0 && todayShifts.length > 0) {
-                // E.g., Cancelled 1 out of 2 shifts = 0.5 days consumed
                 daysToConsume = cancelledShiftsForAudit.length / todayShifts.length;
             }
         }
 
-        // Deduct balance and log to ledger if there is a cancellation
         if (daysToConsume > 0) {
             const limit = doctor.leaveSettings?.leaveLimitPerYear || 20;
             if (doctor.metrics.leavesTaken + daysToConsume > limit) {
@@ -151,9 +149,23 @@ router.post("/:doctorId/overrides",  async (req, res) => {
         }
         // ------------------------------
 
-        const institution = await Institutions.findOne({ institutionId: instId });
+        // --- NEW: SYNC SPECIAL SHIFTS STATUS ---
+        doctor.specialShifts.forEach(sp => {
+            if (sp.date === date) {
+                let isCancelled = false;
+                if (isFullDayCancel) {
+                    isCancelled = true;
+                } else if (overrides && overrides.length > 0) {
+                    isCancelled = overrides.some(o => o.isCancelled && (o.shiftNames.includes(sp.shiftName) || o.shiftNames.length === 0));
+                }
+                sp.status = isCancelled ? 'Cancelled' : 'Scheduled';
+            }
+        });
+        // ---------------------------------------
+
+        const institution = await Institutions.findOne({ institutionId: instId }); // Use Institution model
         const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
-        const TenantQueueToken = getModel(tenantDb, "QueueToken", QueueTokenSchema);
+        const TenantQueueToken = getModel(tenantDb, "QueueToken", require("../models/QueueToken")); // Ensure correct path to schema
 
         let affectedShiftNames = [];
         let policyToApply = null;
@@ -204,28 +216,13 @@ router.post("/:doctorId/overrides",  async (req, res) => {
                         { _id: { $in: affectedTokens.map(t => t._id) } },
                         { $set: { status: 'DOC_UNVAILABLE', notes: `Doctor Unavailable. Policy: Cancel All.` } }
                     );
-                } else if (policyToApply === 'MANUAL_ALLOCATION') {
+                } else {
                     await TenantQueueToken.updateMany(
                         { _id: { $in: affectedTokens.map(t => t._id) } },
                         { $set: { status: 'DOC_UNVAILABLE', isRescheduled: false, notes: `Doctor Leave. Action Required.` } }
                     );
-                } else if (policyToApply === 'AUTO_NEXT_AVAILABLE') {
-                   for (let token of affectedTokens) {
-                        const nextDayStr = getNextWorkingDayForShift(doctor, date, token.shiftName);
-                        if (nextDayStr) {
-                            token.originalDate = token.originalDate || token.date;
-                            token.date = nextDayStr;
-                            token.isRescheduled = true;
-                            token.priority = 1;
-                            token.notes = `Auto-rescheduled from ${token.originalDate} due to doctor absence.`;
-                            await token.save();
-                        } else {
-                            token.status = 'DOC_UNVAILABLE';
-                            token.notes = `Doctor Unavailable. Could not find a future shift to auto-reschedule.`;
-                            await token.save();
-                        }
-                    }
                 }
+                const { sendToBrand } = require("../sseManager");
                 sendToBrand(instId, { type: 'TOKENS_UPDATED' }, 'tests_queue_updated');
             }
         }
@@ -350,6 +347,135 @@ router.post("/:doctorId/special-shifts",  async (req, res) => {
         await doctor.save();
         
         res.status(201).json(doctor.specialShifts);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// UPDATE A SPECIAL SHIFT
+router.put("/:id/special-shifts/:shiftId", authenticateUser, async (req, res) => {
+    try {
+        const doctor = await Doctor.findOne({ _id: req.params.id, institutionId: req.user.institutionId });
+        if (!doctor) return res.status(404).json({ message: "Doctor not found" });
+
+        const shift = doctor.specialShifts.id(req.params.shiftId);
+        if (!shift) return res.status(404).json({ message: "Special shift not found" });
+
+        const oldStatus = shift.status;
+
+        // Update fields
+        shift.date = req.body.date || shift.date;
+        shift.shiftName = req.body.shiftName || shift.shiftName;
+        shift.startTime = req.body.startTime || shift.startTime;
+        shift.endTime = req.body.endTime || shift.endTime;
+        shift.maxTokens = req.body.maxTokens || shift.maxTokens;
+        shift.note = req.body.note !== undefined ? req.body.note : shift.note;
+        if (req.body.status) {
+            shift.status = req.body.status;
+        }
+
+        // --- NEW: SYNC TO OVERRIDES & QUEUE IF CANCELLED ---
+        if (oldStatus === 'Scheduled' && shift.status === 'Cancelled') {
+            doctor.dailyOverrides.push({
+                date: shift.date,
+                shiftNames: [shift.shiftName],
+                isCancelled: true,
+                delayMinutes: 0,
+                note: "Special Shift Cancelled"
+            });
+            await doctor.save();
+
+            // Cancel active tokens
+            const institution = await Institutions.findOne({ institutionId: req.user.institutionId });
+            const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+            const TenantQueueToken = getModel(tenantDb, "QueueToken", require("../models/QueueToken"));
+            
+            const affectedTokens = await TenantQueueToken.find({
+                date: shift.date, doctorId: doctor._id, status: { $in: ['WAITING', 'HOLD'] }, shiftName: shift.shiftName
+            });
+
+            if (affectedTokens.length > 0) {
+                const policy = institution.settings?.queuePolicies?.shiftCancelPolicy || 'MANUAL_ALLOCATION';
+                if (policy === 'CANCEL_ALL') {
+                    await TenantQueueToken.updateMany(
+                        { _id: { $in: affectedTokens.map(t => t._id) } },
+                        { $set: { status: 'DOC_UNVAILABLE', notes: `Special Shift Cancelled. Policy: Cancel All.` } }
+                    );
+                } else {
+                    await TenantQueueToken.updateMany(
+                        { _id: { $in: affectedTokens.map(t => t._id) } },
+                        { $set: { status: 'DOC_UNVAILABLE', isRescheduled: false, notes: `Special Shift Cancelled. Action Required.` } }
+                    );
+                }
+                const { sendToBrand } = require("../sseManager");
+                sendToBrand(req.user.institutionId, { type: 'TOKENS_UPDATED' }, 'tests_queue_updated');
+            }
+
+        } else if (oldStatus === 'Cancelled' && shift.status === 'Scheduled') {
+            // Remove from overrides if restored
+            doctor.dailyOverrides = doctor.dailyOverrides.filter(o => {
+                if (o.date === shift.date && o.isCancelled && o.shiftNames.includes(shift.shiftName)) {
+                    o.shiftNames = o.shiftNames.filter(sn => sn !== shift.shiftName);
+                    return o.shiftNames.length > 0; // Keep override if it affects other shifts
+                }
+                return true;
+            });
+            await doctor.save();
+        } else {
+            await doctor.save();
+        }
+
+        res.status(200).json(doctor);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE A SPECIAL SHIFT
+router.delete("/:id/special-shifts/:shiftId", authenticateUser, async (req, res) => {
+    try {
+        const doctor = await Doctor.findOne({ _id: req.params.id, institutionId: req.user.institutionId });
+        if (!doctor) return res.status(404).json({ message: "Doctor not found" });
+
+        const shiftToDelete = doctor.specialShifts.id(req.params.shiftId);
+        if (!shiftToDelete) return res.status(404).json({ message: "Shift not found" });
+
+        const shiftDate = shiftToDelete.date;
+        const shiftName = shiftToDelete.shiftName;
+
+        // Remove the specific shift from the array
+        doctor.specialShifts = doctor.specialShifts.filter(s => s._id.toString() !== req.params.shiftId);
+        
+        // Remove from overrides if it was cancelled
+        doctor.dailyOverrides = doctor.dailyOverrides.filter(o => {
+            if (o.date === shiftDate && o.isCancelled && o.shiftNames.includes(shiftName)) {
+                o.shiftNames = o.shiftNames.filter(sn => sn !== shiftName);
+                return o.shiftNames.length > 0; 
+            }
+            return true;
+        });
+
+        await doctor.save();
+
+        // --- NEW: CANCEL QUEUE TOKENS IF SHIFT IS DELETED ---
+        const institution = await Institutions.findOne({ institutionId: req.user.institutionId });
+        const tenantDb = mongoose.connection.useDb(institution.dbName, { useCache: true });
+        const TenantQueueToken = getModel(tenantDb, "QueueToken", require("../models/QueueToken"));
+
+        const affectedTokens = await TenantQueueToken.find({
+            date: shiftDate, doctorId: doctor._id, status: { $in: ['WAITING', 'HOLD'] }, shiftName: shiftName
+        });
+
+        if (affectedTokens.length > 0) {
+            await TenantQueueToken.updateMany(
+                { _id: { $in: affectedTokens.map(t => t._id) } },
+                { $set: { status: 'DOC_UNVAILABLE', isRescheduled: false, notes: `Special Shift was Deleted. Action Required.` } }
+            );
+            const { sendToBrand } = require("../sseManager");
+            sendToBrand(req.user.institutionId, { type: 'TOKENS_UPDATED' }, 'tests_queue_updated');
+        }
+
+        res.status(200).json({ message: "Special shift deleted successfully", doctor });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

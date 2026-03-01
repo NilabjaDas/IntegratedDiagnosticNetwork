@@ -125,7 +125,14 @@ const DoctorProfileTab = ({ rooms, templates = [] }) => {
                             <Form.Item name={['billingPreferences', 'assistantCapabilities', 'maxDiscountPercent']} label="Max Discount Allowed (%)" initialValue={0}>
                                 <InputNumber min={0} max={100} style={{ width: '100%' }} addonAfter="%" />
                             </Form.Item>
+                                <Form.Item name={['billingPreferences', 'assistantCapabilities', 'canStartCompleteShifts']} label="Can Start/End Shifts?" valuePropName="checked" initialValue={true}>
+                                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+                            </Form.Item>
+                            <Form.Item name={['billingPreferences', 'assistantCapabilities', 'canCancelShifts']} label="Can Cancel Shifts?" valuePropName="checked" initialValue={false}>
+                                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+                            </Form.Item>
                         </Card>
+                    
                     </Col>
 
                     {/* Doctor Capabilities */}
@@ -142,6 +149,13 @@ const DoctorProfileTab = ({ rooms, templates = [] }) => {
                                 </Select>
                             </Form.Item>
                             <Form.Item name={['billingPreferences', 'doctorCapabilities', 'canWaiveFee']} label="Can Waive Fee Entirely?" valuePropName="checked" initialValue={true} tooltip="Allows doctor to mark consultation as ₹0 for relatives/staff.">
+                                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+                            </Form.Item>
+
+                            <Form.Item name={['billingPreferences', 'doctorCapabilities', 'canStartCompleteShifts']} label="Can Start/End Shifts?" valuePropName="checked" initialValue={true}>
+                                <Switch checkedChildren="Yes" unCheckedChildren="No" />
+                            </Form.Item>
+                            <Form.Item name={['billingPreferences', 'doctorCapabilities', 'canCancelShifts']} label="Can Cancel Shifts?" valuePropName="checked" initialValue={true}>
                                 <Switch checkedChildren="Yes" unCheckedChildren="No" />
                             </Form.Item>
                         </Card>

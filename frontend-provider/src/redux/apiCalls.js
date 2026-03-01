@@ -46,7 +46,8 @@ import {
   queueProcessStart,
   queueProcessFailure,
   getQueueSuccess,
-  updateTokenSuccess
+  updateTokenSuccess,
+  setLiveShifts, updateLiveShift
 } from "./queueRedux";
 
 import { 
@@ -753,6 +754,16 @@ export const createSpecialShift = async (doctorId, shiftData) => {
     return res.data;
 };
 
+export const updateSpecialShift = async (doctorId, shiftId, shiftData) => {
+    const res = await userRequest.put(`/doctors/${doctorId}/special-shifts/${shiftId}`, shiftData);
+    return res.data;
+};
+
+export const deleteSpecialShift = async (doctorId, shiftId) => {
+    const res = await userRequest.delete(`/doctors/${doctorId}/special-shifts/${shiftId}`);
+    return res.data;
+};
+
 export const revokeDoctorAbsence = async (doctorId, date) => {
     try {
         const res = await userRequest.delete(`/doctors/${doctorId}/absence/${date}`);
@@ -880,4 +891,25 @@ export const fetchDoctorMonthlyBookings = async (doctorId, year, month) => {
     }
 };
 
+// --- LIVE SHIFT API CALLS ---
+export const fetchLiveShifts = async (dispatch, doctorId) => {
+    try {
+        const res = await userRequest.get(`/queue-manager/shifts/${doctorId}`);
+        dispatch(setLiveShifts(res.data));
+        return res.data;
+    } catch (err) {
+        console.error("Failed to fetch live shifts", err);
+        return [];
+    }
+};
 
+export const actionLiveShift = async (dispatch, doctorId, payload) => {
+    try {
+        // payload = { action: 'START'|'COMPLETE'|'CANCEL', shiftName: 'Morning', plannedStartTime: '...', etc. }
+        const res = await userRequest.post(`/queue-manager/shifts/${doctorId}/action`, payload);
+        dispatch(updateLiveShift(res.data));
+        return res.data;
+    } catch (err) {
+        throw err;
+    }
+};

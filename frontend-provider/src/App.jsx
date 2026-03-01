@@ -39,7 +39,7 @@ import DoctorWorkspacePage from './pages/DoctorWorkspacePage';
 import moment from "moment";
 import QueueManagerPage from "./pages/QueueManagerPage";
 import TvDisplayPage from "./pages/TvDisplayPage";
-import {updateTokenSuccess } from "./redux/queueRedux";
+import {updateLiveShift,addTokenSuccess, updateTokenSuccess } from "./redux/queueRedux";
 import ClinicalPage from "./pages/ClinicalPage";
 
 // Global style to reset default margin and padding
@@ -164,11 +164,34 @@ function App() {
         dispatch(setMasterReportsData(data?.report?.properties));
       });
 
-      eventSource.addEventListener("tests_queue_updated", (event) => {
-          const eventData = JSON.parse(event.data);
-          dispatch(updateTokenSuccess(eventData.token));
-      });
+      // eventSource.addEventListener("tests_queue_updated", (event) => {
+      //     const eventData = JSON.parse(event.data);
+      //     dispatch(updateTokenSuccess(eventData.token));
+      // });
+eventSource.addEventListener("tests_queue_updated", (event) => {
+        try {
+            const eventData = JSON.parse(event.data);
+            
+            // --- NEW: Catch Shift Updates ---
+            if (eventData.type === 'SHIFT_UPDATED') {
+                dispatch(updateLiveShift(eventData.shift));
+                return; // Stop here so it doesn't try to process it as a token
+            }
+            // --------------------------------
 
+            if (eventData.type === 'NEW_TOKEN') {
+                dispatch(addTokenSuccess(eventData.token));
+            } 
+            else if (eventData.type === 'UPDATE_TOKEN' || eventData.type === 'TOKEN_UPDATED') {
+                dispatch(updateTokenSuccess(eventData.token));
+            }
+            else if (eventData.token && !eventData.type) {
+                dispatch(addTokenSuccess(eventData.token));
+            }
+        } catch (e) {
+            console.error("Queue SSE Parse Error:", e);
+        }
+      });
      
 
       eventSource.addEventListener("tests_availability_updated", (event) => {
